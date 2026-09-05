@@ -8,12 +8,19 @@ an API audit so uploads can go Public without a manual flip.
 1. https://console.cloud.google.com → project picker → **New project** → name `space-screens` → Create.
 2. **APIs & Services → Library** → search "YouTube Data API v3" → **Enable**.
 
-## 2. OAuth consent screen
+## 2. OAuth consent screen (Google Auth Platform)
 
-1. **APIs & Services → OAuth consent screen** (Google may call it "Google Auth Platform → Branding").
-2. User type: **External**. App name `Space Screens`, your support email, your developer email. Save.
-3. **Scopes** → Add → tick `https://www.googleapis.com/auth/youtube.upload` → Update → Save.
-4. **Audience / Publishing status → Publish app** (move from *Testing* to *In production*).
+1. **Google Auth Platform → Overview → Get started**: App name `Space Screens`,
+   support email; Audience **External**; contact email; agree; Create.
+2. **Branding**: Google requires these before an External app can be published.
+   - Application home page: `https://roman-orpin.vercel.app`
+   - Privacy policy: `https://roman-orpin.vercel.app/privacy`
+   - Terms of service: `https://roman-orpin.vercel.app/terms`
+   - Authorized domains → Add domain: `vercel.app`
+   - Save.
+3. **Data Access → Add or remove scopes** → tick `https://www.googleapis.com/auth/youtube.upload`
+   (search "youtube", or paste it under "Manually add scopes") → Update → Save.
+4. **Audience → Publishing status → Publish app → Confirm** (move from *Testing* to *In production*).
    This matters: a project left in Testing gets refresh tokens that **expire
    after 7 days**, which would silently stop the daily upload. In production,
    unverified apps show a warning screen during sign-in (fine, it is only you)
