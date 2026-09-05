@@ -63,7 +63,7 @@ class PublishSettings:
     mode: str = "dry-run"  # dry-run | upload
     privacy: str = "private"  # private | unlisted | public
     category_id: str = "28"  # Science & Technology
-    title_template: str = "{subject} | {length} Space Telescope Sleep Screen"
+    title_template: str = "{subject} | {length} Relaxing Space Video for Sleep | Real Telescope Screensaver"
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False

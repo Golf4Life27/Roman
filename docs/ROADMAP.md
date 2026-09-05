@@ -5,8 +5,9 @@ for one session.
 
 ## Now (before first public upload)
 
-1. **Pick the channel name and register handles** — see CHANNEL_SETUP.md.
-   Register the sibling handles at the same time.
+1. ~~Pick the channel name and register handles~~ — **done 2026-09-05: Space
+   Screens, @SpaceScreens (live ~2026-09-19).** Still open: register
+   @SpaceSleepScreen and @SpaceScreensavers as blockers.
 2. **Music strategy decision** — commission vs paid AI generation. Then fill
    `assets/music/manifest.yaml` with 6–10 ambient tracks. This unblocks
    `publish.mode: upload`.

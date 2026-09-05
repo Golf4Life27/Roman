@@ -2,9 +2,8 @@
 # genre or pacing) without touching code.
 channel:
   slug: deep-space-ambient
-  # Recommended by docs/CHANNEL_SETUP.md research (handle @DeepFieldScreens was free on 2026-09-05).
-  # Change freely; the name only appears in metadata templates.
-  name: Deep Field Screens
+  # Chosen 2026-09-05. Handle @SpaceScreens goes live ~2026-09-19 (YouTube's 14-day hold).
+  name: Space Screens
   tagline: Real space telescope imagery, slowly. Hubble and Webb today, Roman when its first images land.
 
 video:
@@ -50,10 +49,15 @@ publish:
   mode: dry-run               # flip to `upload` once OAuth is set up and music is licensed
   privacy: private            # review in Studio, then make public; flip to public once trusted
   category_id: "28"           # Science & Technology
-  # Tokens: {subject} {length} {date} {channel}. Trust tokens seen on top channels: 4K, No Mid-rolls, Human-Made.
-  title_template: "{subject} | {length} Space Telescope Sleep Screen | Real NASA Imagery, Calm Ambient"
+  # Tokens: {subject} {length} {date} {channel}. Titles carry the phrases people actually search
+  # ("space video for sleep", "space screensaver"); the channel name only needs the head term.
+  title_template: "{subject} | {length} Relaxing Space Video for Sleep | Real Telescope Screensaver"
   tags:
     - space
+    - space video
+    - space video for sleep
+    - space screensaver
+    - relaxing space
     - sleep screen
     - ambient
     - nebula

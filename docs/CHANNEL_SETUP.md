@@ -1,5 +1,16 @@
 # Channel setup: name and YouTube Studio settings
 
+**Decision (2026-09-05): channel name is _Space Screens_, handle @SpaceScreens.**
+The handle becomes active around 2026-09-19 after YouTube's 14-day hold. Also
+worth registering as blockers/siblings while free: @SpaceSleepScreen,
+@SpaceScreensavers. The research below is kept for the record.
+
+Naming principle that settled it: the channel name only needs the head term
+("space"); the phrases people actually type ("space video for sleep", "space
+screensaver", "relaxing space") go in every title, where YouTube search
+matches. A channel literally named "Space Videos" is unfindable by name and
+reads as a compilation account.
+
 Research date: 2026-09-05. Handle availability was checked by HTTP status of
 `youtube.com/@handle` and must be re-confirmed in Studio before committing.
 
@@ -60,8 +71,8 @@ Taken: @SpaceAmbient, @DeepFieldAmbient, @OrbitalAmbient, @NebulaSleep,
 @StellarDrift, @QuietCosmos, @SlowCosmos, @StillSpace, @SleepCosmos,
 @SpaceDrift, @RomanFeed.
 
-**Recommendation: Deep Field Screens.** Register @DeepFieldScreens and the
-sibling handles (@DeepFieldSleep at minimum) the same day.
+Original recommendation was Deep Field Screens; superseded by Space Screens
+(head term "space" beats astronomer jargon "deep field" for search intent).
 
 ## 2. YouTube Studio settings checklist
 
@@ -69,7 +80,7 @@ sibling handles (@DeepFieldSleep at minimum) the same day.
 
 - [ ] Handle and name from above; country: US.
 - [ ] Channel keywords: `space ambient, sleep music, sleep screen, 4K screensaver, Hubble, James Webb, Roman Space Telescope, focus music, study music, relaxing space`.
-- [ ] Description: lead with the use case ("Long 4K sleep screens of real Hubble, Webb and Roman telescope imagery with original ambient music"), then a standing credit block: "Imagery: NASA, ESA, CSA, STScI; ESA/Hubble and ESA/Webb (CC BY 4.0). Not affiliated with or endorsed by NASA or ESA."
+- [ ] Description: lead with the use case ("Space Screens: long relaxing space videos for sleep and focus, built from real Hubble, Webb and Roman telescope imagery with original ambient music"), then a standing credit block: "Imagery: NASA, ESA, CSA, STScI; ESA/Hubble and ESA/Webb (CC BY 4.0). Not affiliated with or endorsed by NASA or ESA."
 - [ ] Audience (Advanced settings): **No, not made for kids**.
 - [ ] Banner 2560×1440 (≤6 MB, min 2048×1152), all text inside the 1546×423 safe area; avatar 800×800.
 - [ ] Branding watermark (small telescope glyph), shown for the entire video.

@@ -28,14 +28,15 @@ MUSIC
 
 {roman_note}
 
-New video every day. Subscribe to keep the sky on.
+New space video every day. Subscribe to keep the sky on.
+Not affiliated with or endorsed by NASA or ESA.
 """
 
 ROMAN_NOTE = (
-    "ABOUT THE ROMAN FEED\n"
-    "This channel is warming up on Hubble, Webb and other public NASA imagery. "
-    "When NASA's Nancy Grace Roman Space Telescope begins releasing science images, "
-    "they flow into these videos automatically."
+    "ABOUT {channel_upper}\n"
+    "Real images from Hubble, Webb and other public NASA and ESA archives, shown slowly. "
+    "When NASA's Nancy Grace Roman Space Telescope begins releasing science images in 2027, "
+    "they appear here automatically."
 )
 
 
@@ -102,7 +103,8 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     template = cfg.publish.description_template or DEFAULT_DESCRIPTION
     description = template.format(
         tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
-        chapters=chapter_lines, credits=credits, music=music, roman_note=ROMAN_NOTE, date=when.isoformat(),
+        chapters=chapter_lines, credits=credits, music=music,
+        roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
     )
     tags = list(dict.fromkeys(cfg.publish.tags + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
     return VideoMetadata(

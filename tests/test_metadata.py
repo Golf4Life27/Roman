@@ -18,7 +18,9 @@ def test_subject_and_title():
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
     meta = build_metadata(cfg, assets, [Track("t", Path("t.m4a"), "ambient", "owned", title="Drift")], seconds_per_image=45, when=date(2026, 9, 5))
-    assert meta.title.startswith("Nebulae | 1 Hour Space Telescope Sleep Screen")
+    assert meta.title == "Nebulae | 1 Hour Relaxing Space Video for Sleep | Real Telescope Screensaver"
+    assert "ABOUT SPACE SCREENS" in meta.description
+    assert "Not affiliated" in meta.description
     assert "0:00 Carina Nebula 0" in meta.description
     assert "45:00 Carina Nebula 60" in meta.description
     assert "NASA/ESA/CSA/STScI" in meta.description
