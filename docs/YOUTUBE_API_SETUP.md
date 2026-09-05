@@ -13,10 +13,10 @@ an API audit so uploads can go Public without a manual flip.
 1. **Google Auth Platform → Overview → Get started**: App name `Space Screens`,
    support email; Audience **External**; contact email; agree; Create.
 2. **Branding**: Google requires these before an External app can be published.
-   - Application home page: `https://roman-orpin.vercel.app`
-   - Privacy policy: `https://roman-orpin.vercel.app/privacy`
-   - Terms of service: `https://roman-orpin.vercel.app/terms`
-   - Authorized domains → Add domain: `vercel.app`
+   - Application home page: `https://spacescreens.app`
+   - Privacy policy: `https://spacescreens.app/privacy`
+   - Terms of service: `https://spacescreens.app/terms`
+   - Authorized domains → Add domain: `spacescreens.app` (Google rejects shared suffixes like vercel.app)
    - Save.
 3. **Data Access → Add or remove scopes** → tick `https://www.googleapis.com/auth/youtube.upload`
    (search "youtube", or paste it under "Manually add scopes") → Update → Save.

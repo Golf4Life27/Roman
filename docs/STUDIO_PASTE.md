@@ -24,10 +24,12 @@ New space video every day. Each one is a fresh set of nebulae, galaxies and star
 
 When NASA's Nancy Grace Roman Space Telescope begins releasing its first images in 2027, they will appear here too.
 
+spacescreens.app
+
 Imagery: NASA, ESA, CSA, STScI; ESA/Hubble and ESA/Webb (CC BY 4.0). Not affiliated with or endorsed by NASA or ESA.
 ```
 
-**Links:** add the channel's own playlists once they exist (Sleep 8h+, Focus 1–3h, By telescope).
+**Links:** `https://spacescreens.app` (official site), then the channel's own playlists once they exist (Sleep 8h+, Focus 1–3h, By telescope).
 
 **Contact email:** a dedicated mailbox, not your primary.
 
