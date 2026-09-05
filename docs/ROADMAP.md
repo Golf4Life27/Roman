@@ -16,8 +16,9 @@ for one session.
    as the `YOUTUBE_TOKEN_JSON` GitHub secret. File the API audit form.
 4. **Thumbnail generator** — full-bleed image + big duration badge
    ("8 HOURS"), no faces. Pillow, same module family as captions.
-5. **Channel branding** — banner (2560×1440, safe area 1546×423), 800×800
-   avatar, watermark, description with credit/non-affiliation block.
+5. ~~Channel branding~~ — **done 2026-09-05**: `branding/banner.jpg`,
+   `branding/avatar.png` (`scripts/make_branding.py`), paste-ready text in
+   STUDIO_PASTE.md. Still open: watermark and trailer once a video exists.
 
 ## Next (first month live)
 

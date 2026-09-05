@@ -55,4 +55,5 @@ docs/                      architecture, channel setup research, monetisation gu
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the pieces fit, and where new AI capabilities plug in
 - [docs/CHANNEL_SETUP.md](docs/CHANNEL_SETUP.md) — channel name shortlist and the YouTube Studio settings checklist
 - [docs/MONETIZATION_GUARDRAILS.md](docs/MONETIZATION_GUARDRAILS.md) — policy, licensing and credit rules the pipeline enforces
+- [docs/STUDIO_PASTE.md](docs/STUDIO_PASTE.md) — paste-ready channel description, keywords and upload defaults
 - [docs/ROADMAP.md](docs/ROADMAP.md) — what to build next, in order
