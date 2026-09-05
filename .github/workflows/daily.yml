@@ -1,0 +1,55 @@
+# Daily render. Runs in dry-run until YOUTUBE_* secrets exist and the channel
+# config is flipped to publish.mode: upload. The ledger (data/state.db) is
+# persisted as a cache so images don't repeat across runs. Rendered video is
+# kept as an artifact for 3 days for review.
+name: Daily render
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      images:
+        description: images per video (override)
+        default: ""
+      seconds:
+        description: seconds per image (override)
+        default: ""
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core
+      - run: pip install -e ".[youtube]"
+      - name: Restore ledger
+        uses: actions/cache@v4
+        with:
+          path: data/state.db
+          key: ledger-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Write OAuth token (if configured)
+        if: ${{ env.YOUTUBE_TOKEN_JSON != '' }}
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Render
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+        run: |
+          args=""
+          [ -n "${{ inputs.images }}" ] && args="$args --images ${{ inputs.images }}"
+          [ -n "${{ inputs.seconds }}" ] && args="$args --seconds ${{ inputs.seconds }}"
+          python -m romanfeed run config/channels/deep-space-ambient.yaml $args
+      - uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ github.run_id }}
+          path: |
+            output/**/*.mp4
+            output/**/*.upload.json
+          retention-days: 3

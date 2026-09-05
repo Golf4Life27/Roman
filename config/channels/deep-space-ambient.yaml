@@ -1,0 +1,67 @@
+# Flagship channel. Copy this file to spin up a sibling channel (different
+# genre or pacing) without touching code.
+channel:
+  slug: deep-space-ambient
+  # Recommended by docs/CHANNEL_SETUP.md research (handle @DeepFieldScreens was free on 2026-09-05).
+  # Change freely; the name only appears in metadata templates.
+  name: Deep Field Screens
+  tagline: Real space telescope imagery, slowly. Hubble and Webb today, Roman when its first images land.
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24                     # sleep content; 24 renders ~20% faster than 30
+  seconds_per_image: 45       # 45s x 80 images = 60 minutes
+  images_per_video: 80
+  transition_seconds: 2.5
+  captions: true
+  max_zoom: 1.18
+  crf: 20
+  preset: veryfast            # 80 clips/day; medium is ~2x slower for little visible gain
+
+sources:
+  - type: roman               # yields nothing until Roman science images are public; then they take priority
+    enabled: true
+    min_width: 1600
+    options:
+      science_after: "2026-12-01"   # Roman launched 2026-08-30; first observations expected early 2027
+      allow_pre_launch: false
+  - type: nasa_images
+    enabled: true
+    min_width: 1600
+    max_per_query: 100
+    queries:
+      - nebula
+      - galaxy
+      - star cluster
+      - James Webb Space Telescope
+      - Hubble Space Telescope
+      - deep field
+      - supernova remnant
+
+audio:
+  genre: ambient
+  library: assets/music/manifest.yaml
+  fade_seconds: 8
+  gain_db: -6
+  allow_placeholder: false    # dry runs override this; uploads never do
+
+publish:
+  mode: dry-run               # flip to `upload` once OAuth is set up and music is licensed
+  privacy: private            # review in Studio, then make public; flip to public once trusted
+  category_id: "28"           # Science & Technology
+  # Tokens: {subject} {length} {date} {channel}. Trust tokens seen on top channels: 4K, No Mid-rolls, Human-Made.
+  title_template: "{subject} | {length} Space Telescope Sleep Screen | Real NASA Imagery, Calm Ambient"
+  tags:
+    - space
+    - sleep screen
+    - ambient
+    - nebula
+    - galaxy
+    - james webb
+    - hubble
+    - roman space telescope
+    - relaxing
+    - screensaver
+    - calm
+    - focus music
