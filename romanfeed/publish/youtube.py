@@ -65,6 +65,12 @@ def _credentials():
     return creds
 
 
+def mint_token() -> Path:
+    """Run the OAuth flow once (opens a browser) and save the refresh token."""
+    _credentials()
+    return Path(os.environ.get("YOUTUBE_TOKEN_PATH", "secrets/youtube.token.json"))
+
+
 def _upload(video_path: Path, body: dict) -> str:
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload

@@ -35,3 +35,31 @@ def test_licensed_track_loops_to_duration(tmp_path):
     assert len(tracks) == 3  # 2s track looped to cover 5s
     assert all(t.publishable for t in tracks)
     assert abs(probe_duration(str(out)) - 5.0) < 0.3
+
+
+def test_register_track_copies_and_appends(tmp_path):
+    from romanfeed.audio.library import register_track
+    from romanfeed.audio.mix import synth_placeholder
+
+    src = synth_placeholder(tmp_path / "in" / "Drift One.m4a", 1).path
+    manifest = tmp_path / "music" / "manifest.yaml"
+    e1 = register_track(manifest, src, licence="generated", title="Drift One", notes="Suno Pro")
+    e2 = register_track(manifest, src, licence="generated", title="Drift One")
+    assert e1["id"] == "drift-one" and e2["id"] == "drift-one-2"
+    assert (manifest.parent / e1["path"]).exists()
+    lib = MusicLibrary(manifest)
+    assert [t.id for t in lib.for_genre("ambient")] == ["drift-one", "drift-one-2"]
+    with pytest.raises(ValueError, match="licence"):
+        register_track(manifest, src, licence="placeholder")
+
+
+def test_music_cli(tmp_path, capsys):
+    from romanfeed.audio.mix import synth_placeholder
+    from romanfeed.cli import main
+
+    src = synth_placeholder(tmp_path / "t.m4a", 1).path
+    manifest = tmp_path / "m" / "manifest.yaml"
+    assert main(["music", "add", str(src), "--licence", "owned", "--title", "Calm", "--manifest", str(manifest)]) == 0
+    assert main(["music", "list", "--manifest", str(manifest)]) == 0
+    out = capsys.readouterr().out
+    assert "registered calm (owned)" in out and "ok " in out

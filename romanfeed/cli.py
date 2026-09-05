@@ -4,6 +4,8 @@
   romanfeed run config/... --images 6 --seconds 8 --dry-run        # quick local proof
   romanfeed fetch config/...                                        # list candidate images
   romanfeed ledger                                                  # what has been rendered/published
+  romanfeed auth                                                    # mint the YouTube OAuth token (one time, local)
+  romanfeed music add track.m4a --licence generated --genre ambient # register a track (licence required)
 """
 from __future__ import annotations
 
@@ -56,6 +58,38 @@ def _cmd_ledger(args) -> int:
     return 0
 
 
+def _cmd_auth(args) -> int:
+    from romanfeed.publish.youtube import mint_token
+
+    path = mint_token()
+    print(f"token written to {path}")
+    print("Store its contents as the YOUTUBE_TOKEN_JSON GitHub secret to let the daily workflow upload.")
+    return 0
+
+
+def _cmd_music_add(args) -> int:
+    from romanfeed.audio.library import register_track
+
+    entry = register_track(
+        Path(args.manifest), Path(args.file), licence=args.licence, genre=args.genre,
+        title=args.title, artist=args.artist, notes=args.notes, tags=args.tag or [],
+    )
+    print(f"registered {entry['id']} ({entry['licence']}) in {args.manifest}")
+    return 0
+
+
+def _cmd_music_list(args) -> int:
+    from romanfeed.audio.library import MusicLibrary
+
+    lib = MusicLibrary(args.manifest)
+    if not lib.tracks:
+        print("no tracks registered")
+    for t in lib.tracks:
+        flag = "ok " if t.publishable and t.path.exists() else ("NO-FILE" if not t.path.exists() else "UNPUBLISHABLE")
+        print(f"{flag:13} {t.genre:10} {t.licence:10} {t.id:24} {t.title}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="romanfeed", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -79,6 +113,25 @@ def main(argv: list[str] | None = None) -> int:
 
     l = sub.add_parser("ledger", help="show rendered/published videos")
     l.set_defaults(fn=_cmd_ledger)
+
+    a = sub.add_parser("auth", help="run the one-time YouTube OAuth flow and save the token")
+    a.set_defaults(fn=_cmd_auth)
+
+    m = sub.add_parser("music", help="manage the licensed music manifest")
+    msub = m.add_subparsers(dest="music_cmd", required=True)
+    ma = msub.add_parser("add", help="copy a track into assets/music/<genre>/ and register it")
+    ma.add_argument("file")
+    ma.add_argument("--licence", required=True, choices=["owned", "generated", "licensed", "cc0"])
+    ma.add_argument("--genre", default="ambient")
+    ma.add_argument("--title", default="")
+    ma.add_argument("--artist", default="")
+    ma.add_argument("--notes", default="", help="provider/plan/licence id; where the receipt lives")
+    ma.add_argument("--tag", action="append")
+    ma.add_argument("--manifest", default="assets/music/manifest.yaml")
+    ma.set_defaults(fn=_cmd_music_add)
+    ml = msub.add_parser("list", help="show registered tracks and whether they are publishable")
+    ml.add_argument("--manifest", default="assets/music/manifest.yaml")
+    ml.set_defaults(fn=_cmd_music_list)
 
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")

@@ -32,6 +32,9 @@ Other commands:
 ```bash
 python -m romanfeed fetch config/channels/deep-space-ambient.yaml   # list candidate images per source
 python -m romanfeed ledger                                          # what has been rendered / published
+python -m romanfeed music add track.m4a --licence generated --title Drift --notes "Suno Pro"
+python -m romanfeed music list                                      # publishable? file present?
+python -m romanfeed auth                                            # one-time YouTube OAuth (see docs/YOUTUBE_API_SETUP.md)
 ```
 
 ## Layout
@@ -55,5 +58,6 @@ docs/                      architecture, channel setup research, monetisation gu
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the pieces fit, and where new AI capabilities plug in
 - [docs/CHANNEL_SETUP.md](docs/CHANNEL_SETUP.md) — channel name shortlist and the YouTube Studio settings checklist
 - [docs/MONETIZATION_GUARDRAILS.md](docs/MONETIZATION_GUARDRAILS.md) — policy, licensing and credit rules the pipeline enforces
+- [docs/YOUTUBE_API_SETUP.md](docs/YOUTUBE_API_SETUP.md) — one-time Google Cloud + OAuth + audit walkthrough
 - [docs/STUDIO_PASTE.md](docs/STUDIO_PASTE.md) — paste-ready channel description, keywords and upload defaults
 - [docs/ROADMAP.md](docs/ROADMAP.md) — what to build next, in order

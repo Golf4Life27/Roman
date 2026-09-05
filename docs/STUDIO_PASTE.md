@@ -1,6 +1,6 @@
 # YouTube Studio: paste-ready text for Space Screens
 
-Generated 2026-09-05. Branding files live in `branding/` (regenerate with
+Generated 2026-09-05. Applied in Studio 2026-09-05 (profile, description, keywords, audience, upload defaults, community). Branding files live in `branding/` (regenerate with
 `python scripts/make_branding.py`).
 
 ## Customization → Profile

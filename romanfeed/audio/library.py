@@ -16,6 +16,8 @@ Accepted licence values:
 """
 from __future__ import annotations
 
+import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,3 +63,43 @@ class MusicLibrary:
         if publishable_only:
             out = [t for t in out if t.publishable]
         return out
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "track"
+
+
+def register_track(
+    manifest_path: Path, src: Path, *, licence: str, genre: str = "ambient",
+    title: str = "", artist: str = "", notes: str = "", tags: list[str] | None = None,
+) -> dict:
+    """Copy `src` into <manifest dir>/<genre>/ and append a manifest entry.
+
+    The licence is mandatory and must be publishable; this is the only
+    supported way to add music, so every track has provenance on record."""
+    if licence not in PUBLISHABLE:
+        raise ValueError(f"licence must be one of {sorted(PUBLISHABLE)}")
+    src = Path(src)
+    if not src.exists():
+        raise FileNotFoundError(src)
+    raw = yaml.safe_load(manifest_path.read_text()) if manifest_path.exists() else {}
+    raw = raw or {}
+    tracks = raw.setdefault("tracks", []) or []
+    raw["tracks"] = tracks
+    base_id = _slug(title or src.stem)
+    track_id, n = base_id, 2
+    while any(t.get("id") == track_id for t in tracks):
+        track_id, n = f"{base_id}-{n}", n + 1
+    dest_rel = Path(genre) / f"{track_id}{src.suffix.lower()}"
+    dest = manifest_path.parent / dest_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if src.resolve() != dest.resolve():
+        shutil.copy2(src, dest)
+    entry = {
+        "id": track_id, "path": dest_rel.as_posix(), "title": title or src.stem, "artist": artist,
+        "genre": genre, "licence": licence, "notes": notes, "tags": list(tags or []),
+    }
+    tracks.append(entry)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True))
+    return entry

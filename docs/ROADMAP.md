@@ -8,12 +8,12 @@ for one session.
 1. ~~Pick the channel name and register handles~~ — **done 2026-09-05: Space
    Screens, @SpaceScreens (live ~2026-09-19).** Still open: register
    @SpaceSleepScreen and @SpaceScreensavers as blockers.
-2. **Music strategy decision** — commission vs paid AI generation. Then fill
-   `assets/music/manifest.yaml` with 6–10 ambient tracks. This unblocks
-   `publish.mode: upload`.
-3. **Google Cloud project + OAuth** — enable YouTube Data API v3, create OAuth
-   client, run one local upload to mint `secrets/youtube.token.json`, store it
-   as the `YOUTUBE_TOKEN_JSON` GitHub secret. File the API audit form.
+2. **Music strategy decision** — commission vs paid AI generation. Then
+   register 6–10 ambient tracks with `romanfeed music add ... --licence ...`.
+   This unblocks `publish.mode: upload`.
+3. **Google Cloud project + OAuth** — follow YOUTUBE_API_SETUP.md
+   (`romanfeed auth` mints the token; store it as `YOUTUBE_TOKEN_JSON`).
+   File the API audit form the same day.
 4. **Thumbnail generator** — full-bleed image + big duration badge
    ("8 HOURS"), no faces. Pillow, same module family as captions.
 5. ~~Channel branding~~ — **done 2026-09-05**: `branding/banner.jpg`,
