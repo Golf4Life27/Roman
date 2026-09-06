@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+.env
+
+# Runtime data (ledger, downloaded imagery, rendered video)
+data/*
+output/*
+!data/.gitkeep
+!output/.gitkeep
+
+# OAuth tokens for YouTube upload
+secrets/
+*.token.json
+client_secret*.json
+
+# Audio masters (register in assets/music/manifest.yaml; keep files out of git)
+assets/music/**/*.m4a
+assets/music/**/*.mp3
+assets/music/**/*.wav
+assets/music/**/*.flac

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "romanfeed"
+version = "0.1.0"
+description = "Automated long-form space imagery channel pipeline (warm-up on Hubble/JWST, then Roman Space Telescope)."
+requires-python = ">=3.11"
+dependencies = [
+    "pillow>=10.1",
+    "pyyaml>=6",
+    "requests>=2.31",
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+youtube = [
+    "google-api-python-client>=2.100",
+    "google-auth-oauthlib>=1.1",
+    "google-auth-httplib2>=0.1",
+]
+dev = ["pytest>=7"]
+
+[project.scripts]
+romanfeed = "romanfeed.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["romanfeed*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

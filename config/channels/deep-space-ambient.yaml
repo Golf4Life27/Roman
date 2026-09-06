@@ -1,0 +1,75 @@
+# Flagship channel. Copy this file to spin up a sibling channel (different
+# genre or pacing) without touching code.
+channel:
+  slug: deep-space-ambient
+  # Chosen 2026-09-05. Handle @SpaceScreens goes live ~2026-09-19 (YouTube's 14-day hold).
+  name: Space Screens
+  tagline: Real space telescope imagery, slowly. Hubble and Webb today, Roman when its first images land.
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24                     # sleep content; 24 renders ~20% faster than 30
+  seconds_per_image: 45       # 45s x 80 images = 60 minutes
+  images_per_video: 80
+  transition_seconds: 2.5
+  captions: true
+  max_zoom: 1.18
+  crf: 20
+  preset: veryfast            # 80 clips/day; medium is ~2x slower for little visible gain
+
+sources:
+  - type: roman               # yields nothing until Roman science images are public; then they take priority
+    enabled: true
+    min_width: 1600
+    options:
+      science_after: "2026-12-01"   # Roman launched 2026-08-30; first observations expected early 2027
+      allow_pre_launch: false
+  - type: nasa_images
+    enabled: true
+    min_width: 1600
+    max_per_query: 100
+    queries:                  # subject-led, not mission-led: mission queries return hardware and people
+      - nebula
+      - galaxy
+      - star cluster
+      - supernova remnant
+      - deep field
+      - planetary nebula
+      - star forming region
+      - Webb nebula
+      - Webb galaxy
+      - Hubble galaxy
+      - Hubble nebula
+
+audio:
+  genre: ambient
+  library: assets/music/manifest.yaml
+  fade_seconds: 8
+  gain_db: -6
+  allow_placeholder: false    # dry runs override this; uploads never do
+
+publish:
+  mode: dry-run               # flip to `upload` once OAuth is set up and music is licensed
+  privacy: private            # review in Studio, then make public; flip to public once trusted
+  category_id: "28"           # Science & Technology
+  # Tokens: {subject} {length} {date} {channel}. Titles carry the phrases people actually search
+  # ("space video for sleep", "space screensaver"); the channel name only needs the head term.
+  title_template: "{subject} | {length} Relaxing Space Video for Sleep | Real Telescope Screensaver"
+  tags:
+    - space
+    - space video
+    - space video for sleep
+    - space screensaver
+    - relaxing space
+    - sleep screen
+    - ambient
+    - nebula
+    - galaxy
+    - james webb
+    - hubble
+    - roman space telescope
+    - relaxing
+    - screensaver
+    - calm
+    - focus music
