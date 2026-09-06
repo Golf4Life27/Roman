@@ -8,9 +8,9 @@ for one session.
 1. ~~Pick the channel name and register handles~~ — **done 2026-09-05: Space
    Screens, @SpaceScreens (live ~2026-09-19).** Still open: register
    @SpaceSleepScreen and @SpaceScreensavers as blockers.
-2. **Music strategy decision** — commission vs paid AI generation. Then
-   register 6–10 ambient tracks with `romanfeed music add ... --licence ...`.
-   This unblocks `publish.mode: upload`.
+2. **Music** — decided: Suno Pro (bought 2026-09-06). Generation and
+   registration handed to Cowork: see HANDOFF_COWORK_MUSIC.md. This
+   unblocks `publish.mode: upload` and `ROMANFEED_ENABLED`.
 3. ~~Google Cloud project + OAuth~~ — **done 2026-09-06**: app in
    production, domain verified in Search Console, token minted from the
    channel-owner account, first private [TEST] upload succeeded. Still
