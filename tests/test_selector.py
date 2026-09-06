@@ -18,6 +18,9 @@ def test_unsuitable_filter():
     assert looks_unsuitable(_asset(4, title="KSC-2012-3155"))
     assert looks_unsuitable(_asset(5, title="Earth observations taken from shuttle orbiter Columbia"))
     assert looks_unsuitable(_asset(6, title="Dr. Nancy Grace Roman visits JWST"))
+    assert looks_unsuitable(_asset(8, title="ARC-2010-ACD10-0054-002", kw=["galaxy"]))
+    assert looks_unsuitable(_asset(9, title="Beyond the Deep Field: Hubble's Legacy and the Future"))
+    assert looks_unsuitable(_asset(10, title="NASA Galaxy Mission Celebrates Sixth Anniversary"))
     # Keywords alone can qualify an image.
     assert not looks_unsuitable(_asset(7, title="NGC 6302", kw=["Planetary Nebula"]))
 

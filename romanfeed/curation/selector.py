@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from datetime import date
 
 from PIL import Image
@@ -41,11 +42,20 @@ SKY_HINTS = (
 )
 
 
+# Bare photo IDs ("ARC-2010-ACD10-0054-002", "KSC-2012-3155") make useless captions.
+_PHOTO_ID_RE = re.compile(r"^[A-Za-z]{2,6}[-_ ]?\d{2,}")
+# Posters, legacy retrospectives and event graphics that mention the sky in the title.
+_TITLE_BLOCK = ("legacy", "anniversary", "celebrat", "future of", "mission", "team", "workshop", "conference")
+
+
 def looks_unsuitable(asset: ImageAsset) -> bool:
     """True if the asset is not sky imagery. Titles and keywords carry the
     most signal; descriptions mention 'galaxy' even for press photos, so the
     positive test uses title+keywords, and the blocklist scans everything."""
-    head = f"{asset.title} {' '.join(asset.keywords)}".lower()
+    title = asset.title.strip()
+    if _PHOTO_ID_RE.match(title) or any(h in title.lower() for h in _TITLE_BLOCK):
+        return True
+    head = f"{title} {' '.join(asset.keywords)}".lower()
     blob = f"{head} {asset.description}".lower()
     if any(h in blob for h in BLOCKLIST_HINTS):
         return True
