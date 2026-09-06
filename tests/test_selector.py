@@ -21,8 +21,11 @@ def test_unsuitable_filter():
     assert looks_unsuitable(_asset(8, title="ARC-2010-ACD10-0054-002", kw=["galaxy"]))
     assert looks_unsuitable(_asset(9, title="Beyond the Deep Field: Hubble's Legacy and the Future"))
     assert looks_unsuitable(_asset(10, title="NASA Galaxy Mission Celebrates Sixth Anniversary"))
-    # Keywords alone can qualify an image.
+    assert looks_unsuitable(_asset(11, title="GSFC_20171208_Archive_e001465", kw=["nebula"]))
+    # Keywords alone can qualify an image; catalog names are not photo IDs.
     assert not looks_unsuitable(_asset(7, title="NGC 6302", kw=["Planetary Nebula"]))
+    assert not looks_unsuitable(_asset(12, title="IC 1396", kw=["nebula"]))
+    assert not looks_unsuitable(_asset(13, title="Nebula 99"))
 
 
 def test_select_prefers_roman_and_skips_used(tmp_path, sample_asset, monkeypatch):

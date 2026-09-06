@@ -42,8 +42,10 @@ SKY_HINTS = (
 )
 
 
-# Bare photo IDs ("ARC-2010-ACD10-0054-002", "KSC-2012-3155") make useless captions.
-_PHOTO_ID_RE = re.compile(r"^[A-Za-z]{2,6}[-_ ]?\d{2,}")
+# Bare NASA-center photo IDs ("ARC-2010-ACD10-0054-002", "KSC-2012-3155",
+# "GSFC_20171208_Archive") make useless captions. Catalog names ("NGC 6302",
+# "IC 1396", "M 31") must stay, so match only known center prefixes.
+_PHOTO_ID_RE = re.compile(r"^(ARC|KSC|GSFC|JSC|MSFC|NHQ|GRC|LRC|LARC|AFRC|DFRC|SSC|WSTF|JPL|EC|ED|S\d{2})[-_ ]?\d", re.I)
 # Posters, legacy retrospectives and event graphics that mention the sky in the title.
 _TITLE_BLOCK = ("legacy", "anniversary", "celebrat", "future of", "mission", "team", "workshop", "conference")
 
