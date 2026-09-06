@@ -60,4 +60,5 @@ docs/                      architecture, channel setup research, monetisation gu
 - [docs/MONETIZATION_GUARDRAILS.md](docs/MONETIZATION_GUARDRAILS.md) — policy, licensing and credit rules the pipeline enforces
 - [docs/YOUTUBE_API_SETUP.md](docs/YOUTUBE_API_SETUP.md) — one-time Google Cloud + OAuth + audit walkthrough
 - [docs/STUDIO_PASTE.md](docs/STUDIO_PASTE.md) — paste-ready channel description, keywords and upload defaults
+- [docs/HANDOFF_COWORK_MUSIC.md](docs/HANDOFF_COWORK_MUSIC.md) — desktop runbook: generate the Suno library, register it, go live
 - [docs/ROADMAP.md](docs/ROADMAP.md) — what to build next, in order
