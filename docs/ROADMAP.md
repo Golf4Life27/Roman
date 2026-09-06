@@ -11,9 +11,12 @@ for one session.
 2. **Music strategy decision** — commission vs paid AI generation. Then
    register 6–10 ambient tracks with `romanfeed music add ... --licence ...`.
    This unblocks `publish.mode: upload`.
-3. **Google Cloud project + OAuth** — follow YOUTUBE_API_SETUP.md
-   (`romanfeed auth` mints the token; store it as `YOUTUBE_TOKEN_JSON`).
-   File the API audit form the same day.
+3. ~~Google Cloud project + OAuth~~ — **done 2026-09-06**: app in
+   production, domain verified in Search Console, token minted from the
+   channel-owner account, first private [TEST] upload succeeded. Still
+   open: paste the token into the `YOUTUBE_TOKEN_JSON` GitHub secret; file
+   the API audit form; move the channel to a Brand Account and add the
+   Gmail account as an owner.
 4. **Thumbnail generator** — full-bleed image + big duration badge
    ("8 HOURS"), no faces. Pillow, same module family as captions.
 5. ~~Channel branding~~ — **done 2026-09-05**: `branding/banner.jpg`,

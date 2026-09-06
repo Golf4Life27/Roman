@@ -39,10 +39,21 @@ pip install -e ".[youtube]"
 python -m romanfeed auth
 ```
 
-A browser opens. Sign in with the Google account that owns the **Space
-Screens** channel (if that account has several channels, pick Space Screens
-when asked). Click through "Google hasn't verified this app" → Advanced →
-Go to Space Screens → Allow. The token lands in `secrets/youtube.token.json`.
+A browser opens. **Sign in with the Google account that owns the Space
+Screens channel** — check YouTube Studio → avatar → the email shown under
+the channel name. It does not have to be the account that owns the Cloud
+project. Authorizing any other account yields a token that uploads fail
+with `youtubeSignupRequired` (the account has no channel). If the channel
+is a Brand Account, pick the "Space Screens" entry at the picker, not the
+email. Click through "Google hasn't verified this app" → Advanced → Go to
+Space Screens → Allow. The token lands in `secrets/youtube.token.json`.
+
+Headless alternative (no browser on the machine running the code): build
+the authorization URL with `google_auth_oauthlib.flow.Flow`, open it
+anywhere, and paste the resulting `http://localhost:8765/?...code=...`
+address back into `flow.fetch_token(authorization_response=...)` with
+`OAUTHLIB_INSECURE_TRANSPORT=1` set. Persist `flow.code_verifier` between
+the two steps.
 
 ## 5. Give the daily workflow the token
 
@@ -66,19 +77,24 @@ days to weeks; nothing else is blocked while you wait.
 
 ## 7. First real upload
 
-In `config/channels/deep-space-ambient.yaml` set `publish.mode: upload`
-(leave `privacy: private`). Then:
+Smoke-test the chain without touching the config (private, [TEST] title,
+placeholder audio allowed):
 
 ```bash
-python -m romanfeed run config/channels/deep-space-ambient.yaml --images 6 --seconds 8
+python -m romanfeed run config/channels/deep-space-ambient.yaml --images 6 --seconds 8 --private-test
 ```
 
-A Private video appears in Studio within a minute. Watch it. If it is good,
-set it Public in Studio by hand. Once the audit clears, change
-`publish.privacy` to `public` and the loop is fully hands-off.
+Done 2026-09-06: https://youtu.be/WXnwlBdhg_A (private).
+
+For real uploads set `publish.mode: upload` in the channel config (leave
+`privacy: private` until the audit clears). Licensed music is required.
+Watch the first ones in Studio, set them Public by hand, and once the
+audit clears change `publish.privacy` to `public` for a hands-off loop.
 
 ## Troubleshooting
 
+- `youtubeSignupRequired` on upload → the token was minted by an account
+  with no YouTube channel. Re-run step 4 signed in as the channel owner.
 - `invalid_grant` / token expired after a week → the consent screen is still
   in Testing. Publish the app (step 2.4) and re-run step 4.
 - `quotaExceeded` → the project is still on the default 10,000 units/day and
