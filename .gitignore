@@ -18,8 +18,10 @@ secrets/
 *.token.json
 client_secret*.json
 
-# Audio masters (register in assets/music/manifest.yaml; keep files out of git)
-assets/music/**/*.m4a
+# Audio masters stay out of git; the normalised .m4a that `romanfeed music add`
+# writes under assets/music/<genre>/ IS committed so the CI runner can use it.
 assets/music/**/*.mp3
 assets/music/**/*.wav
 assets/music/**/*.flac
+assets/music/**/*.aiff
+assets/music/masters/

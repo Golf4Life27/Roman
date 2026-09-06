@@ -23,6 +23,14 @@ from pathlib import Path
 
 import yaml
 
+from romanfeed.render import ffmpeg
+
+# Delivery format for the library: AAC 192k in .m4a, loudness-normalised to
+# TARGET_LUFS so every track sits at the same quiet level under a sleep video.
+# Small enough to commit (~9 MB per 6-minute track) so the CI runner has it.
+TARGET_LUFS = -18.0
+TRANSCODE_SUFFIXES = {".wav", ".flac", ".mp3", ".aiff", ".aif", ".ogg", ".m4a", ".aac"}
+
 PUBLISHABLE = {"owned", "generated", "licensed", "cc0"}
 
 
@@ -72,11 +80,13 @@ def _slug(text: str) -> str:
 def register_track(
     manifest_path: Path, src: Path, *, licence: str, genre: str = "ambient",
     title: str = "", artist: str = "", notes: str = "", tags: list[str] | None = None,
+    normalise: bool = True,
 ) -> dict:
-    """Copy `src` into <manifest dir>/<genre>/ and append a manifest entry.
+    """Ingest `src` into <manifest dir>/<genre>/<id>.m4a and append a manifest entry.
 
-    The licence is mandatory and must be publishable; this is the only
-    supported way to add music, so every track has provenance on record."""
+    The file is transcoded to AAC and loudness-normalised (two-pass EBU R128
+    to TARGET_LUFS). The licence is mandatory and must be publishable; this
+    is the only supported way to add music, so every track has provenance."""
     if licence not in PUBLISHABLE:
         raise ValueError(f"licence must be one of {sorted(PUBLISHABLE)}")
     src = Path(src)
@@ -90,11 +100,14 @@ def register_track(
     track_id, n = base_id, 2
     while any(t.get("id") == track_id for t in tracks):
         track_id, n = f"{base_id}-{n}", n + 1
-    dest_rel = Path(genre) / f"{track_id}{src.suffix.lower()}"
+    dest_rel = Path(genre) / f"{track_id}.m4a"
     dest = manifest_path.parent / dest_rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     if src.resolve() != dest.resolve():
-        shutil.copy2(src, dest)
+        if src.suffix.lower() in TRANSCODE_SUFFIXES and normalise:
+            normalise_track(src, dest)
+        else:
+            shutil.copy2(src, dest)
     entry = {
         "id": track_id, "path": dest_rel.as_posix(), "title": title or src.stem, "artist": artist,
         "genre": genre, "licence": licence, "notes": notes, "tags": list(tags or []),
@@ -103,3 +116,27 @@ def register_track(
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True))
     return entry
+
+
+def normalise_track(src: Path, dest: Path, *, target_lufs: float = TARGET_LUFS) -> Path:
+    """Two-pass loudnorm to target_lufs, encoded as AAC 192k stereo 44.1 kHz."""
+    import json
+    import re as _re
+    import subprocess
+
+    measure = subprocess.run(
+        [ffmpeg.ffmpeg_path(), "-hide_banner", "-nostats", "-i", str(src),
+         "-af", f"loudnorm=I={target_lufs}:TP=-2:LRA=11:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    blocks = _re.findall(r"\{[^{}]*\}", measure.stderr)
+    if not blocks:
+        raise RuntimeError(f"loudnorm measurement failed for {src}: {measure.stderr[-400:]}")
+    st = json.loads(blocks[-1])
+    af = (
+        f"loudnorm=I={target_lufs}:TP=-2:LRA=11:"
+        f"measured_I={st['input_i']}:measured_TP={st['input_tp']}:measured_LRA={st['input_lra']}:"
+        f"measured_thresh={st['input_thresh']}:offset={st['target_offset']}:linear=true:print_format=summary"
+    )
+    ffmpeg.run(["-i", str(src), "-af", af, "-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "192k", str(dest)])
+    return dest
