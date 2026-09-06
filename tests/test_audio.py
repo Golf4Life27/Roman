@@ -46,7 +46,9 @@ def test_register_track_copies_and_appends(tmp_path):
     e1 = register_track(manifest, src, licence="generated", title="Drift One", notes="Suno Pro")
     e2 = register_track(manifest, src, licence="generated", title="Drift One")
     assert e1["id"] == "drift-one" and e2["id"] == "drift-one-2"
+    assert e1["path"] == "ambient/drift-one.m4a"
     assert (manifest.parent / e1["path"]).exists()
+    assert abs(probe_duration(str(manifest.parent / e1["path"])) - 1.0) < 0.3
     lib = MusicLibrary(manifest)
     assert [t.id for t in lib.for_genre("ambient")] == ["drift-one", "drift-one-2"]
     with pytest.raises(ValueError, match="licence"):
@@ -63,3 +65,16 @@ def test_music_cli(tmp_path, capsys):
     assert main(["music", "list", "--manifest", str(manifest)]) == 0
     out = capsys.readouterr().out
     assert "registered calm (owned)" in out and "ok " in out
+
+
+def test_normalise_track_hits_target_loudness(tmp_path):
+    import json, re, subprocess
+    from romanfeed.audio.library import normalise_track
+    from romanfeed.audio.mix import synth_placeholder
+    from romanfeed.render.ffmpeg import ffmpeg_path
+
+    src = synth_placeholder(tmp_path / "loud.m4a", 4).path
+    out = normalise_track(src, tmp_path / "norm.m4a", target_lufs=-18.0)
+    res = subprocess.run([ffmpeg_path(), "-hide_banner", "-nostats", "-i", str(out), "-af", "loudnorm=print_format=json", "-f", "null", "-"], capture_output=True, text=True)
+    st = json.loads(re.findall(r"\{[^{}]*\}", res.stderr)[-1])
+    assert abs(float(st["input_i"]) - (-18.0)) < 2.0
