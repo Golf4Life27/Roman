@@ -24,6 +24,7 @@ def _cmd_run(args) -> int:
     res = run(cfg, RunOptions(
         images=args.images, seconds_per_image=args.seconds, dry_run=True if args.dry_run else None,
         seed=args.seed, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir), keep_work=args.keep_work,
+        private_test=args.private_test,
     ))
     print(f"video:    {res.video_path}")
     print(f"metadata: {res.metadata_path}")
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--seed", help="deterministic selection seed (default: today's date)")
     r.add_argument("--output-dir", default="output")
     r.add_argument("--keep-work", action="store_true", help="keep intermediate clips/frames")
+    r.add_argument("--private-test", action="store_true", help="upload a PRIVATE [TEST] video to verify the chain; placeholder audio allowed")
     r.set_defaults(fn=_cmd_run)
 
     f = sub.add_parser("fetch", help="list candidate images from each source")

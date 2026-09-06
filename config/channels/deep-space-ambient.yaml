@@ -29,14 +29,18 @@ sources:
     enabled: true
     min_width: 1600
     max_per_query: 100
-    queries:
+    queries:                  # subject-led, not mission-led: mission queries return hardware and people
       - nebula
       - galaxy
       - star cluster
-      - James Webb Space Telescope
-      - Hubble Space Telescope
-      - deep field
       - supernova remnant
+      - deep field
+      - planetary nebula
+      - star forming region
+      - Webb nebula
+      - Webb galaxy
+      - Hubble galaxy
+      - Hubble nebula
 
 audio:
   genre: ambient

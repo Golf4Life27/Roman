@@ -22,12 +22,34 @@ from romanfeed.state import Ledger
 
 log = logging.getLogger(__name__)
 
-BLOCKLIST_HINTS = ("logo", "portrait", "headshot", "diagram", "chart", "infographic", "poster", "screenshot", "meeting", "press conference")
+# Anything that is not the sky: people, hardware, ceremonies, Earth from orbit.
+BLOCKLIST_HINTS = (
+    "logo", "portrait", "headshot", "diagram", "chart", "infographic", "poster", "screenshot", "meeting",
+    "press conference", "briefing", "visit", "ceremony", "reveal", "engineer", "technician", "clean room",
+    "cleanroom", "work stand", "lift", "launch", "prelaunch", "rocket", "falcon", "fairing", "payload",
+    "shuttle", "orbiter", "astronaut", "crew", "iss ", "space station", "earth observation", "ksc-",
+    "artist", "concept", "illustration", "rendering", "mockup", "model of", "facility", "assembly",
+    "integration", "testing", "test of", "administrator", "director", "senator", "congress", "employees",
+)
+# At least one of these must appear for an image to count as astronomy.
+SKY_HINTS = (
+    "nebula", "galaxy", "galaxies", "cluster", "supernova", "star-forming", "star forming", "stellar",
+    "deep field", "light-years", "light years", "protostar", "quasar", "pulsar", "black hole", "exoplanet",
+    "planetary", "milky way", "andromeda", "orion", "carina", "pillars", "cosmic", "interstellar",
+    "spiral", "dwarf galaxy", "globular", "remnant", "molecular cloud", "starburst", "constellation",
+    "jupiter", "saturn", "mars", "neptune", "uranus", "comet", "aurora", "solar flare", "sun's",
+)
 
 
 def looks_unsuitable(asset: ImageAsset) -> bool:
-    blob = f"{asset.title} {asset.description} {' '.join(asset.keywords)}".lower()
-    return any(h in blob for h in BLOCKLIST_HINTS)
+    """True if the asset is not sky imagery. Titles and keywords carry the
+    most signal; descriptions mention 'galaxy' even for press photos, so the
+    positive test uses title+keywords, and the blocklist scans everything."""
+    head = f"{asset.title} {' '.join(asset.keywords)}".lower()
+    blob = f"{head} {asset.description}".lower()
+    if any(h in blob for h in BLOCKLIST_HINTS):
+        return True
+    return not any(h in head for h in SKY_HINTS)
 
 
 def probe_dimensions(asset: ImageAsset) -> tuple[int, int]:

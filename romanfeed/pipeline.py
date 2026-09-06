@@ -30,6 +30,9 @@ class RunOptions:
     data_dir: Path = Path("data")
     output_dir: Path = Path("output")
     keep_work: bool = False
+    # Smoke-test the upload chain: forces privacy=private, prefixes the title
+    # with [TEST], and permits the in-house placeholder drone as audio.
+    private_test: bool = False
 
 
 @dataclass
@@ -46,6 +49,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
     n_images = opts.images or cfg.video.images_per_video
     spi = opts.seconds_per_image or cfg.video.seconds_per_image
     mode = "dry-run" if (opts.dry_run if opts.dry_run is not None else cfg.publish.mode == "dry-run") else "upload"
+    if opts.private_test:
+        mode = "upload"
     today = date.today().isoformat()
     slug = f"{cfg.channel.slug}-{today}"
     out_dir = opts.output_dir / cfg.channel.slug
@@ -80,7 +85,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         audio_path, tracks = build_soundtrack(
             library, genre=cfg.audio.genre, duration=target, out_path=work / "soundtrack.m4a",
             fade=cfg.audio.fade_seconds, gain_db=cfg.audio.gain_db,
-            allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run", seed=opts.seed or today,
+            allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run" or opts.private_test, seed=opts.seed or today,
         )
 
         # 4. render
@@ -90,7 +95,10 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 5. metadata + publish guard
         meta = build_metadata(cfg, assets, tracks, seconds_per_image=spi)
-        if mode == "upload" and any(not t.publishable for t in tracks):
+        if opts.private_test:
+            meta.privacy = "private"
+            meta.title = ("[TEST] " + meta.title)[:100]
+        elif mode == "upload" and any(not t.publishable for t in tracks):
             raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
         youtube_id = publish(video_path, meta, mode=mode)
 

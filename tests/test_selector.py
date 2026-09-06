@@ -4,12 +4,22 @@ from romanfeed.state import Ledger
 
 
 def _asset(i, kw=(), title="Nebula"):
+    """Default title 'Nebula N' keeps these assets sky-positive."""
     return ImageAsset(asset_id=f"nasa:{i}", title=f"{title} {i}", url="", source="s", keywords=list(kw))
 
 
 def test_unsuitable_filter():
     assert looks_unsuitable(_asset(1, title="Team portrait"))
     assert not looks_unsuitable(_asset(2, title="Carina Nebula"))
+    # Mission-ops photos that mention the sky only in the description.
+    bad = _asset(3, title="James Webb Space Telescope Mirror Reveal")
+    bad.description = "The telescope will observe distant galaxies."
+    assert looks_unsuitable(bad)
+    assert looks_unsuitable(_asset(4, title="KSC-2012-3155"))
+    assert looks_unsuitable(_asset(5, title="Earth observations taken from shuttle orbiter Columbia"))
+    assert looks_unsuitable(_asset(6, title="Dr. Nancy Grace Roman visits JWST"))
+    # Keywords alone can qualify an image.
+    assert not looks_unsuitable(_asset(7, title="NGC 6302", kw=["Planetary Nebula"]))
 
 
 def test_select_prefers_roman_and_skips_used(tmp_path, sample_asset, monkeypatch):
