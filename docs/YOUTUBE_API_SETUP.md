@@ -63,7 +63,12 @@ GitHub repo → **Settings → Secrets and variables → Actions → New reposit
 - Value: the full contents of `secrets/youtube.token.json`
 
 The workflow writes it back to disk at run time. Rotate it by re-running
-step 4 and updating the secret.
+step 4 and updating the secret. Done 2026-09-06.
+
+Then prove the CI path: Actions → **Daily render** → Run workflow → mode
+`smoke-test`. A short private [TEST] video appears in Studio a few minutes
+later. (Scheduled daily runs stay off until the repository variable
+`ROMANFEED_ENABLED` is set to `true`; do that once music is registered.)
 
 ## 6. File the API audit (same day)
 

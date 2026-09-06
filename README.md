@@ -49,7 +49,7 @@ romanfeed/publish/         metadata templating + YouTube Data API upload (dry-ru
 romanfeed/pipeline.py      the daily job
 romanfeed/state.py         SQLite ledger (data/state.db)
 assets/music/manifest.yaml the only door music can enter through
-.github/workflows/         ci.yml (tests) and daily.yml (scheduled render)
+.github/workflows/         ci.yml (tests) and daily.yml (scheduled render; gated by ROMANFEED_ENABLED, manual smoke-test)
 docs/                      architecture, channel setup research, monetisation guardrails, roadmap
 ```
 
