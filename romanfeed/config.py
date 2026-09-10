@@ -31,6 +31,7 @@ class VideoSettings:
     transition_seconds: float = 2.0
     captions: bool = True
     max_zoom: float = 1.18
+    max_flat_black: float = 0.02
     crf: int = 20
     preset: str = "veryfast"
 
@@ -54,6 +55,7 @@ class AudioSettings:
     genre: str = "ambient"
     library: str = "assets/music/manifest.yaml"
     fade_seconds: float = 6.0
+    crossfade_seconds: float = 0.0
     gain_db: float = -6.0
     allow_placeholder: bool = False
 
