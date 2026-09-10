@@ -1,4 +1,6 @@
-from romanfeed.curation.selector import looks_unsuitable, select_assets
+from PIL import Image, ImageDraw
+
+from romanfeed.curation.selector import flat_black_fraction, looks_unsuitable, select_assets
 from romanfeed.sources.base import ImageAsset
 from romanfeed.state import Ledger
 
@@ -55,3 +57,39 @@ def test_min_width_enforced(tmp_path, sample_asset, monkeypatch):
     monkeypatch.setattr(ImageAsset, "download", lambda self, cache_dir, timeout=60: setattr(self, "local_path", sample_asset.local_path) or sample_asset.local_path)
     with Ledger(tmp_path / "s.db") as l:
         assert select_assets([_asset(1)], channel="c", ledger=l, count=1, min_width=5000, cache_dir=str(tmp_path)) == []
+
+
+def _write(path, black_box=None):
+    """A noisy sky frame, optionally with a solid black rectangle cut out of it."""
+    im = Image.effect_noise((2400, 1350), 40).convert("RGB")
+    if black_box:
+        ImageDraw.Draw(im).rectangle(black_box, fill=(0, 0, 0))
+    im.save(path)
+    return path
+
+
+def test_flat_black_fraction_measures_detector_gap(tmp_path):
+    clean = _write(tmp_path / "clean.png")
+    # Bottom-left quadrant blacked out: the shape a WFPC2 mosaic leaves behind.
+    notched = _write(tmp_path / "notched.png", black_box=[0, 675, 1200, 1350])
+    assert flat_black_fraction(_local(clean)) < 0.01
+    assert flat_black_fraction(_local(notched)) > 0.2
+
+
+def _local(path):
+    return ImageAsset(asset_id="nasa:X", title="Nebula X", url="", source="s", local_path=path)
+
+
+def test_select_skips_frames_with_black_blocks(tmp_path, monkeypatch):
+    notched = _write(tmp_path / "notched.png", black_box=[0, 675, 1200, 1350])
+    monkeypatch.setattr(ImageAsset, "download",
+                        lambda self, cache_dir, timeout=60: setattr(self, "local_path", notched) or notched)
+    cands = [_asset(i) for i in range(4)]
+    with Ledger(tmp_path / "s.db") as l:
+        chosen = select_assets(cands, channel="c", ledger=l, count=2, min_width=1000,
+                               cache_dir=str(tmp_path), seed="x")
+        assert chosen == []          # every candidate has the gap
+        # ...and the check can be switched off per channel
+        allowed = select_assets(cands, channel="c2", ledger=l, count=2, min_width=1000,
+                                cache_dir=str(tmp_path), seed="x", max_flat_black=0)
+        assert len(allowed) == 2
