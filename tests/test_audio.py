@@ -78,3 +78,35 @@ def test_normalise_track_hits_target_loudness(tmp_path):
     res = subprocess.run([ffmpeg_path(), "-hide_banner", "-nostats", "-i", str(out), "-af", "loudnorm=print_format=json", "-f", "null", "-"], capture_output=True, text=True)
     st = json.loads(re.findall(r"\{[^{}]*\}", res.stderr)[-1])
     assert abs(float(st["input_i"]) - (-18.0)) < 2.0
+
+
+def test_crossfade_holds_duration_and_pays_for_the_overlap(tmp_path):
+    """Overlapping tracks shortens the total, so the running order has to grow
+    to still fill the target length -- a short file here means silence at the
+    end of a video."""
+    from romanfeed.audio.mix import synth_placeholder
+
+    synth_placeholder(tmp_path / "loop.m4a", 4)
+    m = tmp_path / "manifest.yaml"
+    m.write_text("tracks:\n  - id: loop\n    path: loop.m4a\n    genre: ambient\n    licence: owned\n")
+    lib = MusicLibrary(m)
+
+    plain, hard = build_soundtrack(lib, genre="ambient", duration=20, out_path=tmp_path / "a.m4a", fade=0.5)
+    faded, soft = build_soundtrack(lib, genre="ambient", duration=20, out_path=tmp_path / "b.m4a",
+                                   fade=0.5, crossfade=2.0)
+    assert abs(probe_duration(str(plain)) - 20.0) < 0.3
+    assert abs(probe_duration(str(faded)) - 20.0) < 0.3
+    assert len(soft) > len(hard)  # overlap eaten, so an extra track is needed
+
+
+def test_crossfade_clamped_to_track_length(tmp_path):
+    """A crossfade longer than the track itself would swallow whole files."""
+    from romanfeed.audio.mix import synth_placeholder
+
+    synth_placeholder(tmp_path / "loop.m4a", 3)
+    m = tmp_path / "manifest.yaml"
+    m.write_text("tracks:\n  - id: loop\n    path: loop.m4a\n    genre: ambient\n    licence: owned\n")
+    lib = MusicLibrary(m)
+    out, order = build_soundtrack(lib, genre="ambient", duration=9, out_path=tmp_path / "c.m4a",
+                                  fade=0.5, crossfade=60.0)
+    assert abs(probe_duration(str(out)) - 9.0) < 0.5
