@@ -15,6 +15,9 @@ video:
   transition_seconds: 2.5
   captions: true
   max_zoom: 1.18
+  # Reject frames with a solid black block (usually a Hubble WFPC2 detector
+  # gap); ~1 in 5 NASA library candidates has one and it reads as a hole.
+  max_flat_black: 0.02
   crf: 20
   preset: veryfast            # 80 clips/day; medium is ~2x slower for little visible gain
 
@@ -45,7 +48,8 @@ sources:
 audio:
   genre: ambient
   library: assets/music/manifest.yaml
-  fade_seconds: 8
+  fade_seconds: 8            # fade of the whole soundtrack, at each end
+  crossfade_seconds: 8       # overlap between consecutive tracks, so no gap at the joins
   gain_db: -6
   allow_placeholder: false    # dry runs override this; uploads never do
 

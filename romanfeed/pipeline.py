@@ -75,6 +75,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         assets = select_assets(
             candidates, channel=cfg.channel.slug, ledger=ledger, count=n_images,
             min_width=min_width, cache_dir=str(cache), seed=opts.seed or today,
+            max_flat_black=cfg.video.max_flat_black,
         )
         if not assets:
             raise RuntimeError("no usable images after curation")
@@ -84,7 +85,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         library = MusicLibrary(cfg.audio.library)
         audio_path, tracks = build_soundtrack(
             library, genre=cfg.audio.genre, duration=target, out_path=work / "soundtrack.m4a",
-            fade=cfg.audio.fade_seconds, gain_db=cfg.audio.gain_db,
+            fade=cfg.audio.fade_seconds, crossfade=cfg.audio.crossfade_seconds, gain_db=cfg.audio.gain_db,
             allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run" or opts.private_test, seed=opts.seed or today,
         )
 

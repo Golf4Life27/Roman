@@ -9,11 +9,9 @@ from romanfeed.sources.base import ImageAsset
 @pytest.fixture
 def sample_asset(tmp_path: Path) -> ImageAsset:
     p = tmp_path / "neb.png"
-    im = Image.new("RGB", (2400, 1350))
-    px = im.load()
-    for x in range(0, 2400, 8):
-        for y in range(0, 1350, 8):
-            px[x, y] = (x % 255, y % 255, 120)
+    # Dense noise, like real sky: no exact-black pixels, so the flat-black
+    # check in the selector sees a normal frame rather than a detector gap.
+    im = Image.effect_noise((2400, 1350), 40).convert("RGB")
     im.save(p)
     return ImageAsset(
         asset_id="nasa:TEST1", title="Test Nebula", url="https://example/x.png",

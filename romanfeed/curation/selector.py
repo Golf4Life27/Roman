@@ -5,6 +5,9 @@ Rules, in order:
      (the pool auto-resets when it runs dry, so the channel never stalls).
   2. Drop assets that are too small to look good at the target resolution
      (checked after download; we don't trust API metadata for dimensions).
+  2b. Drop assets with a solid block of pure black in frame -- usually the
+     missing quadrant of a Hubble WFPC2 mosaic, which reads on screen as a
+     rectangular hole. Metadata cannot see this; only the pixels can.
   3. Prefer Roman assets over warm-up assets when both are present.
   4. Shuffle deterministically by date so a re-run on the same day gives the
      same video (idempotent daily job), but each day differs.
@@ -64,6 +67,20 @@ def looks_unsuitable(asset: ImageAsset) -> bool:
     return not any(h in head for h in SKY_HINTS)
 
 
+def flat_black_fraction(asset: ImageAsset, sample: int = 256) -> float:
+    """Fraction of the frame that is exactly black.
+
+    Sky is noisy -- real background pixels are almost never exactly 0, so a
+    large count of them means a synthetic fill rather than empty space. The
+    common case is the stair-step notch left by Hubble's WFPC2 detector.
+    Sampled with NEAREST so exact zeros survive the resize."""
+    if asset.local_path is None:
+        raise ValueError("asset must be downloaded before probing")
+    with Image.open(asset.local_path) as im:
+        small = im.convert("L").resize((sample, sample), Image.NEAREST)
+    return small.histogram()[0] / float(sample * sample)
+
+
 def probe_dimensions(asset: ImageAsset) -> tuple[int, int]:
     if asset.local_path is None:
         raise ValueError("asset must be downloaded before probing")
@@ -82,6 +99,7 @@ def select_assets(
     cache_dir: str,
     seed: str | None = None,
     prefer_keyword: str = "roman",
+    max_flat_black: float = 0.02,
 ) -> list[ImageAsset]:
     used = ledger.used_asset_ids(channel)
     pool = [a for a in candidates if a.asset_id not in used and not looks_unsuitable(a)]
@@ -108,6 +126,15 @@ def select_assets(
         if w < min_width:
             log.debug("skipping %s: %dx%d below min_width %d", asset.asset_id, w, h, min_width)
             continue
+        if max_flat_black > 0:
+            try:
+                black = flat_black_fraction(asset)
+            except Exception as e:  # noqa: BLE001 - a probe failure must not kill the run
+                log.warning("black-region check failed for %s: %s", asset.asset_id, e)
+                black = 0.0
+            if black > max_flat_black:
+                log.info("skipping %s: %.0f%% of frame is a flat black block", asset.asset_id, black * 100)
+                continue
         chosen.append(asset)
 
     if len(chosen) < count:
