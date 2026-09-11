@@ -8,6 +8,9 @@ Rules, in order:
   2b. Drop assets with a solid block of pure black in frame -- usually the
      missing quadrant of a Hubble WFPC2 mosaic, which reads on screen as a
      rectangular hole. Metadata cannot see this; only the pixels can.
+  2c. Rejections in 2 and 2b only show up after download, so a pool that
+     looked big enough can still come up short. When that happens the ledger
+     is recycled and the run takes a second pass rather than failing.
   3. Prefer Roman assets over warm-up assets when both are present.
   4. Shuffle deterministically by date so a re-run on the same day gives the
      same video (idempotent daily job), but each day differs.
@@ -102,40 +105,64 @@ def select_assets(
     max_flat_black: float = 0.02,
 ) -> list[ImageAsset]:
     used = ledger.used_asset_ids(channel)
-    pool = [a for a in candidates if a.asset_id not in used and not looks_unsuitable(a)]
+    suitable = [a for a in candidates if not looks_unsuitable(a)]
+    pool = [a for a in suitable if a.asset_id not in used]
+    recycled = False
     if len(pool) < count and used:
         log.warning("pool exhausted (%d fresh of %d); resetting ledger for %s", len(pool), len(candidates), channel)
         ledger.reset_assets(channel)
-        pool = [a for a in candidates if not looks_unsuitable(a)]
+        pool, recycled = suitable, True
 
     rng = random.Random(seed or date.today().isoformat())
-    rng.shuffle(pool)
-    # Stable partition: preferred assets first, then everything else.
-    pool.sort(key=lambda a: 0 if prefer_keyword in {k.lower() for k in a.keywords} else 1)
+
+    def ordered(items: list[ImageAsset]) -> list[ImageAsset]:
+        out = list(items)
+        rng.shuffle(out)
+        # Stable partition: preferred assets first, then everything else.
+        out.sort(key=lambda a: 0 if prefer_keyword in {k.lower() for k in a.keywords} else 1)
+        return out
 
     chosen: list[ImageAsset] = []
-    for asset in pool:
-        if len(chosen) >= count:
-            break
-        try:
-            asset.download(cache_dir)
-            w, h = probe_dimensions(asset)
-        except Exception as e:  # noqa: BLE001 - one bad asset must not kill the run
-            log.warning("skipping %s: %s", asset.asset_id, e)
-            continue
-        if w < min_width:
-            log.debug("skipping %s: %dx%d below min_width %d", asset.asset_id, w, h, min_width)
-            continue
-        if max_flat_black > 0:
+    rejected: set[str] = set()
+
+    def take(items: list[ImageAsset]) -> None:
+        for asset in ordered(items):
+            if len(chosen) >= count:
+                return
             try:
-                black = flat_black_fraction(asset)
-            except Exception as e:  # noqa: BLE001 - a probe failure must not kill the run
-                log.warning("black-region check failed for %s: %s", asset.asset_id, e)
-                black = 0.0
-            if black > max_flat_black:
-                log.info("skipping %s: %.0f%% of frame is a flat black block", asset.asset_id, black * 100)
+                asset.download(cache_dir)
+                w, h = probe_dimensions(asset)
+            except Exception as e:  # noqa: BLE001 - one bad asset must not kill the run
+                log.warning("skipping %s: %s", asset.asset_id, e)
+                rejected.add(asset.asset_id)
                 continue
-        chosen.append(asset)
+            if w < min_width:
+                log.debug("skipping %s: %dx%d below min_width %d", asset.asset_id, w, h, min_width)
+                rejected.add(asset.asset_id)
+                continue
+            if max_flat_black > 0:
+                try:
+                    black = flat_black_fraction(asset)
+                except Exception as e:  # noqa: BLE001 - a probe failure must not kill the run
+                    log.warning("black-region check failed for %s: %s", asset.asset_id, e)
+                    black = 0.0
+                if black > max_flat_black:
+                    log.info("skipping %s: %.0f%% of frame is a flat black block", asset.asset_id, black * 100)
+                    rejected.add(asset.asset_id)
+                    continue
+            chosen.append(asset)
+
+    take(pool)
+
+    # Everything above is judged on metadata; min_width and the black-block
+    # check only speak up once a file is on disk. If those rejections left us
+    # short, the fresh-asset rule is what has to give -- a repeated image beats
+    # no video at all.
+    if len(chosen) < count and used and not recycled:
+        log.warning("only %d/%d after download checks; recycling used assets for %s", len(chosen), count, channel)
+        ledger.reset_assets(channel)
+        seen = {a.asset_id for a in chosen} | rejected
+        take([a for a in suitable if a.asset_id not in seen])
 
     if len(chosen) < count:
         log.warning("only %d/%d assets selected for %s", len(chosen), count, channel)
