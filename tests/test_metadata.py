@@ -102,3 +102,17 @@ def test_chapter_limit_keeps_description_under_the_cap():
     assert capped.description.count("\n0:") + capped.description.count("\n1:") > 0
     assert "the sequence continues to" in capped.description
     assert "8 Hour" in capped.title or "Hour" in capped.title
+
+
+def test_chapter_titles_cut_on_word_boundary():
+    """Run #12 published '...interstellar material over 160,000 lig'."""
+    from romanfeed.publish.metadata import _clip_title
+
+    long = "Hubble views a spectacular supernova with interstellar material over 160,000 light-years away"
+    out = _clip_title(long)
+    assert len(out) <= 80
+    assert out.endswith("…")
+    assert not out.endswith("lig…")
+    assert out.startswith("Hubble views a spectacular supernova")
+    # Short titles pass through untouched, with whitespace tidied.
+    assert _clip_title("  Soul   Nebula ") == "Soul Nebula"

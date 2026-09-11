@@ -127,3 +127,39 @@ def test_no_recycle_when_nothing_was_used(tmp_path, monkeypatch):
     with Ledger(tmp_path / "s.db") as l:
         assert select_assets([_asset(i) for i in range(5)], channel="c", ledger=l, count=3,
                              min_width=1000, cache_dir=str(tmp_path), seed="x") == []
+
+
+def test_rejects_filename_and_generic_titles():
+    """Both defects were observed in run #12's published chapter list."""
+    def exact(title, kw):
+        # _asset() appends an index; these checks need the title verbatim.
+        return ImageAsset(asset_id=f"nasa:{title}", title=title, url="", source="s", keywords=list(kw))
+
+    assert looks_unsuitable(exact("hs-2007-16-e-full_jpg", ["nebula"]))
+    assert looks_unsuitable(exact("opo0501a", ["galaxy"]))
+    assert looks_unsuitable(exact("heic1104a.tif", ["nebula"]))
+    # Archival retrospectives: hardware and montages, never sky.
+    assert looks_unsuitable(exact("History of Hubble Space Telescope (HST)", ["nebula"]))
+    # Generic archive category labels that pass the keyword test.
+    for junk in ("Space Science", "space science", "Astronomy", "Hubble", "Untitled"):
+        a = ImageAsset(asset_id=f"nasa:{junk}", title=junk, url="", source="s", keywords=["nebula"])
+        assert looks_unsuitable(a), junk
+    # Real captions that superficially resemble the above must survive.
+    assert not looks_unsuitable(_asset(23, title="NGC 6302", kw=["nebula"]))
+    assert not looks_unsuitable(_asset(24, title="M 31", kw=["galaxy"]))
+    assert not looks_unsuitable(_asset(25, title="Space Science Institute Maps the Lagoon Nebula"))
+
+
+def test_no_two_clips_share_a_title(tmp_path, sample_asset, monkeypatch):
+    """Chapter markers come from titles, so a repeat is visible in the
+    description. Distinct archive IDs really do share captions."""
+    monkeypatch.setattr(ImageAsset, "download", lambda self, cache_dir, timeout=60: setattr(self, "local_path", sample_asset.local_path) or sample_asset.local_path)
+    cands = [
+        ImageAsset(asset_id=f"nasa:{i}", title="Carina Nebula", url="", source="s", keywords=["nebula"])
+        for i in range(5)
+    ] + [_asset(50), _asset(51)]
+    with Ledger(tmp_path / "s.db") as l:
+        chosen = select_assets(cands, channel="c", ledger=l, count=4, min_width=1000, cache_dir=str(tmp_path), seed="x")
+    titles = [a.title for a in chosen]
+    assert len(titles) == len(set(titles)), titles
+    assert titles.count("Carina Nebula") == 1
