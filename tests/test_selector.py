@@ -163,3 +163,23 @@ def test_no_two_clips_share_a_title(tmp_path, sample_asset, monkeypatch):
     titles = [a.title for a in chosen]
     assert len(titles) == len(set(titles)), titles
     assert titles.count("Carina Nebula") == 1
+
+
+def test_warns_before_the_pool_runs_dry(tmp_path, sample_asset, monkeypatch, caplog):
+    """Run #13 had 2 fresh images left and said nothing until it was already
+    recycling. The warning has to arrive while there is still room to act."""
+    import logging
+
+    monkeypatch.setattr(ImageAsset, "download", lambda self, cache_dir, timeout=60: setattr(self, "local_path", sample_asset.local_path) or sample_asset.local_path)
+    cands = [_asset(i) for i in range(8)]
+    with Ledger(tmp_path / "s.db") as l:
+        # Plenty of head room: 8 fresh for a 2-image video is 4 videos' worth.
+        with caplog.at_level(logging.WARNING):
+            select_assets(cands, channel="c", ledger=l, count=2, min_width=1000, cache_dir=str(tmp_path), seed="x")
+        assert "LOW SUPPLY" not in caplog.text
+        # Now most of the library is spent: 3 fresh for a 2-image video.
+        l.mark_assets_used("c", [f"nasa:{i}" for i in range(5)], "prev")
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            select_assets(cands, channel="c", ledger=l, count=2, min_width=1000, cache_dir=str(tmp_path), seed="y")
+        assert "LOW SUPPLY" in caplog.text

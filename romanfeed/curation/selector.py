@@ -31,6 +31,11 @@ from romanfeed.state import Ledger
 
 log = logging.getLogger(__name__)
 
+# Warn once the fresh pool drops below this many videos' worth of images. Three
+# gives a few days' notice at one video a day -- enough to add queries and let a
+# run refill the library before anything repeats on screen.
+LOW_SUPPLY_FACTOR = 3
+
 # Anything that is not the sky: people, hardware, ceremonies, Earth from orbit.
 BLOCKLIST_HINTS = (
     "logo", "portrait", "headshot", "diagram", "chart", "infographic", "poster", "screenshot", "meeting",
@@ -136,6 +141,15 @@ def select_assets(
     suitable = [a for a in candidates if not looks_unsuitable(a)]
     pool = [a for a in suitable if a.asset_id not in used]
     recycled = False
+    # Exhaustion is silent until the day it isn't: the run still produces a video,
+    # just one full of images viewers saw last week. Warn while there is still
+    # time to widen the source queries, not after it shows up in a description.
+    if count and len(pool) < count * LOW_SUPPLY_FACTOR:
+        log.warning(
+            "LOW SUPPLY: %d fresh images left for %s, about %.1f more videos at %d each "
+            "(%d suitable of %d fetched). Widen the source queries.",
+            len(pool), channel, len(pool) / count, count, len(suitable), len(candidates),
+        )
     if len(pool) < count and used:
         log.warning("pool exhausted (%d fresh of %d); resetting ledger for %s", len(pool), len(candidates), channel)
         ledger.reset_assets(channel)

@@ -32,7 +32,13 @@ sources:
     enabled: true
     min_width: 1600
     max_per_query: 100
-    queries:                  # subject-led, not mission-led: mission queries return hardware and people
+    # Subject-led, not mission-led: mission queries return hardware and people.
+    # Each query is capped at max_per_query, so a broad term like "nebula" throws
+    # away everything past its first 100 hits. The narrow terms below are how we
+    # reach those -- they deepen the pool, they do not just widen it. Run #13 had
+    # only 2 fresh images left out of the whole library; this is the fix for that.
+    queries:
+      # broad types
       - nebula
       - galaxy
       - star cluster
@@ -40,10 +46,49 @@ sources:
       - deep field
       - planetary nebula
       - star forming region
+      - emission nebula
+      - reflection nebula
+      - dark nebula
+      - stellar nursery
+      - globular cluster
+      - open star cluster
+      - spiral galaxy
+      - barred spiral galaxy
+      - elliptical galaxy
+      - dwarf galaxy
+      - irregular galaxy
+      - interacting galaxies
+      - galaxy merger
+      - galaxy cluster
+      - starburst galaxy
+      - gravitational lensing
+      - quasar
+      - protoplanetary disk
+      # named objects -- distinct result sets the broad terms truncate away
+      - Orion Nebula
+      - Carina Nebula
+      - Eagle Nebula
+      - Crab Nebula
+      - Helix Nebula
+      - Ring Nebula
+      - Lagoon Nebula
+      - Horsehead Nebula
+      - Tarantula Nebula
+      - Andromeda galaxy
+      - Whirlpool galaxy
+      - Sombrero galaxy
+      - Pillars of Creation
+      - Ultra Deep Field
+      # telescope x subject -- each instrument's archive is indexed separately
       - Webb nebula
       - Webb galaxy
+      - Webb star cluster
+      - Webb deep field
       - Hubble galaxy
       - Hubble nebula
+      - Hubble star cluster
+      - Spitzer nebula
+      - Chandra supernova
 
 audio:
   genre: ambient
