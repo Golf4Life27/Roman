@@ -32,6 +32,8 @@ class VideoSettings:
     captions: bool = True
     max_zoom: float = 1.18
     max_flat_black: float = 0.02
+    # Extra cuts of the same asset set, in hours. Empty = just the base video.
+    extra_lengths_hours: list[float] = field(default_factory=list)
     crf: int = 20
     preset: str = "veryfast"
 
