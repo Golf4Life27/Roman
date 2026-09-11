@@ -11,6 +11,8 @@ Rules, in order:
   2c. Rejections in 2 and 2b only show up after download, so a pool that
      looked big enough can still come up short. When that happens the ledger
      is recycled and the run takes a second pass rather than failing.
+  2d. No two clips in one video share a caption; the archive reuses titles
+     across distinct entries, and chapter markers come straight from them.
   3. Prefer Roman assets over warm-up assets when both are present.
   4. Shuffle deterministically by date so a re-run on the same day gives the
      same video (idempotent daily job), but each day differs.
@@ -53,7 +55,31 @@ SKY_HINTS = (
 # "IC 1396", "M 31") must stay, so match only known center prefixes.
 _PHOTO_ID_RE = re.compile(r"^(ARC|KSC|GSFC|JSC|MSFC|NHQ|GRC|LRC|LARC|AFRC|DFRC|SSC|WSTF|JPL|EC|ED|S\d{2})[-_ ]?\d", re.I)
 # Posters, legacy retrospectives and event graphics that mention the sky in the title.
-_TITLE_BLOCK = ("legacy", "anniversary", "celebrat", "future of", "mission", "team", "workshop", "conference")
+_TITLE_BLOCK = ("legacy", "anniversary", "celebrat", "future of", "mission", "team", "workshop", "conference",
+                "history of", "timeline", "retrospective", "in memoriam", "award")
+# Archive filenames used as titles ("hs-2007-16-e-full_jpg", "opo0501a", "heic1104a.tif").
+# No spaces, no capitals, and either an image extension or a run of digits.
+_FILENAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_IMAGE_EXT_RE = re.compile(r"[._](jpg|jpeg|png|tif|tiff|gif|webp)$", re.I)
+# Category labels the archive uses when an item has no real caption. They pass
+# the keyword test but read as filler on screen.
+_GENERIC_TITLES = frozenset({
+    "space science", "astronomy", "astrophysics", "universe", "space", "science",
+    "hubble", "hubble space telescope", "webb", "james webb space telescope",
+    "nasa", "esa", "spitzer", "chandra", "untitled", "image", "photo",
+})
+
+
+def _normalized_title(title: str) -> str:
+    """Lowercase, whitespace-collapsed, punctuation-trimmed form used both to
+    spot generic captions and to keep two clips in one video from sharing one."""
+    return re.sub(r"\s+", " ", title).strip().strip(".:-\u2013\u2014").lower()
+
+
+def _is_filename_title(title: str) -> bool:
+    if " " in title or title != title.lower():
+        return False
+    return bool(_IMAGE_EXT_RE.search(title) or (_FILENAME_RE.match(title) and re.search(r"\d", title)))
 
 
 def looks_unsuitable(asset: ImageAsset) -> bool:
@@ -62,6 +88,8 @@ def looks_unsuitable(asset: ImageAsset) -> bool:
     positive test uses title+keywords, and the blocklist scans everything."""
     title = asset.title.strip()
     if _PHOTO_ID_RE.match(title) or any(h in title.lower() for h in _TITLE_BLOCK):
+        return True
+    if _is_filename_title(title) or _normalized_title(title) in _GENERIC_TITLES:
         return True
     head = f"{title} {' '.join(asset.keywords)}".lower()
     blob = f"{head} {asset.description}".lower()
@@ -124,11 +152,21 @@ def select_assets(
 
     chosen: list[ImageAsset] = []
     rejected: set[str] = set()
+    titles: set[str] = set()
 
     def take(items: list[ImageAsset]) -> None:
         for asset in ordered(items):
             if len(chosen) >= count:
                 return
+            # Distinct archive entries share captions ("Space Science" three
+            # times over). Chapter titles come straight from here, so two clips
+            # in one video must never carry the same one. Metadata-only, so it
+            # costs nothing -- check before spending a download on it.
+            key = _normalized_title(asset.title)
+            if key in titles:
+                log.debug("skipping %s: duplicate title %r", asset.asset_id, asset.title)
+                rejected.add(asset.asset_id)
+                continue
             try:
                 asset.download(cache_dir)
                 w, h = probe_dimensions(asset)
@@ -150,6 +188,7 @@ def select_assets(
                     log.info("skipping %s: %.0f%% of frame is a flat black block", asset.asset_id, black * 100)
                     rejected.add(asset.asset_id)
                     continue
+            titles.add(key)
             chosen.append(asset)
 
     take(pool)
