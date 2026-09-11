@@ -89,13 +89,25 @@ def pick_subject(assets: list[ImageAsset]) -> str:
     return best if scores[best] > 0 else "Deep Space"
 
 
+def _clip_title(title: str, limit: int = 80) -> str:
+    """Chapter captions are capped so the description stays under YouTube's
+    5000 characters. A hard slice cuts mid-word ("...over 160,000 lig"), so
+    fall back to the last word boundary and mark the cut."""
+    text = " ".join(title.split())
+    if len(text) <= limit:
+        return text
+    head = text[: limit - 1]
+    cut = head.rsplit(" ", 1)[0] if " " in head else head
+    return cut.rstrip(" ,;:-") + "\u2026"
+
+
 def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float, when: date | None = None, chapter_limit: int | None = None) -> VideoMetadata:
     when = when or date.today()
     total = seconds_per_image * len(assets)
     length = length_text(total)
     subject = pick_subject(assets)
 
-    chapters = [(i * seconds_per_image, a.title.strip()[:80]) for i, a in enumerate(assets)]
+    chapters = [(i * seconds_per_image, _clip_title(a.title)) for i, a in enumerate(assets)]
     # An 8-hour cut has hundreds of chapters; the description caps at 5000
     # characters, so listing them all would silently swallow the credits.
     shown = chapters if chapter_limit is None else chapters[:chapter_limit]
