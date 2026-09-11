@@ -93,3 +93,37 @@ def test_select_skips_frames_with_black_blocks(tmp_path, monkeypatch):
         allowed = select_assets(cands, channel="c2", ledger=l, count=2, min_width=1000,
                                 cache_dir=str(tmp_path), seed="x", max_flat_black=0)
         assert len(allowed) == 2
+
+
+def test_recycles_when_download_checks_empty_the_pool(tmp_path, monkeypatch):
+    """The exact production failure: the pool passes the size check, then the
+    black-block check rejects every fresh asset and the run has nothing left.
+    Repeating an image beats shipping no video."""
+    clean = _write(tmp_path / "clean.png")
+    notched = _write(tmp_path / "notched.png", black_box=[0, 675, 1200, 1350])
+
+    # Fresh assets are all defective; the ones the ledger already used are fine.
+    def fake_download(self, cache_dir, timeout=60):
+        self.local_path = notched if self.asset_id in {f"nasa:{i}" for i in range(6, 10)} else clean
+        return self.local_path
+
+    monkeypatch.setattr(ImageAsset, "download", fake_download)
+    cands = [_asset(i) for i in range(10)]
+    with Ledger(tmp_path / "s.db") as l:
+        l.mark_assets_used("c", [f"nasa:{i}" for i in range(6)], "prev")
+        chosen = select_assets(cands, channel="c", ledger=l, count=3, min_width=1000,
+                               cache_dir=str(tmp_path), seed="x")
+        # Four fresh assets cleared the size check, all four were rejected on
+        # download, so the used ones get recycled rather than failing the run.
+        assert len(chosen) == 3
+        assert all(a.asset_id in {f"nasa:{i}" for i in range(6)} for a in chosen)
+
+
+def test_no_recycle_when_nothing_was_used(tmp_path, monkeypatch):
+    """With an empty ledger there is nothing to recycle; come up short honestly."""
+    notched = _write(tmp_path / "notched.png", black_box=[0, 675, 1200, 1350])
+    monkeypatch.setattr(ImageAsset, "download",
+                        lambda self, cache_dir, timeout=60: setattr(self, "local_path", notched) or notched)
+    with Ledger(tmp_path / "s.db") as l:
+        assert select_assets([_asset(i) for i in range(5)], channel="c", ledger=l, count=3,
+                             min_width=1000, cache_dir=str(tmp_path), seed="x") == []
