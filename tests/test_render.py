@@ -59,3 +59,22 @@ def test_segment_renders_real_clip(sample_asset, tmp_path):
     plain = Segment(1, png, tmp_path / "1.mp4", duration=1, fps=15, width=320, height=180, fade=0.2, preset="ultrafast")
     assert "-vf" in plain.ffmpeg_args()
     assert plain.render().exists()
+
+
+def test_repeat_order_keeps_first_pass_and_breaks_seams():
+    from romanfeed.render.compose import repeat_order
+
+    o = repeat_order(12, 4, seed="s")
+    assert len(o) == 48
+    assert o[:12] == list(range(12))          # curated order is what a viewer sees first
+    assert sorted(o) == sorted(list(range(12)) * 4)   # every image used equally
+    assert all(o[i] != o[i + 1] for i in range(len(o) - 1))  # no image twice in a row
+    assert o[12:24] != list(range(12))        # later passes are reshuffled
+
+
+def test_repeat_order_edges():
+    from romanfeed.render.compose import repeat_order
+
+    assert repeat_order(0, 3) == []
+    assert repeat_order(5, 0) == []
+    assert repeat_order(1, 3) == [0, 0, 0]    # single clip: nothing to shuffle

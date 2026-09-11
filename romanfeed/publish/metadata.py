@@ -89,14 +89,19 @@ def pick_subject(assets: list[ImageAsset]) -> str:
     return best if scores[best] > 0 else "Deep Space"
 
 
-def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float, when: date | None = None) -> VideoMetadata:
+def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float, when: date | None = None, chapter_limit: int | None = None) -> VideoMetadata:
     when = when or date.today()
     total = seconds_per_image * len(assets)
     length = length_text(total)
     subject = pick_subject(assets)
 
     chapters = [(i * seconds_per_image, a.title.strip()[:80]) for i, a in enumerate(assets)]
-    chapter_lines = "\n".join(f"{_hms(t)} {title}" for t, title in chapters)
+    # An 8-hour cut has hundreds of chapters; the description caps at 5000
+    # characters, so listing them all would silently swallow the credits.
+    shown = chapters if chapter_limit is None else chapters[:chapter_limit]
+    chapter_lines = "\n".join(f"{_hms(t)} {title}" for t, title in shown)
+    if len(shown) < len(chapters):
+        chapter_lines += f"\n(then the sequence continues to {_hms(seconds_per_image * len(assets))})"
     credits = "\n".join(sorted({f"- {a.credit or a.source}" for a in assets}))
     music = "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
 

@@ -66,7 +66,7 @@ def test_private_test_forces_private_and_permits_placeholder(tmp_path, monkeypat
     monkeypatch.setattr(pl, "build_source", lambda s: FakeSrc())
     monkeypatch.setattr(pl, "select_assets", lambda cands, **kw: cands[:2])
     monkeypatch.setattr(pl, "build_soundtrack", lambda *a, **kw: (tmp_path / "s.m4a", [Track("p", tmp_path / "p.m4a", "ambient", "placeholder")]))
-    monkeypatch.setattr(pl, "render_video", lambda *a, **kw: kw["out_path"].write_bytes(b"x"))
+    monkeypatch.setattr(pl, "render_video_with_clips", lambda *a, **kw: (kw["out_path"].write_bytes(b"x"), []) and (kw["out_path"], []))
     monkeypatch.setattr(pl, "probe_duration", lambda p: 12.0)
     def fake_publish(video_path, meta, *, mode):
         captured["mode"], captured["privacy"], captured["title"] = mode, meta.privacy, meta.title
@@ -82,3 +82,23 @@ def test_private_test_forces_private_and_permits_placeholder(tmp_path, monkeypat
     cfg.publish.mode = "upload"
     with pytest.raises(RuntimeError, match="non-publishable"):
         pl.run(cfg, pl.RunOptions(images=2, seconds_per_image=6, data_dir=tmp_path / "d2", output_dir=tmp_path / "o2"))
+
+
+def test_chapter_limit_keeps_description_under_the_cap():
+    """An 8-hour cut has hundreds of chapters; unlimited, they'd eat the
+    5000-character description and push the credits out of it."""
+    from romanfeed.audio.library import Track
+    from romanfeed.config import load_config
+    from romanfeed.publish.metadata import build_metadata
+
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assets = [_asset(i, f"Nebula number {i}", ["nebula"]) for i in range(80)] * 8
+    tracks = [Track("t", ROOT / "x.m4a", "ambient", "generated", title="Drift")]
+
+    capped = build_metadata(cfg, assets, tracks, seconds_per_image=45, chapter_limit=80)
+    assert len(capped.description) < 5000
+    assert "IMAGE CREDITS" in capped.description      # credits survived
+    assert "MUSIC" in capped.description
+    assert capped.description.count("\n0:") + capped.description.count("\n1:") > 0
+    assert "the sequence continues to" in capped.description
+    assert "8 Hour" in capped.title or "Hour" in capped.title
