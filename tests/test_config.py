@@ -11,9 +11,24 @@ def test_flagship_config_loads():
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     assert cfg.channel.slug == "deep-space-ambient"
     assert cfg.video.duration_seconds == 45 * 80
-    assert {s.type for s in cfg.enabled_sources} == {"roman", "nasa_images"}
-    assert cfg.publish.mode == "dry-run"
+    assert {s.type for s in cfg.enabled_sources} == {"roman", "nasa_images", "esa_archive"}
     assert cfg.publish.privacy == "private"
+
+
+def test_the_two_esa_archives_cannot_collide():
+    """Hubble and Webb are two blocks of the same source type. If they shared
+    an id prefix, one archive's images would silently mask the other's."""
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    esa = [s for s in cfg.enabled_sources if s.type == "esa_archive"]
+    assert len(esa) == 2
+    prefixes = [s.options["id_prefix"] for s in esa]
+    bases = [s.options["base_url"] for s in esa]
+    assert len(set(prefixes)) == 2, prefixes
+    assert len(set(bases)) == 2, bases
+    # Sky only: hardware, artwork and event categories are never requested.
+    for s in esa:
+        assert not ({"spacecraft", "mission", "illustrations", "anniversary", "misc"}
+                    & set(s.options["categories"]))
 
 
 def test_unknown_key_rejected(tmp_path):
