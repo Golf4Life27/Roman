@@ -121,7 +121,7 @@ audio:
   allow_placeholder: false    # dry runs override this; uploads never do
 
 publish:
-  mode: dry-run               # flip to `upload` once OAuth is set up and music is licensed
+  mode: upload               # flip to `upload` once OAuth is set up and music is licensed
   privacy: private            # review in Studio, then make public; flip to public once trusted
   category_id: "28"           # Science & Technology
   # Tokens: {subject} {length} {date} {channel}. Titles carry the phrases people actually search
