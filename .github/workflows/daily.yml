@@ -14,7 +14,12 @@
 name: Daily render
 on:
   schedule:
-    - cron: "0 3 * * *"   # 03:00 UTC daily
+    # Mon/Wed/Fri, not daily. Three reasons: the image library holds a few
+    # weeks of videos and daily burns it; YouTube's policy review rejects
+    # "dozens of near-identical videos" as bulk output; and these videos are
+    # evergreen, so spacing them lets each accumulate rather than splitting
+    # the same searches across more uploads.
+    - cron: "0 3 * * 1,3,5"   # 03:00 UTC Mon/Wed/Fri
   workflow_dispatch:
     inputs:
       mode:
