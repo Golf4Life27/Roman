@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from romanfeed.config import SourceSettings
 from romanfeed.sources.base import ImageAsset, ImageSource
+from romanfeed.sources.esa_archive import EsaArchive
 from romanfeed.sources.nasa_images import NasaImageLibrary
 from romanfeed.sources.roman import RomanTelescopeSource
 
 REGISTRY: dict[str, type[ImageSource]] = {
+    "esa_archive": EsaArchive,
     "nasa_images": NasaImageLibrary,
     "roman": RomanTelescopeSource,
 }
