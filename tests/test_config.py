@@ -15,6 +15,16 @@ def test_flagship_config_loads():
     assert cfg.publish.privacy == "private"
 
 
+def test_long_cut_is_enabled_and_sized_for_the_watch_hour_gate():
+    """The 8-hour cut is what banks watch hours, and it is built from the same
+    rendered clips as the base video -- a concat, not a re-render."""
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assert cfg.video.extra_lengths_hours == [8]
+    # A cut shorter than the base video would be pointless.
+    base_hours = cfg.video.duration_seconds / 3600
+    assert all(h > base_hours for h in cfg.video.extra_lengths_hours)
+
+
 def test_the_two_esa_archives_cannot_collide():
     """Hubble and Webb are two blocks of the same source type. If they shared
     an id prefix, one archive's images would silently mask the other's."""
