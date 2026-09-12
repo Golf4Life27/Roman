@@ -20,6 +20,16 @@ video:
   max_flat_black: 0.02
   crf: 20
   preset: veryfast            # 80 clips/day; medium is ~2x slower for little visible gain
+  # Extra cuts built from the SAME rendered clips -- no re-render, just a concat
+  # and a fresh soundtrack. The 8-hour cut is the point: watch hours are what
+  # the monetisation gate counts, and one viewer who falls asleep to an 8-hour
+  # video banks several times the hours of the same viewer on a 1-hour one.
+  # The gate doubles to 8000 hours for new applicants on 2027-02-01, so hours
+  # banked before then are worth double.
+  # Deliberately just [8], not [3, 8]: two uploads a run at three runs a week is
+  # six videos -- enough surface area without looking like bulk output, which is
+  # what YouTube's policy review rejects.
+  extra_lengths_hours: [8]
 
 sources:
   - type: roman               # yields nothing until Roman science images are public; then they take priority
