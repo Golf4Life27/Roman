@@ -89,6 +89,28 @@ sources:
       - Hubble star cluster
       - Spitzer nebula
       - Chandra supernova
+  # Second supplier. NASA's library alone is not deep enough: 48 search terms
+  # there reach 1212 images, and one hour-long video eats about 78 of them.
+  # These archives are a separate collection browsed by category, so a handful
+  # of categories returns the whole set rather than the first 100 hits of each
+  # phrase. ESA/Hubble alone lists over 5,500 images. Both are CC BY 4.0, and
+  # every image's credit already appears in the description.
+  - type: esa_archive
+    enabled: true
+    min_width: 1600
+    options:
+      base_url: https://esahubble.org
+      id_prefix: esa
+      label: ESA/Hubble
+      categories: [nebulae, galaxies, starclusters, stars, cosmology, blackholes]
+  - type: esa_archive
+    enabled: true
+    min_width: 1600
+    options:
+      base_url: https://esawebb.org
+      id_prefix: esawebb
+      label: ESA/Webb
+      categories: [nebulae, galaxies, starclusters, stars, cosmology]
 
 audio:
   genre: ambient
