@@ -23,7 +23,9 @@ video. See https://esahubble.org/copyright/.
 """
 from __future__ import annotations
 
+import ast
 import logging
+import re
 
 import requests
 
@@ -45,6 +47,47 @@ DEFAULT_CATEGORIES = ("nebulae", "galaxies", "starclusters", "stars", "cosmology
 # JPEG; "Original" is usually a TIFF, which is slower to fetch and decode for
 # no visible gain at 1080p.
 _RESOURCE_PREFERENCE = ("Large", "Original", "Screen", "Small")
+
+
+# Djangoplicity's JSON export serialises Python bytes, so text fields arrive
+# as the *repr* of a bytes object: the literal string `b'Galaxy NGC 2525'`,
+# backslash escapes and all. Left alone it reaches the burned-in caption and
+# the chapter list verbatim.
+_BYTES_REPR_RE = re.compile(r"^b(['\"])(?:\\.|(?!\1).)*\1$", re.S)
+
+
+def _text(value) -> str:
+    """Unwrap a bytes-repr string back into real text.
+
+    This matters beyond tidiness: the same quirk hits the Credit field, and
+    ESA/Hubble and ESA/Webb images are CC BY 4.0, whose attribution term
+    requires the credit be reproduced clearly and unaltered.
+    """
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return str(value)
+    if not _BYTES_REPR_RE.match(value):
+        return value
+    try:
+        decoded = ast.literal_eval(value)
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        return value
+    if isinstance(decoded, bytes):
+        return decoded.decode("utf-8", "replace")
+    return str(decoded)
+
+
+# ESA concatenates the acknowledgement onto the credit with no separator,
+# giving "…A. Riess and the SH0ES teamAcknowledgment: Mahdi Zamani". The
+# credit is burned into every frame, so it needs the break put back.
+_ACK_RE = re.compile(r"(?<=[a-z)\].])(Acknowledge?ments?\s*:)", re.I)
+
+
+def _credit(value) -> str:
+    return _ACK_RE.sub(r" — \1", _text(value)).strip()
 
 
 def _dimension(value) -> int:
@@ -94,9 +137,9 @@ def _keywords(record: dict) -> list[str]:
     for field in ("Subject.Category", "Subject.Name", "Type"):
         value = record.get(field)
         if isinstance(value, list):
-            out.extend(str(v) for v in value if v)
+            out.extend(_text(v) for v in value if v)
         elif value:
-            out.append(str(value))
+            out.append(_text(value))
     # "Galaxies > Interacting" -> both halves, so the filter sees "galaxies".
     flat: list[str] = []
     for k in out:
@@ -158,12 +201,12 @@ class EsaArchive(ImageSource):
                     continue
                 out[asset_id] = ImageAsset(
                     asset_id=asset_id,
-                    title=str(record.get("Title") or image_id),
+                    title=_text(record.get("Title")) or image_id,
                     url=url,
                     source=self.name,
-                    credit=str(record.get("Credit") or self.name),
-                    description=str(record.get("Description") or record.get("Headline") or ""),
-                    date=str(record.get("Date") or "")[:10],
+                    credit=_credit(record.get("Credit")) or self.name,
+                    description=_text(record.get("Description")) or _text(record.get("Headline")),
+                    date=_text(record.get("Date"))[:10],
                     width=width,
                     height=height,
                     licence="cc-by",

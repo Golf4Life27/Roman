@@ -6,7 +6,7 @@ import requests
 
 from romanfeed.config import SourceSettings
 from romanfeed.curation.selector import looks_unsuitable
-from romanfeed.sources.esa_archive import EsaArchive, _best_resource, _keywords
+from romanfeed.sources.esa_archive import EsaArchive, _best_resource, _credit, _keywords, _text
 
 
 def _record(image_id="heic2017a", title="Hubble's View of Jupiter", **over):
@@ -153,3 +153,70 @@ def test_records_missing_essentials_are_skipped(monkeypatch, field):
         del rec["formats_url"]
     src = _source(monkeypatch, {"nebulae": [rec]}, categories=["nebulae"])
     assert src.fetch() == []
+
+
+# --- bytes-repr decoding -----------------------------------------------
+# Djangoplicity's JSON export serialises Python bytes, so live records arrive
+# with text fields like "b'Galaxy NGC 2525'". Runs #16, #18 and #19 published
+# those wrappers into on-screen captions and chapter lists.
+
+def test_text_unwraps_a_bytes_repr():
+    assert _text("b'Galaxy NGC 2525'") == "Galaxy NGC 2525"
+    assert _text('b"Hubble\'s newest camera"') == "Hubble's newest camera"
+    # Escaped UTF-8 must return the real character, not \xe2\x80\x99.
+    assert _text(r"b'Abell\xe2\x80\x99s richest cluster'") == "Abell\u2019s richest cluster"
+    assert _text(b"Sombrero galaxy") == "Sombrero galaxy"
+
+
+def test_text_leaves_ordinary_strings_alone():
+    assert _text("Galaxy NGC 2525") == "Galaxy NGC 2525"
+    # A title that merely begins with b must survive untouched.
+    assert _text("bright star cluster") == "bright star cluster"
+    assert _text("b") == "b"
+    # A malformed repr falls back rather than raising.
+    assert _text("b'unterminated") == "b'unterminated"
+    assert _text(None) == ""
+    assert _text("") == ""
+
+
+def test_asset_fields_are_decoded(monkeypatch):
+    """Title, credit, description, date and keywords must all come out clean.
+
+    Credit matters most: ESA imagery is CC BY 4.0, whose attribution term
+    requires the credit be reproduced clearly and unaltered.
+    """
+    rec = _record(
+        title="b'Galaxy NGC 2525'",
+        Credit=r"b'ESA/Hubble & NASA, A. Riess and the SH0ES team'",
+        Description=r"b'Pictured here is the captivating galaxy NGC 2525.'",
+        Date="b'2020-10-01T06:00:00'",
+        **{"Subject.Category": ["b'Galaxies > Spiral'"]},
+    )
+    src = _source(monkeypatch, {"galaxies": [rec]}, categories=["galaxies"])
+    asset = src.fetch()[0]
+
+    assert asset.title == "Galaxy NGC 2525"
+    assert asset.credit == "ESA/Hubble & NASA, A. Riess and the SH0ES team"
+    assert asset.description == "Pictured here is the captivating galaxy NGC 2525."
+    assert asset.date == "2020-10-01"
+    assert not any(k.startswith("b'") for k in asset.keywords), asset.keywords
+    # The decoded keywords must still let the curation filter accept the image.
+    assert not looks_unsuitable(asset)
+
+
+def test_decoded_title_still_falls_back_to_the_id(monkeypatch):
+    rec = _record(title="")
+    src = _source(monkeypatch, {"galaxies": [rec]}, categories=["galaxies"])
+    assert src.fetch()[0].title == "heic2017a"
+
+
+def test_credit_separates_a_glued_acknowledgement():
+    """ESA runs the acknowledgement straight onto the credit with no break."""
+    assert _credit("b'ESA/Hubble & NASA, A. RiessAcknowledgment: Mahdi Zamani'") == (
+        "ESA/Hubble & NASA, A. Riess \u2014 Acknowledgment: Mahdi Zamani")
+    assert _credit("ESA/Hubble & NASA, J. LeeAcknowledgement: Leo Shatz") == (
+        "ESA/Hubble & NASA, J. Lee \u2014 Acknowledgement: Leo Shatz")
+    # Already separated, or absent: left alone.
+    assert _credit("ESA/Hubble & NASA") == "ESA/Hubble & NASA"
+    assert _credit("ESA/Hubble, A. Simon. Acknowledgment: X") == (
+        "ESA/Hubble, A. Simon. Acknowledgment: X")
