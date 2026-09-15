@@ -71,6 +71,109 @@ tracks:
   notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
     receipt secrets/licences/suno-pro-2026-09.pdf
   tags: []
+# sleeping-giant is withdrawn, not deleted -- the file stays on disk so the
+# Content ID dispute can reference it. Content ID matched it on 2026-09-14 in
+# the 8-hour cut (video EckN-EHQ4iU) at 0:00-0:23 and 1:22:19-1:22:30, claimed
+# by Believe Music on behalf of Koala Music as "Observability Request".
+#
+# The track is Suno Pro output we own, and the match covers ~34 seconds of a
+# 6-minute piece, which reads like a fingerprint collision on a slow ambient
+# pad rather than a real copy. Winning the dispute would clear one video; the
+# track would then land in roughly a third of all future cuts and earn a fresh
+# claim each time. On a channel whose whole point is that nobody touches it,
+# withdrawing one file is cheaper than defending it twice a week.
+#
+# - id: sleeping-giant
+#   path: ambient/sleeping-giant.m4a
+#   title: Sleeping Giant
+#   artist: Space Screens
+#   genre: ambient
+#   licence: generated
+#   notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+#     receipt secrets/licences/suno-pro-2026-09.pdf
+#   tags: []
+- id: signal
+  path: ambient/signal.m4a
+  title: Signal
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+tracks:
+- id: drift
+  path: ambient/drift.m4a
+  title: Drift
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: nebula-light
+  path: ambient/nebula-light.m4a
+  title: Nebula Light
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: low-orbit
+  path: ambient/low-orbit.m4a
+  title: Low Orbit
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: starfield
+  path: ambient/starfield.m4a
+  title: Starfield
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: cold-dawn
+  path: ambient/cold-dawn.m4a
+  title: Cold Dawn
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: long-exposure
+  path: ambient/long-exposure.m4a
+  title: Long Exposure
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: ion-wind
+  path: ambient/ion-wind.m4a
+  title: Ion Wind
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
+- id: deep-field
+  path: ambient/deep-field.m4a
+  title: Deep Field
+  artist: Space Screens
+  genre: ambient
+  licence: generated
+  notes: Suno Pro, model v6, instrumental, generated 2026-09-09, account golf4life,
+    receipt secrets/licences/suno-pro-2026-09.pdf
+  tags: []
 - id: sleeping-giant
   path: ambient/sleeping-giant.m4a
   title: Sleeping Giant
