@@ -110,3 +110,18 @@ def test_crossfade_clamped_to_track_length(tmp_path):
     out, order = build_soundtrack(lib, genre="ambient", duration=9, out_path=tmp_path / "c.m4a",
                                   fade=0.5, crossfade=60.0)
     assert abs(probe_duration(str(out)) - 9.0) < 0.5
+
+
+def test_claimed_track_stays_out_of_rotation():
+    """sleeping-giant drew a Content ID claim on 2026-09-14 (video EckN-EHQ4iU,
+    Believe Music / Koala Music). The file stays on disk for the dispute, but it
+    must never be picked for a soundtrack again -- otherwise it lands in about a
+    third of future cuts and earns a fresh claim each time."""
+    import yaml
+    from pathlib import Path
+
+    manifest = Path(__file__).resolve().parents[1] / "assets/music/manifest.yaml"
+    data = yaml.safe_load(manifest.read_text())
+    ids = [t["id"] for t in data["tracks"]]
+    assert "sleeping-giant" not in ids, "withdrawn track is back in the manifest"
+    assert len(ids) >= 5, "too few tracks left for a varied soundtrack"
