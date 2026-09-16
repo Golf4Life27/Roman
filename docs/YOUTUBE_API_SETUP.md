@@ -76,9 +76,14 @@ Uploads from unaudited projects are forced Private. Form:
 https://support.google.com/youtube/contact/yt_api_form
 
 What to say: a single-channel tool that renders and uploads the owner's own
-videos to the owner's own channel once a day; no third-party users; scope
-`youtube.upload` only; quota needs are one upload per day. Approval takes
-days to weeks; nothing else is blocked while you wait.
+videos to the owner's own channel on a fixed schedule; no third-party users;
+scope `youtube.upload` only. State the real usage: Mon/Wed/Fri, two uploads
+per run (a 1-hour and an 8-hour cut) = 6 `videos.insert` calls per week. No
+quota increase is needed, only the audit. Approval takes days to weeks;
+nothing else is blocked while you wait.
+
+Full runbook, including every value the form asks for and what to do once
+approval lands: [HANDOFF_COWORK_API_AUDIT.md](HANDOFF_COWORK_API_AUDIT.md).
 
 ## 7. First real upload
 
