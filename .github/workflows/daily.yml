@@ -10,7 +10,8 @@
 #     or "daily" to do a real run with whatever the channel config says.
 #
 # The ledger (data/state.db) is persisted through actions/cache so images
-# don't repeat across runs. Rendered video is kept 3 days as an artifact.
+# don't repeat across runs. The 1-hour cut is kept 3 days as an artifact; the
+# extra-length cuts are not (see the upload step).
 name: Daily render
 on:
   schedule:
@@ -72,12 +73,24 @@ jobs:
           fi
           echo "mode=$mode args=$args"
           python -m romanfeed run config/channels/deep-space-ambient.yaml $args
+      - name: Disk report
+        if: always()
+        # Measured, not guessed: run #21 died without a traceback and we could
+        # not tell a full runner disk from a billing cancellation.
+        run: df -h / && du -sh output work data/work 2>/dev/null || true
+      # Upload the 1h cut only. The extra-length cuts are ~13 GB each, they are
+      # already on YouTube by this point, and a private repo gets 0.5 GB of
+      # Actions storage -- one 8h artifact blows the cap and every later run
+      # then fails on upload. The `!` line excludes anything ending in
+      # `-<n>h.mp4` (e.g. deep-space-ambient-2025-09-16-8h.mp4) while keeping
+      # the primary deep-space-ambient-2025-09-16.mp4.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: render-${{ github.run_id }}
           path: |
             output/**/*.mp4
+            !output/**/*-*h.mp4
             output/**/*.upload.json
           retention-days: 3
           if-no-files-found: ignore
