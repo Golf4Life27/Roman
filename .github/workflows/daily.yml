@@ -12,6 +12,11 @@
 # The ledger (data/state.db) is persisted through actions/cache so images
 # don't repeat across runs. The 1-hour cut is kept 3 days as an artifact; the
 # extra-length cuts are not (see the upload step).
+#
+# Watchdog: set the repository secret HEALTHCHECK_URL to a healthchecks.io ping
+# URL and the job reports start / success / failure there, so a run that is
+# cancelled outright -- which sends no failure mail -- still raises an alarm.
+# Leaving the secret unset disables the pings.
 name: Daily render
 on:
   schedule:
@@ -40,6 +45,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:
+      # Watchdog: healthchecks.io tells us a scheduled run never started or
+      # never finished. A cancelled run (billing lockout, runner eviction)
+      # produces no failure email of its own, which is how run #21 went
+      # unnoticed. The secret is optional -- when HEALTHCHECK_URL is unset
+      # every ping is a no-op. Secrets cannot be read in an `if:` expression,
+      # so emptiness is tested in the shell instead.
+      - name: Ping watchdog (start)
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          [ -z "$HEALTHCHECK_URL" ] && exit 0
+          curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/start" || true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -94,3 +111,14 @@ jobs:
             output/**/*.upload.json
           retention-days: 3
           if-no-files-found: ignore
+      - name: Ping watchdog (finish)
+        if: always()
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          [ -z "$HEALTHCHECK_URL" ] && exit 0
+          url="$HEALTHCHECK_URL"
+          [ "$JOB_STATUS" = "success" ] || url="$HEALTHCHECK_URL/fail"
+          echo "job status: $JOB_STATUS"
+          curl -fsS -m 10 --retry 3 "$url" || true
