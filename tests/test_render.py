@@ -78,3 +78,85 @@ def test_repeat_order_edges():
     assert repeat_order(0, 3) == []
     assert repeat_order(5, 0) == []
     assert repeat_order(1, 3) == [0, 0, 0]    # single clip: nothing to shuffle
+
+
+def test_mux_audio_faststart_is_optional(monkeypatch, tmp_path):
+    """+faststart makes ffmpeg rewrite the whole file through a temp copy, so
+    the long cuts must be able to turn it off."""
+    from romanfeed.render import compose
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(compose.ffmpeg, "run", lambda args, **kw: calls.append(args))
+
+    compose.mux_audio(tmp_path / "v.mp4", tmp_path / "a.m4a", tmp_path / "out.mp4")
+    assert "+faststart" in calls[0]
+    compose.mux_audio(tmp_path / "v.mp4", tmp_path / "a.m4a", tmp_path / "long.mp4", faststart=False)
+    assert "+faststart" not in calls[1]
+    assert "-movflags" not in calls[1]
+    assert calls[1][-1].endswith("long.mp4")  # output still the last argument
+
+
+def test_concat_clips_removes_its_list_file(tmp_path):
+    from romanfeed.render.compose import concat_clips
+
+    out = concat_clips(_tiny_clips(tmp_path, 2), tmp_path / "silent.mp4")
+    assert out.exists()
+    assert not out.with_suffix(".txt").exists()
+
+
+def _tiny_clips(dir_: Path, n: int) -> list[Path]:
+    """A couple of one-second colour clips, cheap enough to stitch for real."""
+    from romanfeed.render import ffmpeg
+
+    out = []
+    for i in range(n):
+        p = dir_ / f"clip{i}.mp4"
+        ffmpeg.run([
+            "-f", "lavfi", "-i", f"color=c=0x{i:02x}2040:s=160x90:r=10", "-t", "1",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(p),
+        ])
+        out.append(p)
+    return out
+
+
+def test_render_video_with_clips_deletes_the_silent_intermediate(sample_asset, tmp_path):
+    """The silent cut is a full-size copy of the finished video. Keeping it
+    doubles peak disk for no reason once the audio is muxed on."""
+    from romanfeed.audio.mix import synth_placeholder
+    from romanfeed.config import AudioSettings, ChannelConfig, ChannelInfo, PublishSettings, VideoSettings
+    from romanfeed.render.compose import render_video_with_clips
+
+    cfg = ChannelConfig(
+        channel=ChannelInfo(slug="t", name="T"),
+        video=VideoSettings(width=160, height=90, fps=10, transition_seconds=0.2, captions=False, preset="ultrafast"),
+        sources=[], audio=AudioSettings(), publish=PublishSettings(),
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    audio = synth_placeholder(work / "a.m4a", 3).path
+    out = tmp_path / "final.mp4"
+
+    path, clips = render_video_with_clips(
+        [sample_asset, sample_asset], cfg, work_dir=work, audio_path=audio,
+        out_path=out, seconds_per_image=1,
+    )
+    assert path.exists() and path == out
+    assert not (work / "silent.mp4").exists()       # intermediate is gone
+    assert all(c.exists() for c in clips)           # clips stay: long cuts reuse them
+
+
+def test_render_video_with_clips_keeps_output_when_there_is_no_audio(sample_asset, tmp_path):
+    from romanfeed.config import AudioSettings, ChannelConfig, ChannelInfo, PublishSettings, VideoSettings
+    from romanfeed.render.compose import render_video_with_clips
+
+    cfg = ChannelConfig(
+        channel=ChannelInfo(slug="t", name="T"),
+        video=VideoSettings(width=160, height=90, fps=10, transition_seconds=0.2, captions=False, preset="ultrafast"),
+        sources=[], audio=AudioSettings(), publish=PublishSettings(),
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    out = tmp_path / "silent-final.mp4"
+    path, _ = render_video_with_clips([sample_asset], cfg, work_dir=work, audio_path=None, out_path=out, seconds_per_image=1)
+    assert path.exists()
+    assert not (work / "silent.mp4").exists()       # moved, not copied
