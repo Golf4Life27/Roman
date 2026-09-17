@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import math
+import shutil
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -21,6 +22,19 @@ from romanfeed.sources import build_source
 from romanfeed.state import Ledger, VideoRecord
 
 log = logging.getLogger(__name__)
+
+
+def log_disk_free(path: Path, where: str) -> None:
+    """Log free space on the filesystem holding `path`.
+
+    An 8h cut is ~13 GB and a CI runner has ~14 GB free, so a run that dies
+    without a traceback is as likely to be a full disk as anything else. These
+    lines turn that guess into a measurement in the job log."""
+    try:
+        free = shutil.disk_usage(path).free
+    except OSError:  # pragma: no cover - path vanished under us
+        return
+    log.info("disk free: %.1f GB (%s)", free / (1024 ** 3), where)
 
 
 @dataclass
@@ -97,6 +111,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         # stitching is a stream copy, so a longer cut is seconds, not another
         # full render.
         video_path = out_dir / f"{slug}.mp4"
+        log_disk_free(out_dir, "before render")
         _, clips = render_video_with_clips(
             assets, cfg, work_dir=work, audio_path=audio_path,
             out_path=video_path, seconds_per_image=spi,
@@ -111,6 +126,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         elif mode == "upload" and any(not t.publishable for t in tracks):
             raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
         youtube_id = publish(video_path, meta, mode=mode)
+        log_disk_free(out_dir, "after primary upload")
 
         # 4b. extra-length cuts of the same asset set (skipped on smoke tests)
         extra_cuts: list[tuple[float, Path, str | None]] = []
@@ -122,6 +138,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             cut_assets = [assets[i] for i in order]
             cut_slug = f"{slug}-{hours:g}h"
             log.info("cut %sh: %d clips (%d passes over %d images)", f"{hours:g}", len(order), passes, len(assets))
+            log_disk_free(out_dir, f"before {hours:g}h cut")
 
             cut_audio, cut_tracks = build_soundtrack(
                 library, genre=cfg.audio.genre, duration=spi * len(order),
@@ -133,12 +150,14 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
                 raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
 
             cut_path = out_dir / f"{cut_slug}.mp4"
-            mux_audio(
-                concat_clips([clips[i] for i in order], work / f"silent-{hours:g}h.mp4"),
-                cut_audio, cut_path,
-            )
+            silent_cut = concat_clips([clips[i] for i in order], work / f"silent-{hours:g}h.mp4")
+            # No +faststart: it would make ffmpeg write a second full-size
+            # temp copy of a ~13 GB file, and YouTube re-encodes on ingest.
+            mux_audio(silent_cut, cut_audio, cut_path, faststart=False)
+            silent_cut.unlink(missing_ok=True)  # freed before the next cut starts
             cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets))
             cut_id = publish(cut_path, cut_meta, mode=mode)
+            log_disk_free(out_dir, f"after {hours:g}h upload")
             extra_cuts.append((hours, cut_path, cut_id))
             ledger.record_video(VideoRecord(
                 video_slug=cut_slug, channel=cfg.channel.slug, path=str(cut_path),
@@ -160,7 +179,5 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             ledger.mark_published(slug, youtube_id, meta.title)
 
     if not opts.keep_work:
-        import shutil
-
         shutil.rmtree(work, ignore_errors=True)
     return RunResult(video_path, video_path.with_suffix(".upload.json"), duration, len(assets), youtube_id, extra_cuts)
