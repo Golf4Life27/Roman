@@ -68,14 +68,23 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
     return out_path
 
 
-def mux_audio(video: Path, audio: Path, out_path: Path) -> Path:
-    ffmpeg.run([
+def mux_audio(video: Path, audio: Path, out_path: Path, *, faststart: bool = True) -> Path:
+    """Mux the soundtrack onto the silent cut.
+
+    `faststart` moves the moov atom to the front, which costs a full second
+    copy of the output on disk while ffmpeg rewrites it. That is cheap for the
+    1h cut and ruinous for the 8h one (~13 GB), so long cuts pass
+    faststart=False -- YouTube re-encodes on ingest and never streams the
+    uploaded file directly, so the atom position buys nothing there."""
+    args = [
         "-i", str(video), "-i", str(audio),
         "-map", "0:v:0", "-map", "1:a:0",
         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-        "-shortest", "-movflags", "+faststart",
-        str(out_path),
-    ])
+        "-shortest",
+    ]
+    if faststart:
+        args += ["-movflags", "+faststart"]
+    ffmpeg.run(args + [str(out_path)])
     return out_path
 
 
@@ -92,7 +101,12 @@ def render_video_with_clips(
     if audio_path is None:
         silent.replace(out_path)
         return out_path, clips
-    return mux_audio(silent, audio_path, out_path), clips
+    out = mux_audio(silent, audio_path, out_path)
+    # The silent cut is a full-size copy of the finished video and nothing
+    # reads it again; the clips it was stitched from are what the long cuts
+    # reuse. Drop it now so peak disk is one video, not two.
+    silent.unlink(missing_ok=True)
+    return out, clips
 
 
 def render_video(assets: list[ImageAsset], cfg: ChannelConfig, *, work_dir: Path, audio_path: Path | None, out_path: Path, seconds_per_image: float | None = None) -> Path:
