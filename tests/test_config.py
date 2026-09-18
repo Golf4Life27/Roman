@@ -12,7 +12,7 @@ def test_flagship_config_loads():
     assert cfg.channel.slug == "deep-space-ambient"
     assert cfg.video.duration_seconds == 45 * 80
     assert {s.type for s in cfg.enabled_sources} == {"roman", "nasa_images", "esa_archive"}
-    assert cfg.publish.privacy == "private"
+    assert cfg.publish.privacy == "public"
 
 
 def test_long_cut_is_enabled_and_sized_for_the_watch_hour_gate():

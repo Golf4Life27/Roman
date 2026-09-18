@@ -27,9 +27,9 @@ def test_subject_and_title():
     assert "45:00 Carina Nebula 60" in meta.description
     assert "NASA/ESA/CSA/STScI" in meta.description
     assert "Drift" in meta.description
-    assert meta.privacy == "private" and meta.made_for_kids is False
+    assert meta.privacy == "public" and meta.made_for_kids is False
     body = request_body(meta)
-    assert body["status"]["privacyStatus"] == "private"
+    assert body["status"]["privacyStatus"] == "public"
     assert body["snippet"]["categoryId"] == "28"
 
 
