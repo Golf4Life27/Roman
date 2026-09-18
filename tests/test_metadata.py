@@ -20,7 +20,7 @@ def test_subject_and_title():
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
     meta = build_metadata(cfg, assets, [Track("t", Path("t.m4a"), "ambient", "owned", title="Drift")], seconds_per_image=45, when=date(2026, 9, 5))
-    assert meta.title == "Nebulae | 1 Hour Relaxing Space Video for Sleep | Real Telescope Screensaver"
+    assert meta.title == "Carina Nebula 0 | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"
     assert "ABOUT SPACE SCREENS" in meta.description
     assert "Not affiliated" in meta.description
     assert "0:00 Carina Nebula 0" in meta.description
@@ -116,3 +116,60 @@ def test_chapter_titles_cut_on_word_boundary():
     assert out.startswith("Hubble views a spectacular supernova")
     # Short titles pass through untouched, with whitespace tidied.
     assert _clip_title("  Soul   Nebula ") == "Soul Nebula"
+
+
+def test_lead_name_strips_archive_furniture():
+    """Archive titles carry instrument tags and subtitles that do not belong in
+    a video title."""
+    from romanfeed.publish.metadata import lead_name
+
+    assert lead_name("NGC 3324 (NIRCam Image)") == "NGC 3324"
+    assert lead_name("The Pillars of Creation (MIRI Image)") == "The Pillars of Creation"
+    assert lead_name("Sombrero Galaxy (Wide Field Camera 3 Image)") == "Sombrero Galaxy"
+    # A dash subtitle goes, including when a tag hides behind it.
+    assert lead_name("Westerlund 2 - Hubble's 25th anniversary image") == "Westerlund 2"
+    assert lead_name("NGC 3132 – the Southern Ring Nebula (NIRCam Image)") == "NGC 3132"
+    # A hyphen inside a name is not a subtitle separator.
+    assert lead_name("Herbig-Haro 46/47") == "Herbig-Haro 46/47"
+    # Trailing ellipsis (an already-clipped title) and stray whitespace.
+    assert lead_name("A galaxy far away…") == "A galaxy far away"
+    assert lead_name("  Ring   Nebula  ") == "Ring Nebula"
+    assert lead_name("") == ""
+
+
+def test_lead_name_cuts_long_titles_at_a_word_boundary():
+    from romanfeed.publish.metadata import lead_name
+
+    lead = lead_name("Hubble Sees a Horsehead of a Different Color in Infrared Light")
+    assert len(lead) <= 40
+    assert lead == "Hubble Sees a Horsehead of a Different"
+    assert not lead.endswith(" ")
+    # A single unbroken word still gets cut to the limit.
+    assert len(lead_name("N" * 60)) == 40
+
+
+def test_title_stays_within_100_chars_with_a_very_long_lead():
+    """Overflow comes out of the lead, not off the tail: the search phrases
+    ("space video for sleep", "screensaver") have to survive."""
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    long_title = "Westerlund Two Bright Young Stars Flare in an Enormous Stellar Nursery"
+    assets = [_asset(0, long_title, ["roman"])] + [_asset(i, f"Roman field {i}", ["roman"]) for i in range(1, 80)]
+    meta = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 9, 5))
+    assert len(meta.title) <= 100
+    assert meta.title.endswith("Relaxing Space Video for Sleep | Telescope Screensaver")
+    assert "Roman Telescope Images" in meta.title
+    lead = meta.title.split(" | ")[0]
+    assert lead and long_title.startswith(lead)  # shortened at a word boundary, not mid-word
+    assert not lead.endswith(" ")
+
+
+def test_different_first_assets_give_different_titles():
+    """Identical titles run after run are what read as bulk uploads."""
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    rest = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(1, 80)]
+    first = build_metadata(cfg, [_asset(0, "Ring Nebula (NIRCam Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
+    second = build_metadata(cfg, [_asset(0, "Helix Nebula (MIRI Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
+    assert first.title != second.title
+    assert first.title.startswith("Ring Nebula | ") and second.title.startswith("Helix Nebula | ")
+    # Same subject and length -- only the lead differs.
+    assert first.title.split(" | ", 1)[1] == second.title.split(" | ", 1)[1]

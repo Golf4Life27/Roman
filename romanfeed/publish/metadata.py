@@ -6,6 +6,7 @@ credit list doubles as the value-add YouTube's inauthentic-content policy
 looks for: a viewer can see what they are looking at and who imaged it."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -101,6 +102,57 @@ def _clip_title(title: str, limit: int = 80) -> str:
     return cut.rstrip(" ,;:-") + "\u2026"
 
 
+# Archive titles carry instrument tags ("(NIRCam Image)") and long subtitles
+# after a dash ("Westerlund 2 - Hubble's 25th anniversary image"). Neither
+# belongs in a video title.
+_PAREN_SUFFIX = re.compile(r"\s*\([^()]*\)\s*$")
+_DASH_TAIL = re.compile(r"\s+[-–—]\s+.*$", re.DOTALL)
+_TRAILING_JUNK = " \t.,;:-–—…"
+
+
+def _shorten(text: str, limit: int) -> str:
+    """Cut to at most `limit` characters, at a word boundary where there is one."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    if limit <= 0:
+        return ""
+    head = text[:limit]
+    cut = head.rsplit(" ", 1)[0] if " " in head else head
+    return cut.rstrip(_TRAILING_JUNK) or head.rstrip(_TRAILING_JUNK)
+
+
+def lead_name(title: str, limit: int = 40) -> str:
+    """A short human name for one image, for the title's {lead} token.
+
+    Chapters show the asset title nearly verbatim; a title has far less room
+    and is read at a glance, so the archive furniture comes off: a trailing
+    parenthetical instrument tag, anything after a dash, trailing ellipsis
+    from an already-clipped title."""
+    text = " ".join(str(title or "").split())
+    for _ in range(2):  # a tag can hide a dash and vice versa
+        text = _DASH_TAIL.sub("", text)
+        while True:
+            stripped = _PAREN_SUFFIX.sub("", text)
+            if stripped == text:
+                break
+            text = stripped
+    text = text.rstrip(_TRAILING_JUNK)
+    return _shorten(text, limit)
+
+
+def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
+    """Render the title, shrinking {lead} until it fits.
+
+    YouTube cuts titles at 100 characters. The search phrases live at the tail,
+    so overflow comes out of the lead -- at a word boundary -- not off the end."""
+    title = template.format(lead=lead, **tokens)
+    if len(title) <= limit or not lead:
+        return title
+    lead = _shorten(lead, len(lead) - (len(title) - limit))
+    return template.format(lead=lead, **tokens)
+
+
 def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float, when: date | None = None, chapter_limit: int | None = None) -> VideoMetadata:
     when = when or date.today()
     total = seconds_per_image * len(assets)
@@ -117,7 +169,13 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     credits = "\n".join(sorted({f"- {a.credit or a.source}" for a in assets}))
     music = "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
 
-    title = cfg.publish.title_template.format(length=length, subject=subject, date=when.isoformat(), channel=cfg.channel.name)
+    # The first chapter names the video: the same set of images with a different
+    # opener gets a different title, so runs do not stack up identical uploads.
+    lead = lead_name(assets[0].title) if assets else ""
+    title = _fit_title(
+        cfg.publish.title_template, lead,
+        {"length": length, "subject": subject, "date": when.isoformat(), "channel": cfg.channel.name},
+    )
     template = cfg.publish.description_template or DEFAULT_DESCRIPTION
     description = template.format(
         tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
