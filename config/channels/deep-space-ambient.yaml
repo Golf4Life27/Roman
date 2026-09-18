@@ -134,9 +134,11 @@ publish:
   mode: upload               # flip to `upload` once OAuth is set up and music is licensed
   privacy: public             # owner approved going public 2026-09-18, after three videos were published manually from Studio and verified public
   category_id: "28"           # Science & Technology
-  # Tokens: {subject} {length} {date} {channel}. Titles carry the phrases people actually search
+  # Tokens: {lead} {subject} {length} {date} {channel}. Titles carry the phrases people actually search
   # ("space video for sleep", "space screensaver"); the channel name only needs the head term.
-  title_template: "{subject} | {length} Relaxing Space Video for Sleep | Real Telescope Screensaver"
+  # {lead} names the first image in the cut, so every upload gets a unique title -- the same title run
+  # after run is what reads as bulk uploads to YouTube.
+  title_template: "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
   tags:
     - space
     - space video
