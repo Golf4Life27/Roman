@@ -132,7 +132,7 @@ audio:
 
 publish:
   mode: upload               # flip to `upload` once OAuth is set up and music is licensed
-  privacy: private            # review in Studio, then make public; flip to public once trusted
+  privacy: public             # owner approved going public 2026-09-18, after three videos were published manually from Studio and verified public
   category_id: "28"           # Science & Technology
   # Tokens: {subject} {length} {date} {channel}. Titles carry the phrases people actually search
   # ("space video for sleep", "space screensaver"); the channel name only needs the head term.
