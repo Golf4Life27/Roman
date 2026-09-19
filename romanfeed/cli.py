@@ -6,6 +6,8 @@
   romanfeed ledger                                                  # what has been rendered/published
   romanfeed auth                                                    # mint the YouTube OAuth token (one time, local)
   romanfeed music add track.m4a --licence generated --genre ambient # register a track (licence required)
+  romanfeed fix-metadata --video ID --video ID                      # decode bytes-repr chapters on live videos
+  romanfeed schedule --video ID --at 2026-09-20T02:00:00Z           # let YouTube publish a private video itself
 """
 from __future__ import annotations
 
@@ -60,12 +62,41 @@ def _cmd_ledger(args) -> int:
 
 
 def _cmd_auth(args) -> int:
-    from romanfeed.publish.youtube import mint_token
+    from romanfeed.publish.youtube import MANAGE_SCOPES, mint_token
 
-    path = mint_token()
+    path = mint_token(MANAGE_SCOPES if args.scope == "manage" else None)
     print(f"token written to {path}")
     print("Store its contents as the YOUTUBE_TOKEN_JSON GitHub secret to let the daily workflow upload.")
     return 0
+
+
+def _split_ids(values: list[str] | None) -> list[str]:
+    """Accept --video A --video B and --video A,B; the workflow passes a list."""
+    return [v.strip() for value in (values or []) for v in value.split(",") if v.strip()]
+
+
+def _cmd_fix_metadata(args) -> int:
+    from romanfeed.publish.fixup import fix_descriptions
+
+    ids = _split_ids(args.video)
+    if not ids:
+        print("no video ids given")
+        return 1
+    return fix_descriptions(ids, dry_run=args.dry_run)
+
+
+def _cmd_schedule(args) -> int:
+    from romanfeed.publish.fixup import schedule_videos
+
+    ids = _split_ids(args.video)
+    if not ids:
+        print("no video ids given")
+        return 1
+    try:
+        return schedule_videos(ids, _split_ids(args.at), dry_run=args.dry_run)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
 
 def _cmd_music_add(args) -> int:
@@ -117,7 +148,22 @@ def main(argv: list[str] | None = None) -> int:
     l.set_defaults(fn=_cmd_ledger)
 
     a = sub.add_parser("auth", help="run the one-time YouTube OAuth flow and save the token")
+    a.add_argument("--scope", choices=["upload", "manage"], default="upload",
+                   help="manage also grants youtube.force-ssl, needed to read/edit metadata on videos already up")
     a.set_defaults(fn=_cmd_auth)
+
+    fm = sub.add_parser("fix-metadata", help="re-decode bytes-repr text in the descriptions of videos already uploaded")
+    fm.add_argument("--video", action="append", required=True, help="YouTube video id (repeat, or comma-separate)")
+    fm.add_argument("--dry-run", action="store_true", help="print before/after and write nothing")
+    fm.set_defaults(fn=_cmd_fix_metadata)
+
+    sc = sub.add_parser("schedule", help="set publishAt on a private video so YouTube makes it public itself")
+    sc.add_argument("--video", action="append", required=True, help="YouTube video id (repeat, or comma-separate)")
+    sc.add_argument("--at", action="append",
+                    help="RFC3339 publish time in UTC, e.g. 2026-09-20T02:00:00Z (one value, or one per --video; "
+                         "omitted uses the recorded Saturday 21:00/21:05 CDT slots)")
+    sc.add_argument("--dry-run", action="store_true", help="print the status body and write nothing")
+    sc.set_defaults(fn=_cmd_schedule)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)
