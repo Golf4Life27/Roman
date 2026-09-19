@@ -1,0 +1,78 @@
+# One-off metadata surgery on videos that are already on the channel.
+#
+# Manual only -- nothing here is on a schedule, and nothing here renders or
+# uploads. Two jobs it can do:
+#
+#   fix-descriptions  Runs #16-#19 published chapter, credit and music lines
+#                     wrapped in Python bytes reprs ("0:00 b'Carina Nebula'").
+#                     The source bug is fixed (PR #12); this re-reads each live
+#                     description, runs it through the same decoder and writes
+#                     it back. 6IKq7GaguBo (8h) and k2bmVLVCfA0 (1h) are the
+#                     two affected uploads from 2026-09-12.
+#   schedule          Gives a private video a publishAt, so YouTube makes it
+#                     public by itself. EckN-EHQ4iU (8h) and BjYotE1uGog (1h)
+#                     from 2026-09-14 are the ones waiting on that.
+#
+# dry_run defaults to true: the run prints the before/after description, or the
+# status body, and writes nothing. Re-run with dry_run false to commit it.
+#
+# SCOPES: videos.update works with the upload-only token the daily workflow
+# uses, so `schedule` runs against the current YOUTUBE_TOKEN_JSON. videos.list
+# does not, so `fix-descriptions` needs a token re-minted with
+# youtube.force-ssl -- it exits with that message rather than half-doing the
+# job. See docs/YOUTUBE_API_SETUP.md section 8.
+name: Fix video metadata
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: what to do
+        type: choice
+        options: [fix-descriptions, schedule]
+        default: fix-descriptions
+      videos:
+        description: comma-separated YouTube video ids
+        required: true
+        default: ""
+      publish_at:
+        description: "schedule only: RFC3339 UTC, e.g. 2026-09-20T02:00:00Z (blank = 21:00/21:05 CDT Sat 2026-09-19)"
+        default: ""
+      dry_run:
+        description: print what would be sent and write nothing
+        type: boolean
+        default: true
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      # Same shape as daily.yml: the secret is the contents of
+      # secrets/youtube.token.json, written back to disk at run time.
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Run
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          ACTION: ${{ inputs.action }}
+          VIDEOS: ${{ inputs.videos }}
+          PUBLISH_AT: ${{ inputs.publish_at }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=""
+          if [ "$DRY_RUN" = "true" ]; then args="--dry-run"; fi
+          if [ "$ACTION" = "schedule" ]; then
+            if [ -n "$PUBLISH_AT" ]; then args="$args --at $PUBLISH_AT"; fi
+            python -m romanfeed schedule --video "$VIDEOS" $args
+          else
+            python -m romanfeed fix-metadata --video "$VIDEOS" $args
+          fi
