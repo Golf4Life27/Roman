@@ -172,14 +172,13 @@ def fix_descriptions(video_ids: list[str], *, dry_run: bool = True, yt=None) -> 
     Nothing local can stand in for the read: the ledger keeps a video's title
     but never its description, and data/state.db is git-ignored anyway.
     """
-    from googleapiclient.errors import HttpError
-
     from romanfeed.publish.youtube import client
 
     yt = yt or client()
     try:
         items = yt.videos().list(part="snippet", id=",".join(video_ids)).execute().get("items", [])
-    except HttpError as exc:
+    except Exception as exc:  # googleapiclient's HttpError; not imported so the
+        # tests (and CI, which installs only the dev extra) run without it.
         if _is_scope_error(exc):
             print(f"ERROR: {SCOPE_HELP}")
             return 2
