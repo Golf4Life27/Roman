@@ -110,10 +110,12 @@ def stored_credentials():
 def client(creds=None):
     """A YouTube Data API v3 service, built on the saved token by default.
 
-    The one service builder for every caller: the upload path hands it
-    `_credentials()` (upload scope pinned), while the retrofit tools --
-    thumbnails, fix-metadata, schedule -- take the default and run on whatever
-    the saved token was granted.
+    The one service builder for every caller: the daily upload, thumbnails,
+    fix-metadata and schedule all come through here. The default reads the
+    scopes out of the token file instead of asserting them, and never opens a
+    browser, which is what CI needs -- a runner has nobody to click Allow, so
+    the interactive flow belongs to `romanfeed auth` alone. A token that has
+    lost a scope fails on the API call with YouTube's own message.
     """
     from googleapiclient.discovery import build
 
@@ -150,7 +152,7 @@ def set_thumbnail(yt, video_id: str, thumbnail: Path) -> None:
 def _upload(video_path: Path, body: dict, *, thumbnail: Path | None = None) -> str:
     from googleapiclient.http import MediaFileUpload
 
-    yt = client(_credentials())
+    yt = client()
     media = MediaFileUpload(str(video_path), chunksize=8 * 1024 * 1024, resumable=True, mimetype="video/mp4")
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
     resp = None
