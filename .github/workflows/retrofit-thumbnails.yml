@@ -1,0 +1,129 @@
+# Put custom thumbnails on videos that are already on the channel.
+#
+# New uploads get theirs from the pipeline (see daily.yml). This is the
+# catch-up pass for the ones that went up before that existed and are still
+# wearing a frame YouTube picked by itself.
+#
+# The lead image is the video's own frame, fetched from i.ytimg.com. The
+# bottom 20% is cropped off first: the render burns captions there, and a
+# thumbnail carrying half a caption looks like a mistake.
+#
+# Input is space-separated video_id:LENGTH pairs, quoted where the length has
+# a space in it:
+#
+#   Rsq_ObqR7K4:'8 HOURS' B_gKq9iqD3I:'1 HOUR' cEYE49BauO4:'1 HOUR'
+#
+# thumbnails.set works with the upload-only token the daily workflow already
+# holds, so no re-consent is needed. YouTube only accepts custom thumbnails
+# from a phone-verified channel and answers 403 otherwise.
+name: Retrofit thumbnails
+on:
+  workflow_dispatch:
+    inputs:
+      videos:
+        description: "space-separated video_id:LENGTH pairs, e.g. Rsq_ObqR7K4:'8 HOURS' B_gKq9iqD3I:'1 HOUR'"
+        required: true
+      dry_run:
+        description: build the jpgs and send nothing
+        type: boolean
+        default: false
+jobs:
+  retrofit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # The headline font. Missing fonts make an uglier thumbnail, not a
+      # crash, but there is no reason to ship the ugly one.
+      - run: sudo apt-get update -q && sudo apt-get install -y -q fonts-dejavu-core
+      - run: pip install -e ".[youtube]"
+      # Same shape as daily.yml: the secret is the contents of
+      # secrets/youtube.token.json, written back to disk at run time.
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Retrofit
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          VIDEOS: ${{ inputs.videos }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          python - <<'PY'
+          import os, shlex, subprocess, sys
+          from pathlib import Path
+
+          import requests
+          from PIL import Image
+
+          from romanfeed.sources.base import USER_AGENT
+
+          # shlex so 'Rsq_ObqR7K4:8 HOURS' survives as one token; rsplit on the
+          # last colon so an id containing one (none do, but ids are opaque)
+          # cannot eat the length.
+          pairs = []
+          for token in shlex.split(os.environ["VIDEOS"]):
+              if ":" not in token:
+                  sys.exit(f"ERROR: {token!r} is not video_id:LENGTH")
+              vid, _, length = token.rpartition(":")
+              vid, length = vid.strip(), length.strip()
+              if not vid or not length:
+                  sys.exit(f"ERROR: {token!r} is not video_id:LENGTH")
+              pairs.append((vid, length))
+          if not pairs:
+              sys.exit("ERROR: no video_id:LENGTH pairs given")
+
+          dry = os.environ.get("DRY_RUN", "false") == "true"
+          work = Path("output/retrofit")
+          work.mkdir(parents=True, exist_ok=True)
+          CROP_BOTTOM = 0.20   # the render burns captions into this band
+
+          def frame(vid: str) -> Path:
+              """The video's own frame. maxres is the one we want; not every
+              upload has it, so fall back rather than fail the whole batch."""
+              last = None
+              for name in ("maxresdefault", "sddefault", "hqdefault"):
+                  url = f"https://i.ytimg.com/vi/{vid}/{name}.jpg"
+                  r = requests.get(url, timeout=60, headers={"User-Agent": USER_AGENT})
+                  if r.status_code == 200 and r.content:
+                      dest = work / f"{vid}.{name}.jpg"
+                      dest.write_bytes(r.content)
+                      print(f"   frame: {name}.jpg ({len(r.content) // 1024} KB)")
+                      return dest
+                  last = f"{url} -> HTTP {r.status_code}"
+              raise RuntimeError(f"no frame available ({last})")
+
+          results = []
+          for vid, length in pairs:
+              print(f"\n=== {vid}  --length {length!r}")
+              try:
+                  src = frame(vid)
+                  with Image.open(src) as im:
+                      im = im.convert("RGB")
+                      w, h = im.size
+                      cropped = im.crop((0, 0, w, int(h * (1 - CROP_BOTTOM))))
+                      out = work / f"{vid}.cropped.jpg"
+                      cropped.save(out, "JPEG", quality=95)
+                  print(f"   cropped: {w}x{h} -> {cropped.width}x{cropped.height}")
+              except Exception as exc:
+                  print(f"   FAILED before upload: {exc}")
+                  results.append((vid, f"failed: {exc}"))
+                  continue
+
+              cmd = [sys.executable, "-m", "romanfeed", "thumbnails", vid, str(out), "--length", length]
+              if dry:
+                  cmd.append("--dry-run")
+              rc = subprocess.run(cmd).returncode
+              results.append((vid, "set" if rc == 0 else f"failed (exit {rc})"))
+
+          print("\n==== per-video result ====")
+          for vid, status in results:
+              print(f"{vid:14} {status}")
+          sys.exit(0 if all(s == "set" for _, s in results) else 1)
+          PY
