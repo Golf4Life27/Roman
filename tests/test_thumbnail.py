@@ -158,3 +158,28 @@ def test_dry_run_never_touches_the_api(tmp_path, monkeypatch):
     video = tmp_path / "v.mp4"
     video.write_bytes(b"v")
     assert youtube.publish(video, _meta(), mode="dry-run", thumbnail=tmp_path / "x.jpg") is None
+
+
+# --- retrofit CLI ---------------------------------------------------------------
+
+def test_thumbnails_command_builds_and_sets(tmp_path, fake_api, capsys):
+    from romanfeed import cli
+
+    yt = fake_api(_FakeYouTube())
+    src = _source(tmp_path, (1600, 1600))
+    rc = cli.main(["thumbnails", "abcDEF12345", str(src), "--length", "8 HOURS", "--out-dir", str(tmp_path / "th")])
+    assert rc == 0
+    thumb = tmp_path / "th" / "abcDEF12345.thumb.jpg"
+    assert thumb.exists()
+    assert yt.thumb_calls[0]["videoId"] == "abcDEF12345"
+    assert yt.thumb_calls[0]["media_body"].filename == str(thumb)
+
+
+def test_thumbnails_command_reports_api_failure(tmp_path, fake_api, capsys):
+    from romanfeed import cli
+
+    fake_api(_FakeYouTube(thumb_exc=RuntimeError("The user is forbidden")))
+    src = _source(tmp_path, (800, 450))
+    rc = cli.main(["thumbnails", "vid", str(src), "--length", "1 HOUR", "--out-dir", str(tmp_path / "th")])
+    assert rc == 1
+    assert "phone-verified" in capsys.readouterr().out

@@ -6,6 +6,7 @@
   romanfeed ledger                                                  # what has been rendered/published
   romanfeed auth                                                    # mint the YouTube OAuth token (one time, local)
   romanfeed music add track.m4a --licence generated --genre ambient # register a track (licence required)
+  romanfeed thumbnails VIDEO_ID image.jpg --length "8 HOURS"        # custom thumbnail on a video already up
 """
 from __future__ import annotations
 
@@ -68,6 +69,15 @@ def _cmd_auth(args) -> int:
     return 0
 
 
+def _cmd_thumbnails(args) -> int:
+    from romanfeed.publish.retrofit import retrofit_thumbnail
+
+    return retrofit_thumbnail(
+        args.video_id, args.image, length=args.length, subject=args.subject,
+        out_dir=Path(args.out_dir), dry_run=args.dry_run,
+    )
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -118,6 +128,15 @@ def main(argv: list[str] | None = None) -> int:
 
     a = sub.add_parser("auth", help="run the one-time YouTube OAuth flow and save the token")
     a.set_defaults(fn=_cmd_auth)
+
+    t = sub.add_parser("thumbnails", help="build a custom thumbnail and set it on a video already uploaded")
+    t.add_argument("video_id")
+    t.add_argument("image", help="lead image: a local path or an http(s) URL")
+    t.add_argument("--length", required=True, help='headline, e.g. "8 HOURS" or "1 HOUR"')
+    t.add_argument("--subject", help='small line under the headline (default "SPACE FOR SLEEP")')
+    t.add_argument("--out-dir", default="output/thumbnails")
+    t.add_argument("--dry-run", action="store_true", help="build the jpg and send nothing")
+    t.set_defaults(fn=_cmd_thumbnails)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)
