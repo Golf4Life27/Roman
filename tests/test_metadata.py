@@ -68,7 +68,7 @@ def test_private_test_forces_private_and_permits_placeholder(tmp_path, monkeypat
     monkeypatch.setattr(pl, "build_soundtrack", lambda *a, **kw: (tmp_path / "s.m4a", [Track("p", tmp_path / "p.m4a", "ambient", "placeholder")]))
     monkeypatch.setattr(pl, "render_video_with_clips", lambda *a, **kw: (kw["out_path"].write_bytes(b"x"), []) and (kw["out_path"], []))
     monkeypatch.setattr(pl, "probe_duration", lambda p: 12.0)
-    def fake_publish(video_path, meta, *, mode):
+    def fake_publish(video_path, meta, *, mode, thumbnail=None):
         captured["mode"], captured["privacy"], captured["title"] = mode, meta.privacy, meta.title
         return "vid123"
     monkeypatch.setattr(pl, "publish", fake_publish)

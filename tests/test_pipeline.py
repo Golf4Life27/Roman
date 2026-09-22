@@ -72,7 +72,7 @@ def stub_run(monkeypatch, sample_asset, tmp_path):
     monkeypatch.setattr(pipeline, "mux_audio", fake_mux)
     monkeypatch.setattr(pipeline, "probe_duration", lambda p: 60.0)
     monkeypatch.setattr(pipeline, "build_metadata", lambda *a, **kw: types.SimpleNamespace(title="T", privacy="private"))
-    monkeypatch.setattr(pipeline, "publish", lambda path, meta, mode: None)
+    monkeypatch.setattr(pipeline, "publish", lambda path, meta, mode, thumbnail=None: None)
     return muxed
 
 
@@ -104,3 +104,26 @@ def test_disk_free_is_logged_around_each_cut(stub_run, tmp_path, caplog):
     assert any("before render" in m for m in disk)
     assert any("before 8h cut" in m for m in disk)
     assert any("after 8h upload" in m for m in disk)
+
+
+def test_every_cut_is_published_with_its_own_thumbnail(stub_run, monkeypatch, tmp_path):
+    sent: list[tuple[str, Path | None]] = []
+    monkeypatch.setattr(pipeline, "publish", lambda path, meta, mode, thumbnail=None: sent.append((Path(path).name, thumbnail)))
+    labels: list[str] = []
+    real = pipeline.make_thumbnail
+
+    def spy(image, out, *, length_label, **kw):
+        labels.append(length_label)
+        return real(image, out, length_label=length_label, **kw)
+
+    monkeypatch.setattr(pipeline, "make_thumbnail", spy)
+    opts = pipeline.RunOptions(data_dir=tmp_path / "data", output_dir=tmp_path / "out", seed="s")
+    res = pipeline.run(_cfg([8]), opts)
+
+    assert [name for name, _ in sent] == [res.video_path.name, res.extra_cuts[0][1].name]
+    for name, thumb in sent:
+        assert thumb is not None and thumb.exists()
+        assert thumb.name == name.replace(".mp4", ".thumb.jpg")
+        assert thumb.parent == res.video_path.parent
+    # 2 images x 1 s is the primary; the 8h cut repeats them to 8 hours
+    assert labels == ["1 Minute", "8 Hours"]

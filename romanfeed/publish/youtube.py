@@ -37,14 +37,14 @@ def request_body(meta: VideoMetadata) -> dict:
     }
 
 
-def publish(video_path: Path, meta: VideoMetadata, *, mode: str = "dry-run") -> str | None:
+def publish(video_path: Path, meta: VideoMetadata, *, mode: str = "dry-run", thumbnail: Path | None = None) -> str | None:
     body = request_body(meta)
     sidecar = video_path.with_suffix(".upload.json")
     sidecar.write_text(json.dumps(body, indent=2))
     if mode == "dry-run":
-        log.info("dry-run: wrote %s (no upload)", sidecar)
+        log.info("dry-run: wrote %s (no upload)%s", sidecar, f", thumbnail {thumbnail}" if thumbnail else "")
         return None
-    return _upload(video_path, body)
+    return _upload(video_path, body, thumbnail=thumbnail)
 
 
 def _credentials():
@@ -71,11 +71,30 @@ def mint_token() -> Path:
     return Path(os.environ.get("YOUTUBE_TOKEN_PATH", "secrets/youtube.token.json"))
 
 
-def _upload(video_path: Path, body: dict) -> str:
+def client():
+    """A YouTube Data API v3 service on the saved (upload-scope) token."""
     from googleapiclient.discovery import build
+
+    return build("youtube", "v3", credentials=_credentials())
+
+
+def set_thumbnail(yt, video_id: str, thumbnail: Path) -> None:
+    """thumbnails.set on one video. Raises on failure; callers decide how loud.
+
+    The upload scope is enough for this call, but YouTube only accepts custom
+    thumbnails from channels with intermediate features (phone-verified), and
+    answers 403 otherwise."""
     from googleapiclient.http import MediaFileUpload
 
-    yt = build("youtube", "v3", credentials=_credentials())
+    media = MediaFileUpload(str(thumbnail), mimetype="image/jpeg")
+    yt.thumbnails().set(videoId=video_id, media_body=media).execute()
+    log.info("thumbnail set on %s from %s", video_id, thumbnail)
+
+
+def _upload(video_path: Path, body: dict, *, thumbnail: Path | None = None) -> str:
+    from googleapiclient.http import MediaFileUpload
+
+    yt = client()
     media = MediaFileUpload(str(video_path), chunksize=8 * 1024 * 1024, resumable=True, mimetype="video/mp4")
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
     resp = None
@@ -85,4 +104,11 @@ def _upload(video_path: Path, body: dict) -> str:
             log.info("upload %.0f%%", status.progress() * 100)
     vid = resp["id"]
     log.info("uploaded https://youtu.be/%s", vid)
+    if thumbnail:
+        # The video is already up; a missing thumbnail is a cosmetic problem
+        # to fix later with `romanfeed thumbnails`, never a reason to fail the run.
+        try:
+            set_thumbnail(yt, vid, thumbnail)
+        except Exception as exc:  # googleapiclient HttpError, IO, anything
+            log.warning("could not set thumbnail on %s (%s): %s", vid, thumbnail, exc)
     return vid

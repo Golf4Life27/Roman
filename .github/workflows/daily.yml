@@ -100,7 +100,8 @@ jobs:
       # Actions storage -- one 8h artifact blows the cap and every later run
       # then fails on upload. The `!` line excludes anything ending in
       # `-<n>h.mp4` (e.g. deep-space-ambient-2025-09-16-8h.mp4) while keeping
-      # the primary deep-space-ambient-2025-09-16.mp4.
+      # the primary deep-space-ambient-2025-09-16.mp4. Every cut's thumbnail
+      # (a few hundred KB each) rides along so the owner can see what was sent.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -109,6 +110,7 @@ jobs:
             output/**/*.mp4
             !output/**/*-*h.mp4
             output/**/*.upload.json
+            output/**/*.thumb.jpg
           retention-days: 3
           if-no-files-found: ignore
       - name: Ping watchdog (finish)
