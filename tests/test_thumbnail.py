@@ -64,3 +64,97 @@ def test_broken_font_loader_falls_back_to_default(tmp_path, monkeypatch):
     monkeypatch.setattr(thumbnail, "_font", boom)
     out = make_thumbnail(_source(tmp_path, (1600, 900)), tmp_path / "t.jpg", length_label="8 HOURS", subject="Carina")
     assert out.exists()
+
+
+# --- upload ------------------------------------------------------------------
+
+class _Call:
+    def __init__(self, result=None, exc=None):
+        self.result, self.exc = result, exc
+
+    def execute(self):
+        if self.exc:
+            raise self.exc
+        return self.result
+
+
+class _FakeYouTube:
+    """Just enough of the googleapiclient service for _upload."""
+
+    def __init__(self, thumb_exc=None):
+        self.thumb_calls: list[dict] = []
+        self.thumb_exc = thumb_exc
+
+    def videos(self):
+        insert = types.SimpleNamespace(next_chunk=lambda: (None, {"id": "vid123"}))
+        return types.SimpleNamespace(insert=lambda **kw: insert)
+
+    def thumbnails(self):
+        def set_(**kw):
+            self.thumb_calls.append(kw)
+            return _Call({}, self.thumb_exc)
+        return types.SimpleNamespace(set=set_)
+
+
+@pytest.fixture
+def fake_api(monkeypatch):
+    """Stand-in googleapiclient.http so this runs on CI's dev-only install."""
+    http = types.ModuleType("googleapiclient.http")
+
+    class MediaFileUpload:
+        def __init__(self, filename, **kw):
+            self.filename, self.kw = filename, kw
+
+    http.MediaFileUpload = MediaFileUpload
+    pkg = types.ModuleType("googleapiclient")
+    pkg.http = http
+    monkeypatch.setitem(sys.modules, "googleapiclient", pkg)
+    monkeypatch.setitem(sys.modules, "googleapiclient.http", http)
+
+    def install(yt):
+        monkeypatch.setattr(youtube, "client", lambda: yt)
+        return yt
+    return install
+
+
+def _meta():
+    return VideoMetadata(title="T", description="D")
+
+
+def test_publish_sets_the_thumbnail_after_upload(tmp_path, fake_api):
+    yt = fake_api(_FakeYouTube())
+    video, thumb = tmp_path / "v.mp4", tmp_path / "v.thumb.jpg"
+    video.write_bytes(b"v")
+    thumb.write_bytes(b"j")
+    assert youtube.publish(video, _meta(), mode="upload", thumbnail=thumb) == "vid123"
+    assert len(yt.thumb_calls) == 1
+    call = yt.thumb_calls[0]
+    assert call["videoId"] == "vid123"
+    assert call["media_body"].filename == str(thumb)
+    assert call["media_body"].kw["mimetype"] == "image/jpeg"
+
+
+def test_thumbnail_failure_is_a_warning_not_a_failed_run(tmp_path, fake_api, caplog):
+    yt = fake_api(_FakeYouTube(thumb_exc=RuntimeError("403 forbidden")))
+    video, thumb = tmp_path / "v.mp4", tmp_path / "v.thumb.jpg"
+    video.write_bytes(b"v")
+    thumb.write_bytes(b"j")
+    with caplog.at_level(logging.WARNING, logger="romanfeed.publish.youtube"):
+        assert youtube.publish(video, _meta(), mode="upload", thumbnail=thumb) == "vid123"
+    assert yt.thumb_calls
+    assert any(r.levelno == logging.WARNING and "thumbnail" in r.getMessage() for r in caplog.records)
+
+
+def test_publish_without_thumbnail_is_unchanged(tmp_path, fake_api):
+    yt = fake_api(_FakeYouTube())
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"v")
+    assert youtube.publish(video, _meta(), mode="upload") == "vid123"
+    assert yt.thumb_calls == []
+
+
+def test_dry_run_never_touches_the_api(tmp_path, monkeypatch):
+    monkeypatch.setattr(youtube, "client", lambda: pytest.fail("dry run built a client"))
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"v")
+    assert youtube.publish(video, _meta(), mode="dry-run", thumbnail=tmp_path / "x.jpg") is None

@@ -15,9 +15,11 @@ from romanfeed.audio import MusicLibrary, build_soundtrack
 from romanfeed.config import ChannelConfig
 from romanfeed.curation import select_assets
 from romanfeed.publish import build_metadata, publish
+from romanfeed.publish.metadata import length_text
 from romanfeed.render import render_video_with_clips
 from romanfeed.render.compose import concat_clips, mux_audio, repeat_order
 from romanfeed.render.ffmpeg import probe_duration
+from romanfeed.render.thumbnail import make_thumbnail
 from romanfeed.sources import build_source
 from romanfeed.state import Ledger, VideoRecord
 
@@ -35,6 +37,21 @@ def log_disk_free(path: Path, where: str) -> None:
     except OSError:  # pragma: no cover - path vanished under us
         return
     log.info("disk free: %.1f GB (%s)", free / (1024 ** 3), where)
+
+
+def build_thumbnail(assets, seconds: float, out_path: Path) -> Path | None:
+    """Thumbnail from the cut's first image -- the one its {lead} title names --
+    with the cut's length as the headline. A failure here costs the custom
+    thumbnail, not the video, so it is logged and the upload goes ahead."""
+    lead = assets[0] if assets else None
+    if lead is None or lead.local_path is None:
+        log.warning("no lead image on disk for %s; uploading without a custom thumbnail", out_path.name)
+        return None
+    try:
+        return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds))
+    except Exception as exc:  # Pillow on a corrupt file, disk full
+        log.warning("thumbnail failed for %s: %s", out_path.name, exc)
+        return None
 
 
 @dataclass
@@ -125,7 +142,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             meta.title = ("[TEST] " + meta.title)[:100]
         elif mode == "upload" and any(not t.publishable for t in tracks):
             raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
-        youtube_id = publish(video_path, meta, mode=mode)
+        thumb = build_thumbnail(assets, spi * len(assets), out_dir / f"{slug}.thumb.jpg")
+        youtube_id = publish(video_path, meta, mode=mode, thumbnail=thumb)
         log_disk_free(out_dir, "after primary upload")
 
         # 4b. extra-length cuts of the same asset set (skipped on smoke tests)
@@ -156,7 +174,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             mux_audio(silent_cut, cut_audio, cut_path, faststart=False)
             silent_cut.unlink(missing_ok=True)  # freed before the next cut starts
             cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets))
-            cut_id = publish(cut_path, cut_meta, mode=mode)
+            cut_thumb = build_thumbnail(cut_assets, spi * len(cut_assets), out_dir / f"{cut_slug}.thumb.jpg")
+            cut_id = publish(cut_path, cut_meta, mode=mode, thumbnail=cut_thumb)
             log_disk_free(out_dir, f"after {hours:g}h upload")
             extra_cuts.append((hours, cut_path, cut_id))
             ledger.record_video(VideoRecord(
