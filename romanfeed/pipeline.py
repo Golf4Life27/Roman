@@ -205,6 +205,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 6. record
         ledger.mark_assets_used(cfg.channel.slug, [a.asset_id for a in assets], slug)
+        ledger.record_video_assets(slug, assets)
         ledger.record_video(VideoRecord(
             video_slug=slug, channel=cfg.channel.slug, path=str(video_path), duration_s=duration,
             rendered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),

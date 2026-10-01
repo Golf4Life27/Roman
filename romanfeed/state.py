@@ -6,6 +6,7 @@ so a human can audit what went out without opening YouTube.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,7 +30,30 @@ CREATE TABLE IF NOT EXISTS videos (
     published_at TEXT,
     title        TEXT
 );
+-- What each video showed, in order, with enough of each asset to find and
+-- credit it again later: Shorts are cut from these long after the render's
+-- working files are gone.
+CREATE TABLE IF NOT EXISTS video_assets (
+    video_slug TEXT NOT NULL,
+    position   INTEGER NOT NULL,
+    asset_id   TEXT NOT NULL,
+    PRIMARY KEY (video_slug, position)
+);
+CREATE TABLE IF NOT EXISTS asset_meta (
+    asset_id TEXT PRIMARY KEY,
+    data     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shorts (
+    asset_id    TEXT NOT NULL,
+    channel     TEXT NOT NULL,
+    parent_slug TEXT NOT NULL,
+    youtube_id  TEXT,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (asset_id, channel)
+);
 """
+
+META_FIELDS = ("asset_id", "title", "url", "source", "credit", "description", "date", "width", "height", "licence", "keywords")
 
 
 def _now() -> str:
@@ -84,6 +108,62 @@ class Ledger:
         cur = self.conn.execute("DELETE FROM assets_used WHERE channel = ?", (channel,))
         self.conn.commit()
         return cur.rowcount
+
+    def record_video_assets(self, video_slug: str, assets: list) -> None:
+        """Remember the running order and each asset's metadata (not the file)."""
+        self.conn.execute("DELETE FROM video_assets WHERE video_slug = ?", (video_slug,))
+        self.conn.executemany(
+            "INSERT INTO video_assets VALUES (?, ?, ?)",
+            [(video_slug, i, a.asset_id) for i, a in enumerate(assets)],
+        )
+        self.save_asset_meta(assets)
+
+    def save_asset_meta(self, assets: list) -> None:
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO asset_meta VALUES (?, ?)",
+            [(a.asset_id, json.dumps({f: getattr(a, f) for f in META_FIELDS})) for a in assets],
+        )
+        self.conn.commit()
+
+    def asset_meta(self, asset_ids: list[str]) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        for i in range(0, len(asset_ids), 500):
+            chunk = asset_ids[i:i + 500]
+            q = f"SELECT asset_id, data FROM asset_meta WHERE asset_id IN ({','.join('?' * len(chunk))})"
+            out.update({r[0]: json.loads(r[1]) for r in self.conn.execute(q, chunk)})
+        return out
+
+    def assets_of_video(self, video_slug: str) -> list[str]:
+        """Asset ids a video showed, in order when the order was recorded.
+
+        Videos rendered before video_assets existed fall back to assets_used,
+        which knows the set but not the order."""
+        rows = self.conn.execute(
+            "SELECT asset_id FROM video_assets WHERE video_slug = ? ORDER BY position", (video_slug,)
+        ).fetchall()
+        if rows:
+            return [r[0] for r in rows]
+        rows = self.conn.execute(
+            "SELECT asset_id FROM assets_used WHERE video_slug = ? ORDER BY asset_id", (video_slug,)
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    # -- shorts ---------------------------------------------------------
+    def shorts_asset_ids(self, channel: str) -> set[str]:
+        return {r[0] for r in self.conn.execute("SELECT asset_id FROM shorts WHERE channel = ?", (channel,))}
+
+    def shorts_per_parent(self, channel: str) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT parent_slug, COUNT(*) FROM shorts WHERE channel = ? GROUP BY parent_slug", (channel,)
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def record_short(self, channel: str, asset_id: str, parent_slug: str, youtube_id: str | None) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO shorts VALUES (?, ?, ?, ?, ?)",
+            (asset_id, channel, parent_slug, youtube_id, _now()),
+        )
+        self.conn.commit()
 
     # -- videos ---------------------------------------------------------
     def record_video(self, rec: VideoRecord) -> None:

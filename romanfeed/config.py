@@ -87,6 +87,25 @@ class PublishSettings:
 
 
 @dataclass
+class ShortsSettings:
+    """Vertical Shorts cut from images the long videos already showed.
+
+    `enabled` is the publish switch: off, the shorts command renders and
+    writes metadata but uploads nothing. It is the owner's call to turn on."""
+
+    enabled: bool = False
+    per_day: int = 3
+    seconds: float = 35.0
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    privacy: str = "public"
+    title_template: str = "{lead_by} | Calm Space for Sleep"
+    # How many of a parent video's images get scored before the best is cut.
+    candidates: int = 6
+
+
+@dataclass
 class ChannelConfig:
     channel: ChannelInfo
     video: VideoSettings
@@ -94,6 +113,7 @@ class ChannelConfig:
     audio: AudioSettings
     publish: PublishSettings
     path: Path | None = None
+    shorts: ShortsSettings = field(default_factory=ShortsSettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -120,9 +140,14 @@ def load_config(path: str | Path) -> ChannelConfig:
         audio=_build(AudioSettings, raw.get("audio")),
         publish=_build(PublishSettings, raw.get("publish")),
         path=path,
+        shorts=_build(ShortsSettings, raw.get("shorts")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
     if cfg.publish.privacy not in {"private", "unlisted", "public"}:
         raise ValueError("publish.privacy must be private, unlisted or public")
+    if cfg.shorts.privacy not in {"private", "unlisted", "public"}:
+        raise ValueError("shorts.privacy must be private, unlisted or public")
+    if not 15 <= cfg.shorts.seconds <= 60:
+        raise ValueError("shorts.seconds must be between 15 and 60")
     return cfg

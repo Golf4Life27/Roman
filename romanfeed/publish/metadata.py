@@ -168,6 +168,8 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     if len(title) <= limit or not lead:
         return title
     lead = _shorten(lead, len(lead) - (len(title) - limit))
+    # "Cosmic Cliffs in the" reads as a mistake; end on a content word.
+    lead = re.sub(r"(?:\s+(?:the|of|in|and|a|an|at|with|from|by|on|&))+$", "", lead, flags=re.IGNORECASE)
     return template.format(lead=lead, **tokens)
 
 
@@ -200,11 +202,16 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     # An 8-hour cut has hundreds of chapters; the description caps at 5000
     # characters, so listing them all would silently swallow the credits.
     shown = chapters if chapter_limit is None else chapters[:chapter_limit]
-    chapter_lines = "\n".join(f"{_hms(t)} {title}" for t, title in shown)
-    if dark_after:
-        chapter_lines += f"\n{_hms(dark_after)} Screen fades to black, music continues to {_hms(total)}"
-    elif len(shown) < len(chapters) or total > seconds_per_image * len(assets):
-        chapter_lines += f"\n(then the sequence continues to {_hms(total)})"
+
+    def chapter_block(n: int) -> str:
+        lines = [f"{_hms(t)} {title}" for t, title in shown[:n]]
+        if dark_after:
+            if n < len(shown):
+                lines.append("…")
+            lines.append(f"{_hms(dark_after)} Screen fades to black, music continues to {_hms(total)}")
+        elif n < len(chapters) or total > seconds_per_image * len(assets):
+            lines.append(f"(then the sequence continues to {_hms(total)})")
+        return "\n".join(lines)
     credits = "\n".join(sorted({f"- {a.credit or a.source}" for a in assets}))
     music = "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
 
@@ -237,13 +244,23 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
                  if handle else "")
     template = cfg.publish.description_template or DEFAULT_DESCRIPTION
-    description = template.format(
-        tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
-        chapters=chapter_lines, credits=credits, music=music,
-        roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
-        hook=hook, subscribe=subscribe, hashtags=HASHTAGS, lead=lead,
-    )
-    description = re.sub(r"\n{3,}", "\n\n", description).strip() + "\n"
+    def render(n: int) -> str:
+        text = template.format(
+            tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
+            chapters=chapter_block(n), credits=credits, music=music,
+            roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
+            hook=hook, subscribe=subscribe, hashtags=HASHTAGS, lead=lead,
+        )
+        return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
+
+    # YouTube stops at 5000 characters. Chapters are the only part that can
+    # give way: credits are a licence condition (CC BY), and the dark-screen
+    # chapter and the hashtags matter more than chapter 61.
+    n = len(shown)
+    description = render(n)
+    while len(description) > 5000 and n > 1:
+        n = max(1, n - max(1, (len(description) - 5000) // 60))
+        description = render(n)
     extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else ["space music for sleep"]
     tags = list(dict.fromkeys(cfg.publish.tags + extra + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
     return VideoMetadata(

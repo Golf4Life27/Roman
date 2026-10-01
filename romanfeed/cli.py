@@ -9,6 +9,8 @@
   romanfeed fix-metadata --video ID --video ID                      # decode bytes-repr chapters on live videos
   romanfeed schedule --video ID --at 2026-09-20T02:00:00Z           # let YouTube publish a private video itself
   romanfeed thumbnails VIDEO_ID image.jpg --length "8 HOURS"        # custom thumbnail on a video already up
+  romanfeed shorts config/... [--count 1] [--dry-run]                # vertical Shorts cut from published videos
+  romanfeed retitle --all [--dry-run]                               # sleep-search titles on videos already up
 """
 from __future__ import annotations
 
@@ -109,6 +111,20 @@ def _cmd_thumbnails(args) -> int:
     )
 
 
+def _cmd_shorts(args) -> int:
+    from romanfeed.shorts import run_shorts
+
+    cfg = load_config(args.config)
+    res = run_shorts(cfg, count=args.count, dry_run=args.dry_run, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir))
+    if not cfg.shorts.enabled:
+        print("shorts.enabled is false in the channel config: rendered only, nothing uploaded")
+    for r in res:
+        print(f"{r.asset_id:32} from {r.parent_slug:34} {r.youtube_id or '(not uploaded)':14} {r.title}")
+    if not res:
+        print("no Shorts made (daily cap reached, or nothing left to cut from)")
+    return 0
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -184,6 +200,13 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--out-dir", default="output/thumbnails")
     t.add_argument("--dry-run", action="store_true", help="build the jpg and send nothing")
     t.set_defaults(fn=_cmd_thumbnails)
+
+    sh = sub.add_parser("shorts", help="cut vertical Shorts from published videos (uploads only when shorts.enabled)")
+    sh.add_argument("config")
+    sh.add_argument("--count", type=int, help="at most this many (default: what is left of shorts.per_day today)")
+    sh.add_argument("--dry-run", action="store_true", help="render and write metadata, upload nothing")
+    sh.add_argument("--output-dir", default="output")
+    sh.set_defaults(fn=_cmd_shorts)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)

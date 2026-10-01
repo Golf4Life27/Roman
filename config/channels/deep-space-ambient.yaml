@@ -4,6 +4,7 @@ channel:
   slug: deep-space-ambient
   # Chosen 2026-09-05. Handle @SpaceScreens goes live ~2026-09-19 (YouTube's 14-day hold).
   name: Space Screens
+  handle: "@SpaceScreens"
   tagline: Real space telescope imagery, slowly. Hubble and Webb today, Roman when its first images land.
 
 video:
@@ -30,6 +31,16 @@ video:
   # six videos -- enough surface area without looking like bulk output, which is
   # what YouTube's policy review rejects.
   extra_lengths_hours: [8]
+  # Every long video opens on the lead image with an intro card naming the
+  # object and its telescope (0-12 s), then a subscribe prompt (14-40 s):
+  # inside the first minute, because a sleep audience never sees an end screen.
+  intro_seconds: 12
+  subscribe_from: 14
+  subscribe_until: 40
+  # The 8-hour cut shows images for 45 minutes, then fades to black while the
+  # music plays on ("dark screen" is what sleep searchers ask for). It also
+  # shrinks the 8h file from ~13 GB to about one hour's worth.
+  sleep_dark_after_minutes: 45
 
 sources:
   - type: roman               # yields nothing until Roman science images are public; then they take priority
@@ -138,7 +149,11 @@ publish:
   # ("space video for sleep", "space screensaver"); the channel name only needs the head term.
   # {lead} names the first image in the cut, so every upload gets a unique title -- the same title run
   # after run is what reads as bulk uploads to YouTube.
-  title_template: "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
+  # Tokens: {lead} {lead_by} ("Pillars of Creation by Webb") {telescope} {dark_after} {subject} {length}.
+  # Search shows ~60 characters, so the length and the sleep phrase come first; {lead}
+  # keeps every title unique and shrinks to fit 100 characters.
+  title_template: "{length} Relaxing Space Music for Sleep · {lead_by} · Telescope Screensaver"
+  sleep_title_template: "{length} Deep Sleep Music · Fall Asleep in Space · {lead} · Dark Screen After {dark_after}"
   tags:
     - space
     - space video
@@ -156,3 +171,13 @@ publish:
     - screensaver
     - calm
     - focus music
+
+# Vertical Shorts cut from the long videos (see .github/workflows/shorts.yml).
+# enabled is the PUBLISH SWITCH and is the owner's call: false renders and
+# writes metadata only. Three a day; each links to its full sleep video.
+shorts:
+  enabled: false
+  per_day: 3
+  seconds: 35
+  privacy: public
+  title_template: "{lead_by} | Calm Space for Sleep"

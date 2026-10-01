@@ -20,7 +20,7 @@ def test_subject_and_title():
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
     meta = build_metadata(cfg, assets, [Track("t", Path("t.m4a"), "ambient", "owned", title="Drift")], seconds_per_image=45, when=date(2026, 9, 5))
-    assert meta.title == "Carina Nebula 0 | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"
+    assert meta.title == "1 Hour Relaxing Space Music for Sleep · Carina Nebula 0 by Webb · Telescope Screensaver"
     assert "ABOUT SPACE SCREENS" in meta.description
     assert "Not affiliated" in meta.description
     assert "0:00 Carina Nebula 0" in meta.description
@@ -156,9 +156,10 @@ def test_title_stays_within_100_chars_with_a_very_long_lead():
     assets = [_asset(0, long_title, ["roman"])] + [_asset(i, f"Roman field {i}", ["roman"]) for i in range(1, 80)]
     meta = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 9, 5))
     assert len(meta.title) <= 100
-    assert meta.title.endswith("Relaxing Space Video for Sleep | Telescope Screensaver")
-    assert "Roman Telescope Images" in meta.title
-    lead = meta.title.split(" | ")[0]
+    assert meta.title.startswith("1 Hour Relaxing Space Music for Sleep · ")
+    assert meta.title.endswith(" · Telescope Screensaver")
+    assert "roman telescope images" in meta.tags  # the subject moved from the title to the tags
+    lead = meta.title.split(" · ")[1]
     assert lead and long_title.startswith(lead)  # shortened at a word boundary, not mid-word
     assert not lead.endswith(" ")
 
@@ -170,6 +171,27 @@ def test_different_first_assets_give_different_titles():
     first = build_metadata(cfg, [_asset(0, "Ring Nebula (NIRCam Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
     second = build_metadata(cfg, [_asset(0, "Helix Nebula (MIRI Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
     assert first.title != second.title
-    assert first.title.startswith("Ring Nebula | ") and second.title.startswith("Helix Nebula | ")
+    assert "· Ring Nebula" in first.title and "· Helix Nebula" in second.title
     # Same subject and length -- only the lead differs.
-    assert first.title.split(" | ", 1)[1] == second.title.split(" | ", 1)[1]
+    assert first.title.replace("Ring", "X") == second.title.replace("Helix", "X")
+
+
+def test_sleep_cut_title_and_dark_screen_chapter():
+    from romanfeed.config import load_config
+    from romanfeed.publish.metadata import build_metadata
+    from romanfeed.sources.base import ImageAsset
+
+    cfg = load_config("config/channels/deep-space-ambient.yaml")
+    long_title = "Cosmic Cliffs in the Carina Nebula (NIRCam and MIRI Composite Image)"
+    assets = [ImageAsset(asset_id=f"esawebb:{i}", title=f"{long_title} {i}", url="", source="ESA/Webb",
+                         credit="NASA, ESA, CSA, STScI") for i in range(60)]
+    meta = build_metadata(cfg, assets, [], seconds_per_image=45, chapter_limit=80,
+                          total_seconds=28800, sleep=True, dark_after=2700)
+    assert meta.title.startswith("8 Hours Deep Sleep Music · Fall Asleep in Space · ")
+    assert meta.title.endswith(" · Dark Screen After 45 Min") and len(meta.title) <= 100
+    assert " the · " not in meta.title  # a shrunk lead ends on a content word
+    assert meta.description.startswith("8 Hours of deep sleep music")
+    assert "45:00 Screen fades to black, music continues to 8:00:00" in meta.description
+    # long chapter titles give way so the CC BY credits and hashtags survive
+    assert len(meta.description) <= 5000
+    assert "IMAGE CREDITS" in meta.description and meta.description.rstrip().endswith("#deepsleep")
