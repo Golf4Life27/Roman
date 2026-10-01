@@ -178,6 +178,7 @@ def _cmd_stats(args) -> int:
             handle = load_config(args.config).channel.handle or "@SpaceScreens"
             with Ledger(Path(args.data_dir) / "state.db") as ledger:
                 data = st.fetch_public_stats(today, yt_public=public_client(key), ledger=ledger, handle=handle)
+                data.title_test = st.title_test_rows(public_client(key), ledger, today)
             subject, text, html = st.report(data, today)
             print(f"Subject: {subject}\n")
             print(text)
@@ -194,6 +195,11 @@ def _cmd_stats(args) -> int:
             return 2
         raise
 
+    if key:
+        from romanfeed.state import Ledger
+
+        with Ledger(Path(args.data_dir) / "state.db") as ledger:
+            data.title_test = st.title_test_rows(public_client(key), ledger, today)
     subject, text, html = st.report(data, today)
     print(f"Subject: {subject}\n")
     print(text)

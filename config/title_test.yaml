@@ -1,0 +1,10 @@
+# Split test of the sleep-search titles on the back catalogue (owner chose
+# "split test" on 2026-10-01). Group "new" was retitled with romanfeed retitle;
+# group "old" keeps its original titles as the control. Pairs are whole sets
+# (the 1h and 8h cut of one render) alternated by age, so the groups are
+# balanced. The Monday report compares views per video per day since `start`;
+# decide at the Oct 31 checkpoint whether to retitle the rest or revert.
+start: "2026-10-01"
+groups:
+  new:   [Rsq_ObqR7K4, B_gKq9iqD3I, z7YRVeMOnRo, j86fKOM-TX0, LHtuaajv6sg, uXzkMPh10fc]
+  old:   [_KUT7FIKpaM, 0CmkAvGw2JY, kryWUGdjfB8, Mku9IGSs27A, t35RYfeJq4o, l55HxBxZnw8, cEYE49BauO4]
