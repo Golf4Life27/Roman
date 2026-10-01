@@ -13,6 +13,7 @@
   romanfeed retitle --all [--dry-run]                               # sleep-search titles on videos already up
   romanfeed stats [--email] [--dry-run]                             # weekly subscriber / watch-hour report
   romanfeed compose piece.m4a --seconds 120 --seed foo              # compose one original ambient piece
+  romanfeed live sync|plan|start [--dry-run]                        # nightly 10 h live stream (server only)
 """
 from __future__ import annotations
 
@@ -193,6 +194,20 @@ def _cmd_compose(args) -> int:
     print(f"loudness: {measure_loudness(track.path):.1f} LUFS")
     print(f"file:     {track.path}")
     return 0
+def _cmd_live(args) -> int:
+    from romanfeed.live import run as live
+
+    cfg = load_config(args.config)
+    lib = live.library_dir(cfg, args.library_dir)
+    if args.live_cmd == "sync":
+        return live.cmd_sync(cfg, lib)
+    try:
+        if args.live_cmd == "plan":
+            return live.cmd_plan(cfg, lib)
+        return live.cmd_start(cfg, lib, dry_run=args.dry_run)
+    except ValueError as exc:  # empty library, bad length
+        print(f"ERROR: {exc}")
+        return 1
 
 
 def _cmd_music_add(args) -> int:
@@ -288,6 +303,18 @@ def main(argv: list[str] | None = None) -> int:
     co.add_argument("--seconds", type=float, default=120.0)
     co.add_argument("--seed", help="same seed, same piece (default: random, printed)")
     co.set_defaults(fn=_cmd_compose)
+    lv = sub.add_parser("live", help="nightly ~10 h live stream from the rendered library (always ends < 12 h)")
+    lsub = lv.add_subparsers(dest="live_cmd", required=True)
+    for name, text in [("sync", "pull new render artifacts from GitHub and make stream-ready copies"),
+                       ("plan", "print tonight's playlist; nothing is sent"),
+                       ("start", "run tonight's broadcast (refuses unless live.enabled is true)")]:
+        lp = lsub.add_parser(name, help=text)
+        lp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
+        lp.add_argument("--library-dir", help="override live.library_dir (the server uses /var/lib/romanfeed/live)")
+        if name == "start":
+            lp.add_argument("--dry-run", action="store_true",
+                            help="print the plan, broadcast body and ffmpeg command (key masked); send nothing")
+    lv.set_defaults(fn=_cmd_live)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)

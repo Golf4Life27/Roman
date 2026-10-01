@@ -112,7 +112,7 @@ Original recommendation was Deep Field Screens; superseded by Space Screens
 - **Title patterns:** `[Evocative name] – Deep Space Ambient Music for Sleep & Meditation 🌌`; `Franchise | 🌙 Place, Peaceful Music & Ambience in 4K, Human-Made, No Mid-roll Ads`. Trust tokens seen in top titles: "4K UHD", "No Mid-roll Ads", "Human-Made", "Black Screen". Suggested: `Webb: Pillars of Creation | 8 Hour 4K Sleep Screen, Original Ambient, No Mid-rolls`.
 - **Thumbnails:** full-bleed telescope image, one large duration badge ("8 HOURS"), optional "4K" pill, no faces.
 - **Black-screen trick:** fade to black at 30–60 min on sleep cuts (Soothing Relaxation has a whole "Fade To Black Screen" playlist); keep the image on focus cuts.
-- **24/7 live stream** for always-on watch hours once the library exists.
+- **Nightly live stream** (not 24/7): ~10 h each night from the rendered library, ending under 12 h so YouTube archives it as a public VOD. Built and off until 100 subscribers or 15 watch hours/day; see LIVE_STREAM.md.
 - **4K/HDR:** YouTube recommends 2160p SDR at 35–45 Mbps, HDR 44–56 Mbps, AAC 384 kbps. Telescope images are ideal HDR sources (deep blacks), but an 8 h 4K upload is ~160 GB; budget bandwidth and runner disk.
 - **RPM:** third-party estimates put sleep/soundscape RPM near $11. Indicative only.
 

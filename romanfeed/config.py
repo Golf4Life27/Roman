@@ -91,6 +91,38 @@ class PublishSettings:
     made_for_kids: bool = False
 
 
+# Absolute ceiling on one night's stream. YouTube only auto-archives a live
+# stream as a VOD when it runs under 12 hours; past that the recording is
+# lost. 11.5 h leaves half an hour of slack for a slow start or a late stop,
+# and every cap in romanfeed.live is derived from this one number.
+LIVE_MAX_HOURS = 11.5
+
+
+@dataclass
+class LiveSettings:
+    """The nightly live stream (romanfeed.live). Off unless the owner turns it on.
+
+    Switched on only once the channel has an audience to stream to (100
+    subscribers or 15 watch hours/day); until then a live stream nobody joins
+    is just a second, worse copy of the uploads. The channel YAML has no
+    `live:` block, so these defaults -- enabled false -- are what runs; adding
+    `live: {enabled: true}` there is the owner's switch.
+    """
+    enabled: bool = False
+    hours: float = 10.0
+    # Documentation of the schedule, and the night the broadcast is dated by.
+    # The systemd timer (deploy/live/romanfeed-live.timer) is what actually
+    # fires at this time; keep the two in step.
+    start_local: str = "21:00"
+    timezone: str = "America/Chicago"
+    library_dir: str = "data/live"
+    keep_files: int = 12
+    # Stop pulling new renders when the disk would drop below this much free.
+    min_free_gb: float = 5.0
+    # Where the daily workflow's render-<run_id> artifacts live.
+    artifact_repo: str = "Golf4Life27/Roman"
+
+
 @dataclass
 class ShortsSettings:
     """Vertical Shorts cut from images the long videos already showed.
@@ -117,6 +149,7 @@ class ChannelConfig:
     sources: list[SourceSettings]
     audio: AudioSettings
     publish: PublishSettings
+    live: LiveSettings = field(default_factory=LiveSettings)
     path: Path | None = None
     shorts: ShortsSettings = field(default_factory=ShortsSettings)
 
@@ -144,6 +177,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         sources=sources,
         audio=_build(AudioSettings, raw.get("audio")),
         publish=_build(PublishSettings, raw.get("publish")),
+        live=_build(LiveSettings, raw.get("live")),
         path=path,
         shorts=_build(ShortsSettings, raw.get("shorts")),
     )
@@ -157,4 +191,29 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("shorts.seconds must be between 15 and 60")
     if cfg.audio.source not in {"library", "composed"}:
         raise ValueError("audio.source must be 'library' or 'composed'")
+    _check_live(cfg.live)
     return cfg
+
+
+def _check_live(live: LiveSettings) -> None:
+    """Fail at load time, not at 9 PM, on a live block that cannot work.
+
+    hours above the ceiling is rejected rather than quietly clamped: someone
+    who wrote `hours: 24` meant something this code will never do, and should
+    hear so. (The runtime clamps anyway, as one more layer.)"""
+    from zoneinfo import ZoneInfo
+
+    if not 0 < live.hours <= LIVE_MAX_HOURS:
+        raise ValueError(f"live.hours must be > 0 and <= {LIVE_MAX_HOURS} (YouTube archives streams under 12 h only)")
+    try:
+        hh, mm = (int(x) for x in live.start_local.split(":"))
+        if not (0 <= hh < 24 and 0 <= mm < 60):
+            raise ValueError
+    except ValueError:
+        raise ValueError("live.start_local must be HH:MM") from None
+    try:
+        ZoneInfo(live.timezone)
+    except Exception:
+        raise ValueError(f"live.timezone {live.timezone!r} is not an IANA time zone") from None
+    if live.keep_files < 1:
+        raise ValueError("live.keep_files must be at least 1")
