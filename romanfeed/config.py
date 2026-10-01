@@ -71,6 +71,11 @@ class AudioSettings:
     crossfade_seconds: float = 0.0
     gain_db: float = -6.0
     allow_placeholder: bool = False
+    # "library": tracks from the licensed manifest above. "composed": original
+    # pieces written per run by romanfeed.audio.composer (licence "owned").
+    source: str = "library"
+    composed_pieces: int = 8
+    composed_seconds: float = 450.0
 
 
 @dataclass
@@ -150,4 +155,6 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("shorts.privacy must be private, unlisted or public")
     if not 15 <= cfg.shorts.seconds <= 60:
         raise ValueError("shorts.seconds must be between 15 and 60")
+    if cfg.audio.source not in {"library", "composed"}:
+        raise ValueError("audio.source must be 'library' or 'composed'")
     return cfg

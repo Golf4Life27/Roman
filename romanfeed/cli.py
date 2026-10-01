@@ -12,6 +12,7 @@
   romanfeed shorts config/... [--count 1] [--dry-run]                # vertical Shorts cut from published videos
   romanfeed retitle --all [--dry-run]                               # sleep-search titles on videos already up
   romanfeed stats [--email] [--dry-run]                             # weekly subscriber / watch-hour report
+  romanfeed compose piece.m4a --seconds 120 --seed foo              # compose one original ambient piece
 """
 from __future__ import annotations
 
@@ -178,6 +179,19 @@ def _cmd_stats(args) -> int:
     elif smtp:
         st.send_email(subject, text, html, **smtp)
         print("email sent")
+def _cmd_compose(args) -> int:
+    import secrets
+
+    from romanfeed.audio.composer import compose_piece, measure_loudness
+    from romanfeed.render.ffmpeg import probe_duration
+
+    seed = args.seed or secrets.token_hex(4)
+    track = compose_piece(Path(args.out), seconds=args.seconds, seed=seed)
+    print(f"title:    {track.title}")
+    print(f"seed:     {seed}")
+    print(f"duration: {probe_duration(str(track.path)):.1f}s")
+    print(f"loudness: {measure_loudness(track.path):.1f} LUFS")
+    print(f"file:     {track.path}")
     return 0
 
 
@@ -269,6 +283,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="also email it (env STATS_EMAIL_TO, SMTP_USER, SMTP_PASSWORD; SMTP_HOST, SMTP_PORT optional)")
     st.add_argument("--dry-run", action="store_true", help="print the report and send nothing")
     st.set_defaults(fn=_cmd_stats)
+    co = sub.add_parser("compose", help="compose one original ambient piece (licence: owned)")
+    co.add_argument("out", help="output .m4a")
+    co.add_argument("--seconds", type=float, default=120.0)
+    co.add_argument("--seed", help="same seed, same piece (default: random, printed)")
+    co.set_defaults(fn=_cmd_compose)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)
