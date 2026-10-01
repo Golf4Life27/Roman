@@ -42,7 +42,11 @@ for one session.
     press feed, promote Roman assets to headline subject automatically.
 12. **Sibling channels** — copy the config: lofi, piano, pure ambient, 4K HDR
     OLED. Same pipeline, same ledger DB, separate channel slugs.
-13. **24/7 live stream** — always-on watch hours from the rendered library.
+13. **Nightly 10-hour live stream** — built 2026-10-01, switched off. Every
+    night at 9 PM Central a ~10 h stream of the rendered library, capped
+    under 12 h (ffmpeg `-t`, watchdog, API complete) so YouTube archives it
+    as a public VOD. Never 24/7. Needs a ~€6/month Hetzner CX23; switch on
+    at 100 subscribers or 15 watch hours/day. See LIVE_STREAM.md.
 14. **Aesthetic scoring** — vision model ranks candidates so the best frames
     lead each video.
 15. **Depth-map parallax / HDR grading** — the "real motion design" lever

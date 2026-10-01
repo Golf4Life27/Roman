@@ -1,0 +1,24 @@
+[Unit]
+Description=Space Screens: tonight's ~10 h live stream (always ends < 12 h)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=romanfeed
+Group=romanfeed
+WorkingDirectory=/opt/romanfeed/app
+EnvironmentFile=/etc/romanfeed/env
+# Refuses (exit 2) unless live.enabled is true in the channel config.
+ExecStart=/opt/romanfeed/venv/bin/romanfeed live start --library-dir /var/lib/romanfeed/live
+# One night, then stop. Never restarted: a crash ends the night, it does not
+# start a second stream.
+Restart=no
+# Outermost cap, outside Python. The inner ones stop far earlier: ffmpeg -t
+# at 11.5 h at most, the Python watchdog 15 min after that.
+RuntimeMaxSec=12h
+# On stop/RuntimeMaxSec, SIGTERM goes to Python only; it kills ffmpeg and
+# calls liveBroadcasts.transition(complete) before exiting. SIGKILL for
+# everything left after 2 minutes.
+KillMode=mixed
+TimeoutStopSec=120
