@@ -1,0 +1,54 @@
+# Sleep-search titles and descriptions for videos already on the channel.
+#
+# Manual only. Reads every upload (or the ids given), rebuilds the title from
+# the channel's templates, swaps the description's opening for the sleep hook
+# and subscribe link (chapters, credits and music stay), merges in sleep tags.
+# Shorts are skipped. See romanfeed/publish/retitle.py.
+#
+# dry_run defaults to true: the log shows every before/after and nothing is
+# written. Re-run with dry_run false to apply (50 quota units per video).
+#
+# SCOPE: reading needs youtube.force-ssl, so YOUTUBE_TOKEN_JSON must hold a
+# token minted with `romanfeed auth --scope manage` (docs/YOUTUBE_API_SETUP.md
+# section 8). With the upload-only token it stops with that message.
+name: Retitle videos
+on:
+  workflow_dispatch:
+    inputs:
+      videos:
+        description: comma-separated YouTube video ids (blank = every upload)
+        default: ""
+      dry_run:
+        description: print before/after and write nothing
+        type: boolean
+        default: true
+jobs:
+  retitle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Retitle
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          VIDEOS: ${{ inputs.videos }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=""
+          [ "$DRY_RUN" = "true" ] && args="--dry-run"
+          if [ -n "$VIDEOS" ]; then
+            python -m romanfeed retitle --video "$VIDEOS" $args
+          else
+            python -m romanfeed retitle --all $args
+          fi

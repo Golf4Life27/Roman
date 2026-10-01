@@ -26,7 +26,7 @@ What keeps us on the right side, and what the pipeline does about it:
 | Materially varied videos: different subject mix daily, no repeats until pool cycles | Built (ledger + seeded selection) |
 | Original music composed/owned for the channel, not a library loop | **Built, not yet switched on** — `romanfeed/audio/composer.py` writes a unique seeded ambient score per run (licence `owned`, nothing for Content ID to match). Switch with `audio.source: composed` in the channel YAML once the owner has listened (see §4) |
 | Real motion design beyond Ken Burns (parallax, depth, grading) | Roadmap |
-| Short spoken or text intro explaining what you're about to see | Roadmap |
+| Short spoken or text intro explaining what you're about to see | **Built** — every long video opens with a 12 s card naming the object and the telescope that imaged it (`romanfeed/render/cards.py`, `romanfeed/telescopes.py`), then a subscribe prompt at 14–40 s |
 | Cadence: daily is above niche norm and raises the mass-production flag | Consider daily + weekly "hero" renders |
 
 ## 3. AI disclosure

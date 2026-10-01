@@ -218,6 +218,17 @@ def _cmd_live(args) -> int:
         return 1
 
 
+def _cmd_retitle(args) -> int:
+    from romanfeed.publish.retitle import retitle
+
+    cfg = load_config(args.config)
+    ids = _split_ids(args.video)
+    if not ids and not args.all:
+        print("give --video ID (repeatable) or --all")
+        return 1
+    return retitle(cfg, ids or None, dry_run=args.dry_run)
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -326,6 +337,13 @@ def main(argv: list[str] | None = None) -> int:
             lp.add_argument("--dry-run", action="store_true",
                             help="print the plan, broadcast body and ffmpeg command (key masked); send nothing")
     lv.set_defaults(fn=_cmd_live)
+
+    rt = sub.add_parser("retitle", help="sleep-search titles/descriptions on videos already up (needs --scope manage token)")
+    rt.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
+    rt.add_argument("--video", action="append", help="YouTube video id (repeat, or comma-separate)")
+    rt.add_argument("--all", action="store_true", help="every upload on the channel (Shorts are skipped)")
+    rt.add_argument("--dry-run", action="store_true", help="print before/after and write nothing")
+    rt.set_defaults(fn=_cmd_retitle)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)

@@ -173,6 +173,24 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     return template.format(lead=lead, **tokens)
 
 
+def drop_segment(template: str, token: str) -> str:
+    """Remove the ' · '/' | '-separated part of a title template holding `token`.
+
+    The sleep template says "Dark Screen After {dark_after}"; a sleep cut that
+    does not go dark (older uploads, or the setting off) must not claim it."""
+    if token not in template:
+        return template
+    parts = re.split(r"(\s+[·|]\s+)", template)
+    keep: list[str] = []
+    for i in range(0, len(parts), 2):
+        if token in parts[i]:
+            continue
+        if keep:
+            keep.append(parts[i - 1])
+        keep.append(parts[i])
+    return "".join(keep)
+
+
 def _minutes(seconds: float) -> str:
     return f"{int(round(seconds / 60))} Min"
 
@@ -220,6 +238,8 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     lead = lead_name(assets[0].title) if assets else ""
     tele = telescope_short(assets[0]) if assets else None
     template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
+    if not dark_after:
+        template = drop_segment(template, "{dark_after}")
     title_lead = lead
     if "{lead_by}" in template:
         # "{lead_by}" is "{lead} by Webb" when the telescope is known. It goes
