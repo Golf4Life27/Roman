@@ -60,6 +60,11 @@ class AudioSettings:
     crossfade_seconds: float = 0.0
     gain_db: float = -6.0
     allow_placeholder: bool = False
+    # "library": tracks from the licensed manifest above. "composed": original
+    # pieces written per run by romanfeed.audio.composer (licence "owned").
+    source: str = "library"
+    composed_pieces: int = 8
+    composed_seconds: float = 450.0
 
 
 @dataclass
@@ -112,4 +117,6 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
     if cfg.publish.privacy not in {"private", "unlisted", "public"}:
         raise ValueError("publish.privacy must be private, unlisted or public")
+    if cfg.audio.source not in {"library", "composed"}:
+        raise ValueError("audio.source must be 'library' or 'composed'")
     return cfg

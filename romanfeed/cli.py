@@ -9,6 +9,7 @@
   romanfeed fix-metadata --video ID --video ID                      # decode bytes-repr chapters on live videos
   romanfeed schedule --video ID --at 2026-09-20T02:00:00Z           # let YouTube publish a private video itself
   romanfeed thumbnails VIDEO_ID image.jpg --length "8 HOURS"        # custom thumbnail on a video already up
+  romanfeed compose piece.m4a --seconds 120 --seed foo              # compose one original ambient piece
 """
 from __future__ import annotations
 
@@ -109,6 +110,22 @@ def _cmd_thumbnails(args) -> int:
     )
 
 
+def _cmd_compose(args) -> int:
+    import secrets
+
+    from romanfeed.audio.composer import compose_piece, measure_loudness
+    from romanfeed.render.ffmpeg import probe_duration
+
+    seed = args.seed or secrets.token_hex(4)
+    track = compose_piece(Path(args.out), seconds=args.seconds, seed=seed)
+    print(f"title:    {track.title}")
+    print(f"seed:     {seed}")
+    print(f"duration: {probe_duration(str(track.path)):.1f}s")
+    print(f"loudness: {measure_loudness(track.path):.1f} LUFS")
+    print(f"file:     {track.path}")
+    return 0
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -184,6 +201,12 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--out-dir", default="output/thumbnails")
     t.add_argument("--dry-run", action="store_true", help="build the jpg and send nothing")
     t.set_defaults(fn=_cmd_thumbnails)
+
+    co = sub.add_parser("compose", help="compose one original ambient piece (licence: owned)")
+    co.add_argument("out", help="output .m4a")
+    co.add_argument("--seconds", type=float, default=120.0)
+    co.add_argument("--seed", help="same seed, same piece (default: random, printed)")
+    co.set_defaults(fn=_cmd_compose)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)
