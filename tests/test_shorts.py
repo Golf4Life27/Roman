@@ -121,9 +121,10 @@ def test_switch_off_renders_but_never_uploads(ledger, monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: sent.append(mode) or ("YT" if mode == "upload" else None))
     monkeypatch.setattr(shorts, "is_public", lambda vid: True)
-    monkeypatch.setattr(shorts, "pick_best", lambda cands, cache: cands[0])
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
     monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
+    monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
     data = led_path.parent
 
     res = shorts.run_shorts(_cfg(enabled=False), count=2, data_dir=data, output_dir=tmp_path / "out", public=lambda v: True)

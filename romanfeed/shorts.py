@@ -37,7 +37,9 @@ from romanfeed.curation.selector import flat_black_fraction, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
-from romanfeed.render.cards import short_overlay
+from romanfeed import narration
+from romanfeed.render.cards import caption_card, short_cta_card, short_overlay
+from romanfeed.render.ffmpeg import probe_duration
 from romanfeed.sources import build_source
 from romanfeed.sources.base import USER_AGENT, ImageAsset
 from romanfeed.state import META_FIELDS, Ledger
@@ -197,6 +199,12 @@ def image_score(path: Path) -> float:
 
 
 def pick_best(candidates: list[ImageAsset], cache_dir: Path) -> ImageAsset | None:
+    ranked = ranked_candidates(candidates, cache_dir)
+    return ranked[0] if ranked else None
+
+
+def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[ImageAsset]:
+    """Usable candidates, strongest frame first."""
     scored = []
     for a in candidates:
         if looks_unsuitable(a):
@@ -209,10 +217,10 @@ def pick_best(candidates: list[ImageAsset], cache_dir: Path) -> ImageAsset | Non
         except Exception as exc:  # gone from the archive, corrupt file
             log.warning("skipping %s: %s", a.asset_id, exc)
     if not scored:
-        return None
+        return []
     scored.sort(key=lambda sa: sa[0], reverse=True)
     log.info("best of %d: %s (score %.3f)", len(scored), scored[0][1].asset_id, scored[0][0])
-    return scored[0][1]
+    return [a for _, a in scored]
 
 
 def _spread(ids: list[str], n: int) -> list[str]:
@@ -244,36 +252,74 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
     return out, cw - W, ch - H
 
 
-def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path) -> Path:
+def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
+                 duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
+                 cta_from: float | None = None) -> Path:
+    """Render one Short. With `captions` (a narrated Short) the pointer to the
+    long video waits until `cta_from`; without, it is on screen throughout."""
     s = cfg.shorts
-    dur = s.seconds
+    dur = duration or s.seconds
+    handle = cfg.channel.handle or cfg.channel.name
     frame, ex, ey = vertical_frame(asset.local_path, work_dir / "short_frame.png", width=s.width, height=s.height, max_pan=900)
-    overlay = work_dir / "short_overlay.png"
-    short_overlay(asset, s.width, s.height, full_label=link_label, handle=cfg.channel.handle or cfg.channel.name).save(overlay, "PNG")
+    narrated = bool(captions)
+    layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
+    base = work_dir / "short_overlay.png"
+    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated).save(base, "PNG")
+    layers.append((base, None))
+    if narrated:
+        for i, (t0, t1, text) in enumerate(captions):
+            png = work_dir / f"short_cap_{i:02d}.png"
+            caption_card(text, s.width, s.height).save(png, "PNG")
+            layers.append((png, f"between(t,{t0:.3f},{t1:.3f})"))
+        cta = work_dir / "short_cta.png"
+        short_cta_card(s.width, s.height, full_label=link_label, handle=handle).save(cta, "PNG")
+        layers.append((cta, f"gte(t,{(cta_from or dur - 4):.3f})"))
     # Alternate pan direction by asset so a run of Shorts does not all drift left.
     flip = int(hashlib.sha1(asset.asset_id.encode()).hexdigest(), 16) % 2
     prog = f"(1-t/{dur:.3f})" if flip else f"(t/{dur:.3f})"
     crop = f"crop={s.width * 2}:{s.height * 2}:x='{ex}*{prog}':y='{ey}*{prog}'"
-    graph = (
-        f"[0:v]{crop},scale={s.width}:{s.height}:flags=bicubic[c];"
-        f"[c][1:v]overlay=0:0:format=auto,fade=t=out:st={max(dur - 1.0, 0):.3f}:d=1.0,format=yuv420p[v]"
-    )
+    parts, prev = [f"[0:v]{crop},scale={s.width}:{s.height}:flags=bicubic[c0]"], "[c0]"
+    inputs = ["-loop", "1", "-framerate", str(s.fps), "-i", str(frame)]
+    for k, (png, enable) in enumerate(layers, start=1):
+        inputs += ["-loop", "1", "-framerate", str(s.fps), "-i", str(png)]
+        en = f":enable='{enable}'" if enable else ""
+        parts.append(f"{prev}[{k}:v]overlay=0:0:format=auto{en}[c{k}]")
+        prev = f"[c{k}]"
+    parts.append(f"{prev}fade=t=out:st={max(dur - 1.0, 0):.3f}:d=1.0,format=yuv420p[v]")
+    audio_idx = len(layers) + 1
     ffmpeg.run([
-        "-loop", "1", "-framerate", str(s.fps), "-i", str(frame),
-        "-loop", "1", "-framerate", str(s.fps), "-i", str(overlay),
-        "-i", str(audio),
-        "-filter_complex", graph, "-map", "[v]", "-map", "2:a:0",
+        *inputs, "-i", str(audio),
+        "-filter_complex", ";".join(parts), "-map", "[v]", "-map", f"{audio_idx}:a:0",
         "-t", f"{dur:.3f}", "-r", str(s.fps),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
         str(out_path),
     ])
+    for png, _ in layers:
+        png.unlink(missing_ok=True)
     frame.unlink(missing_ok=True)
-    overlay.unlink(missing_ok=True)
     return out_path
 
 
-def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks) -> VideoMetadata:
+def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Path, stem: str, key: str):
+    """Script + voice for one image: (script, voice wav, voice seconds), or None.
+
+    A script that runs long is retried without its size/distance sentence; a
+    Short tops out at 45 s and the voice needs the music either side of it."""
+    budget = 45.0 - 0.8 - 3.0
+    for include_size in (True, False):
+        script = narration.fact_script(asset, full_label=link_label, include_size=include_size)
+        if not script:
+            return None
+        wav = narration.synthesize(script, work / f"{stem}.voice.wav", api_key=key, voice=cfg.shorts.voice)
+        secs = probe_duration(str(wav))
+        if secs <= budget:
+            return script, wav, secs
+        log.info("narration for %s runs %.1fs; trying a shorter script", asset.asset_id, secs)
+    return None
+
+
+def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None) -> VideoMetadata:
     lead = lead_name(asset.title, limit=60) or asset.title
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -292,7 +338,9 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         f"Full {label} sleep video: {link}",
         "",
         f"{lead}." + (f" {line}." if line else ""),
-        asset.short_description,
+        # A narrated Short's description is its script, minus the closing pointer
+        # (the link above already says it).
+        script.rsplit(" The full ", 1)[0] if script else asset.short_description,
         "",
         f"Image: {asset.credit or asset.source}",
         f"Music: {music}",
@@ -347,30 +395,56 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         meta = backfill_meta(ledger, cfg, sorted({a for _, ids in picks for a in ids}))
         manifest = MusicLibrary(cfg.audio.library)
 
+        key = narration.api_key() if cfg.shorts.narration else None
+        if cfg.shorts.narration and not key:
+            log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
-            best = pick_best(cands, cache)
-            if best is None:
+            ranked = ranked_candidates(cands, cache)
+            if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
+            label = full_label(parent.link_seconds)
+            best, spoken = ranked[0], None
+            if key:
+                # The strongest frame whose caption makes a script; a pretty
+                # image with nothing to say loses to one with a story.
+                for cand in ranked:
+                    stem = f"{cfg.channel.slug}-short-{cand.asset_id.replace(':', '_')}"
+                    spoken = narrate(cand, cfg=cfg, link_label=label, work=work, stem=stem, key=key)
+                    if spoken:
+                        best = cand
+                        break
             stem = f"{cfg.channel.slug}-short-{best.asset_id.replace(':', '_')}"
+            dur = min(45.0, max(30.0, spoken[2] + 0.8 + 3.5)) if spoken else cfg.shorts.seconds
             # Composed: one fresh piece per Short, seeded by the image, so the
             # Short's music is as much its own as the long video's.
-            library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=cfg.shorts.seconds + 4,
+            library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=dur + 4,
                                        seed=best.asset_id) if cfg.audio.source == "composed" else manifest)
             audio, tracks = build_soundtrack(
-                library, genre=cfg.audio.genre, duration=cfg.shorts.seconds, out_path=work / f"{stem}.m4a",
+                library, genre=cfg.audio.genre, duration=dur, out_path=work / f"{stem}.m4a",
                 fade=1.5, crossfade=0.0, gain_db=0.0,
                 allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run", seed=best.asset_id,
             )
             if upload and any(not t.publishable for t in tracks):
                 raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
-            path = render_short(best, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio,
-                                link_label=full_label(parent.link_seconds), work_dir=work)
-            md = short_metadata(cfg, best, parent, tracks)
+            captions, cta_from, script = None, None, None
+            if spoken:
+                script, wav, secs = spoken
+                audio = narration.mix_voice(wav, audio, work / f"{stem}.mix.m4a", voice_start=0.8, duration=dur)
+                # Captions cover the facts; the closing pointer sentence is shown
+                # as the end card instead of as a caption.
+                body = script.rsplit(" The full ", 1)[0]
+                body_secs = secs * len(body) / max(len(script), 1)
+                captions = narration.caption_chunks(body, start=0.8, duration=body_secs)
+                cta_from = 0.8 + body_secs
+            path = render_short(best, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio, link_label=label, work_dir=work,
+                                duration=dur, captions=captions, cta_from=cta_from)
+            md = short_metadata(cfg, best, parent, tracks, script=script)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
-            log.info("short %s from %s -> %s", best.asset_id, parent.slug, vid or "(dry run)")
+            log.info("short %s from %s (%s) -> %s", best.asset_id, parent.slug,
+                     "narrated" if spoken else "music only", vid or "(dry run)")
             results.append(ShortResult(best.asset_id, parent.slug, path, vid, md.title))
     return results
