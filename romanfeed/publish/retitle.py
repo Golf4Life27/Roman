@@ -94,7 +94,7 @@ def _lead_source(title: str, description: str, skip: int = 0) -> tuple[str, str 
 
 def new_title(cfg: ChannelConfig, old_title: str, seconds: float, description: str = "", skip: int = 0) -> str:
     raw, said = _lead_source(old_title, description, skip)
-    lead = lead_name(raw)
+    lead = lead_name(raw, limit=60)
     tele = said or telescope_short(ImageAsset(asset_id="x:x", title=raw, url="", source=""))
     sleep = seconds >= 2 * 3600
     template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template

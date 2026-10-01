@@ -149,7 +149,8 @@ def test_cut_off_leads_use_the_full_chapter_and_skip_a_redundant_by():
     desc = OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 Webb’s View of the Molecular Cloud Chameleon I (Annotated)")
     t = rt.update_body(CFG, _video("W", "Webb’s View of the | Galaxies | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver", "PT1H", desc=desc))["snippet"]["title"]
     assert t.startswith("1 Hour Relaxing Space Music for Sleep · Webb’s View of the Molecular Cloud")
-    assert " by Webb" not in t and len(t) <= 100 and t.endswith(" · Telescope Screensaver")
+    # the whole name fits once the fixed tail phrase gives way
+    assert t == "1 Hour Relaxing Space Music for Sleep · Webb’s View of the Molecular Cloud Chameleon I"
 
 
 def test_two_videos_opening_on_the_same_image_get_different_titles():
