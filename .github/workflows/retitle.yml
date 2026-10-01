@@ -8,8 +8,11 @@
 # dry_run defaults to true: the log shows every before/after and nothing is
 # written. Re-run with dry_run false to apply (50 quota units per video).
 #
-# Reading uses the GOOGLE_TTS_API_KEY secret (public data, no OAuth scope);
-# writing uses the upload token already in YOUTUBE_TOKEN_JSON.
+# Reading uses the GOOGLE_TTS_API_KEY secret (public data, no OAuth scope).
+# WRITING NEEDS youtube.force-ssl: measured 2026-10-01, videos.update with the
+# upload-only token answers 403 insufficientPermissions. Adding force-ssl to
+# the production OAuth app requires Google's app review (demo video), so until
+# then run this as a dry run and paste the printed titles into Studio by hand.
 name: Retitle videos
 on:
   workflow_dispatch:

@@ -19,7 +19,9 @@ config. This brings the back catalogue in line, from what YouTube itself holds
 Shorts (60 s or less) are left alone. Reading uses the project API key
 (GOOGLE_TTS_API_KEY): public videos need no OAuth scope, and adding
 youtube.force-ssl to a production app now means Google's app review. Without
-the key it falls back to a force-ssl token. Writing is one
+the key it falls back to a force-ssl token. WRITING needs force-ssl too: the
+upload-only token gets 403 insufficientPermissions on videos.update (measured
+2026-10-01), so without it this is a preview tool. Writing is one
 videos.update (50 quota units) per changed video. Dry run is the default in
 the workflow: it prints every before/after and writes nothing."""
 from __future__ import annotations
