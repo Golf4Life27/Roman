@@ -128,3 +128,18 @@ def test_reads_by_handle_with_the_key_and_writes_with_the_token():
     assert rt.retitle(CFG, None, dry_run=False, yt=writer, reader=reader) == 0
     assert seen == {"forHandle": "@SpaceScreens"}
     assert [b["id"] for b in writer.updates] == ["A"] and reader.updates == []
+
+
+def test_subject_first_titles_take_the_lead_from_the_first_chapter():
+    v = _video("G", "Galaxies | 8 Hours Relaxing Space Video for Sleep | Real Telescope Screensaver", "PT8H",
+               desc=OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 A glimmer from a dark cosmic era"))
+    assert rt.update_body(CFG, v)["snippet"]["title"] == "8 Hours Deep Sleep Music · Fall Asleep in Space · A glimmer from a dark cosmic era"
+
+
+def test_long_descriptions_shed_chapters_not_the_new_opening():
+    chapters = "\n".join(f"{i // 60}:{i % 60:02d} Image number {i} with a fairly long archive title attached" for i in range(0, 80 * 45, 45))
+    desc = OLD_DESC.replace("0:00 b'Carina Nebula'\n0:45 Ring Nebula", chapters)
+    s = rt.update_body(CFG, _video("L", "Carina Nebula | Nebulae | 8 Hours Relaxing Space Video for Sleep | Telescope Screensaver", "PT8H", desc=desc))["snippet"]
+    assert len(s["description"]) <= 5000
+    assert s["description"].startswith("8 Hours of deep sleep music")
+    assert "- NASA, ESA, CSA, STScI" in s["description"] and "\n…\n" in s["description"]

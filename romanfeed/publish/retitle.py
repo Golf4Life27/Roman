@@ -66,8 +66,25 @@ def _old_lead(title: str) -> tuple[str, str | None]:
     return title.split(" | ")[0].strip(), None
 
 
-def new_title(cfg: ChannelConfig, old_title: str, seconds: float) -> str:
-    raw, said = _old_lead(old_title)
+# The earliest uploads led with the subject, not the image ("Galaxies | 8 Hours
+# ..."). Retitling those from the title alone would name five videos
+# "Galaxies"; their first chapter is the image the video opens on.
+GENERIC_LEADS = {"nebulae", "galaxies", "star clusters", "deep fields", "planets", "deep space",
+                 "roman telescope images", "space", "space screens"}
+_FIRST_CHAPTER = re.compile(r"^0:00\s+(.+)$", re.M)
+
+
+def _lead_source(title: str, description: str) -> tuple[str, str | None]:
+    raw, said = _old_lead(title)
+    if raw.lower() in GENERIC_LEADS or not raw:
+        m = _FIRST_CHAPTER.search(repair_text(description or ""))
+        if m:
+            return m.group(1).strip(), None
+    return raw, said
+
+
+def new_title(cfg: ChannelConfig, old_title: str, seconds: float, description: str = "") -> str:
+    raw, said = _lead_source(old_title, description)
     lead = lead_name(raw)
     tele = said or telescope_short(ImageAsset(asset_id="x:x", title=raw, url="", source=""))
     sleep = seconds >= 2 * 3600
@@ -104,7 +121,18 @@ def new_description(cfg: ChannelConfig, old: str, *, seconds: float, lead: str) 
     if HASHTAGS not in body:
         body = body.rstrip() + "\n\n" + HASHTAGS
     out = "\n\n".join(head) + "\n\n" + body.strip() + "\n"
-    return out if len(out) <= 5000 else text  # never truncate credits to fit a hook
+    # Over YouTube's 5000 characters: chapters give way from the end (credits
+    # are a licence condition and stay), with a line saying the list goes on.
+    lines = out.split("\n")
+    chapter_idx = [i for i, ln in enumerate(lines) if _CHAPTER.match(ln + " ")]
+    dropped = False
+    while len("\n".join(lines)) > 4990 and len(chapter_idx) > 1:
+        lines.pop(chapter_idx.pop())
+        dropped = True
+    if dropped:
+        lines.insert(chapter_idx[-1] + 1, "…")
+    out = "\n".join(lines)
+    return out if len(out) <= 5000 else text
 
 
 def update_body(cfg: ChannelConfig, video: dict) -> dict | None:
@@ -113,8 +141,9 @@ def update_body(cfg: ChannelConfig, video: dict) -> dict | None:
     seconds = iso_seconds((video.get("contentDetails") or {}).get("duration", ""))
     if seconds <= 60 or "#shorts" in (snip.get("description") or "").lower():
         return None
-    title = new_title(cfg, snip.get("title", ""), seconds)
-    desc = new_description(cfg, snip.get("description", ""), seconds=seconds, lead=lead_name(_old_lead(snip.get("title", ""))[0]))
+    title = new_title(cfg, snip.get("title", ""), seconds, snip.get("description", ""))
+    desc = new_description(cfg, snip.get("description", ""), seconds=seconds,
+                           lead=lead_name(_lead_source(snip.get("title", ""), snip.get("description", ""))[0]))
     tags = list(dict.fromkeys((snip.get("tags") or []) + SLEEP_TAGS))
     while len(",".join(tags)) > 450 and len(tags) > 1:  # YouTube caps tags at ~500 characters
         tags.pop()
