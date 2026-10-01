@@ -113,3 +113,18 @@ def test_missing_scope_exits_2(capsys):
 
     assert rt.retitle(CFG, ["A"], yt=YT([])) == 2
     assert "manage" in capsys.readouterr().out
+
+
+def test_reads_by_handle_with_the_key_and_writes_with_the_token():
+    vids = [_video("A", "Carina Nebula | Nebulae | 8 Hours Relaxing Space Video for Sleep | Telescope Screensaver", "PT8H")]
+    seen = {}
+
+    class Reader(FakeYT):
+        def list(self, part, **kw):
+            seen.update(kw) if "forHandle" in kw or "mine" in kw else None
+            return super().list(part, **{("mine" if k == "forHandle" else k): v for k, v in kw.items()})
+
+    reader, writer = Reader(vids), FakeYT([])
+    assert rt.retitle(CFG, None, dry_run=False, yt=writer, reader=reader) == 0
+    assert seen == {"forHandle": "@SpaceScreens"}
+    assert [b["id"] for b in writer.updates] == ["A"] and reader.updates == []

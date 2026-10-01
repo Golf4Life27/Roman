@@ -175,3 +175,26 @@ def _upload(video_path: Path, body: dict, *, thumbnail: Path | None = None) -> s
         except Exception as exc:  # googleapiclient HttpError, IO, anything
             log.warning("could not set thumbnail on %s (%s): %s", vid, thumbnail, exc)
     return vid
+
+
+def api_key() -> str | None:
+    """The project's Google API key (the GOOGLE_TTS_API_KEY secret).
+
+    One key serves the voice and every *public* YouTube read -- a channel's
+    subscriber count, its uploads, a public video's title, description and
+    tags -- with no OAuth scope at all. That is what lets the retitle tool and
+    the weekly report run on the upload-only token: adding youtube.force-ssl
+    to a production app now demands Google's app review with a demo video."""
+    import os
+
+    return os.environ.get("GOOGLE_TTS_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip() or None
+
+
+def public_client(key: str | None = None):
+    """Data API client authorised by API key: public data only, no user token."""
+    from googleapiclient.discovery import build
+
+    key = key or api_key()
+    if not key:
+        raise RuntimeError("no Google API key: set the GOOGLE_TTS_API_KEY secret")
+    return build("youtube", "v3", developerKey=key, cache_discovery=False)

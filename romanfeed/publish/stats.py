@@ -104,6 +104,10 @@ class ChannelStats:
     watch_hours_12m: float
     daily_hours: list[tuple[date, float]] = field(default_factory=list)
     top_videos: list[TopVideo] = field(default_factory=list)
+    # False when only public numbers were available (API key, no Analytics
+    # permission): then the week's change comes from ledger snapshots.
+    has_analytics: bool = True
+    week_ago: tuple[str, int, int, int] | None = None   # (date, subscribers, views, videos)
 
 
 @dataclass
@@ -231,8 +235,36 @@ def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
     )
 
 
+def channel_counts(yt_public, handle: str) -> tuple[int, int, int]:
+    """(subscribers, views, videos) from public data, by handle."""
+    items = yt_public.channels().list(part="statistics", forHandle=handle).execute().get("items") or []
+    st = (items[0] if items else {}).get("statistics", {})
+    return int(st.get("subscriberCount", 0) or 0), int(st.get("viewCount", 0) or 0), int(st.get("videoCount", 0) or 0)
+
+
+def fetch_public_stats(today: date, *, yt_public, ledger, handle: str) -> ChannelStats:
+    """What the week looks like from public numbers alone.
+
+    Subscribers, views and video count are public; watch time is not (it needs
+    the Analytics permission, which Google now gates behind an app review).
+    Today's counts are saved to the ledger, and the report compares them with
+    the latest snapshot from at least seven days ago."""
+    subs, views, videos = channel_counts(yt_public, handle)
+    ledger.record_snapshot(today.isoformat(), subs, views, videos)
+    week_ago = ledger.snapshot_on_or_before((today - timedelta(days=7)).isoformat())
+    empty = Window(today - timedelta(days=6), today)
+    return ChannelStats(subscribers=subs, video_count=videos, view_count=views, last7=empty, prev7=empty,
+                        watch_hours_12m=0.0, has_analytics=False, week_ago=week_ago)
+
+
 def live_trigger(stats: ChannelStats) -> tuple[bool, str]:
     """Is it time to switch on the nightly live stream? And the measured why."""
+    if not stats.has_analytics:
+        by_subs = stats.subscribers >= LIVE_TRIGGER_SUBSCRIBERS
+        detail = f"{stats.subscribers:,}/{LIVE_TRIGGER_SUBSCRIBERS} subscribers (watch hours/day not readable without Analytics)"
+        if by_subs:
+            return True, f"TRIGGER MET: ask Claude to switch on the nightly stream. ({detail})"
+        return False, f"Not met yet: {detail}."
     hours_per_day = stats.last7.watch_hours / stats.last7.days
     by_subs = stats.subscribers >= LIVE_TRIGGER_SUBSCRIBERS
     by_hours = hours_per_day >= LIVE_TRIGGER_WATCH_HOURS_PER_DAY
@@ -258,8 +290,38 @@ def _mmss(seconds: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+def _public_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
+    left = days_left(today)
+    _, trigger = live_trigger(stats)
+    rows = [("Now", f"{stats.subscribers:,} of {GOAL_SUBSCRIBERS:,} ({stats.subscribers / GOAL_SUBSCRIBERS:.1%})"),
+            ("Needed", f"{required_per_day(stats.subscribers, GOAL_SUBSCRIBERS, today):,.1f}/day")]
+    views_rows = [("Lifetime", f"{stats.view_count:,} views across {stats.video_count:,} videos")]
+    if stats.week_ago:
+        then, subs0, views0, _ = stats.week_ago
+        days = max((today - date.fromisoformat(then)).days, 1)
+        pace = Pace(stats.subscribers, GOAL_SUBSCRIBERS, left, (stats.subscribers - subs0) / days)
+        rows += [(f"Since {then}", f"{_signed(stats.subscribers - subs0)} ({pace.actual_per_day:,.1f}/day)"),
+                 ("Pace", pace.verdict("subscribers"))]
+        new_views = stats.view_count - views0
+        views_rows.append((f"Since {then}", f"{_signed(new_views)} views"))
+        if stats.subscribers - subs0 > 0:
+            views_rows.append(("Views per new subscriber", f"{new_views / (stats.subscribers - subs0):,.0f}"))
+    else:
+        rows.append(("Pace", "first snapshot taken today; next week's report shows the change"))
+    return [
+        (f"Goal: YouTube Partner Program by {GOAL_DATE:%Y-%m-%d}", [("Days left", f"{left:,}")]),
+        ("Subscribers", rows),
+        ("Views", views_rows),
+        ("Watch hours", [("Now", "not readable yet: YouTube's watch-time data needs the Analytics permission, "
+                                 "which Google gates behind an app review. Studio > Analytics shows it.")]),
+        ("Live stream trigger (100 subscribers OR 15 watch hours/day)", [("Status", trigger)]),
+    ]
+
+
 def _sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     """The report as (heading, [(label, value)]) -- shared by text and HTML."""
+    if not stats.has_analytics:
+        return _public_sections(stats, today)
     left = days_left(today)
     l7, p7 = stats.last7, stats.prev7
     subs = Pace(stats.subscribers, GOAL_SUBSCRIBERS, left, l7.net_subs / l7.days)
@@ -308,14 +370,19 @@ def report(stats: ChannelStats, today: date) -> tuple[str, str, str]:
     """(subject, plain text, HTML) for one weekly email. Measured numbers only."""
     met, _ = live_trigger(stats)
     l7 = stats.last7
-    subject = (f"{CHANNEL_NAME} weekly: {stats.subscribers:,} subs ({_signed(l7.net_subs)}), "
-               f"{stats.watch_hours_12m:,.1f} watch hrs")
+    if stats.has_analytics:
+        subject = (f"{CHANNEL_NAME} weekly: {stats.subscribers:,} subs ({_signed(l7.net_subs)}), "
+                   f"{stats.watch_hours_12m:,.1f} watch hrs")
+    else:
+        change = f" ({_signed(stats.subscribers - stats.week_ago[1])} this week)" if stats.week_ago else ""
+        subject = f"{CHANNEL_NAME} weekly: {stats.subscribers:,} subscribers{change}, {stats.view_count:,} views"
     if met:
         subject = "LIVE STREAM TRIGGER MET -- " + subject
 
     sections = _sections(stats, today)
     lag = (f"Analytics covers through {l7.end:%Y-%m-%d} (YouTube data lags 2-3 days); "
-           f"subscriber count is live as of {today:%Y-%m-%d}.")
+           f"subscriber count is live as of {today:%Y-%m-%d}." if stats.has_analytics
+           else f"Public channel numbers, live as of {today:%Y-%m-%d}.")
 
     lines = [f"{CHANNEL_NAME} -- weekly stats, {today:%a %Y-%m-%d}", lag, ""]
     for heading, rows in sections:

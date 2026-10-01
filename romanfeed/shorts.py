@@ -356,6 +356,20 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     )
 
 
+def _snapshot(ledger: Ledger, cfg: ChannelConfig, today: str) -> None:
+    """Note today's public subscriber/view counts for the weekly report (1 quota unit)."""
+    from romanfeed.publish.youtube import api_key, public_client
+
+    if not (api_key() and cfg.channel.handle):
+        return
+    try:
+        from romanfeed.publish.stats import channel_counts
+
+        ledger.record_snapshot(today, *channel_counts(public_client(), cfg.channel.handle))
+    except Exception as exc:  # a stats hiccup must never cost a Short
+        log.warning("channel snapshot failed: %s", exc)
+
+
 def shorts_today(ledger: Ledger, channel: str, today: str) -> int:
     row = ledger.conn.execute(
         "SELECT COUNT(*) FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL AND created_at LIKE ?",
@@ -383,6 +397,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
     results: list[ShortResult] = []
 
     with Ledger(data_dir / "state.db") as ledger:
+        _snapshot(ledger, cfg, today)
         room = max(cfg.shorts.per_day - shorts_today(ledger, cfg.channel.slug, today), 0)
         want = room if count is None else min(count, room)
         if want <= 0:
