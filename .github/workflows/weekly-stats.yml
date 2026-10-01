@@ -12,8 +12,10 @@
 #   variable STATS_EMAIL_TO      recipient. A variable, not a literal: this is a
 #                                public repo and the address stays out of it.
 #
-# Missing SMTP settings do not fail the run: the report is printed to the log
-# and the job summary with a warning, so the numbers are still one click away.
+# Delivery without any email setup: every real run opens a GitHub issue with
+# the report and @mentions the repo owner, and GitHub emails that mention to
+# the owner's GitHub address. Last week's issue is closed so only the current
+# one stays open. The SMTP route above is optional on top of that.
 name: Weekly stats
 on:
   schedule:
@@ -24,6 +26,9 @@ on:
         description: print the report only, send no email
         type: boolean
         default: false
+permissions:
+  contents: read
+  issues: write
 jobs:
   stats:
     runs-on: ubuntu-latest
@@ -59,7 +64,7 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             args="--dry-run"
           elif [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ] || [ -z "$STATS_EMAIL_TO" ]; then
-            echo "::warning::SMTP_USER / SMTP_PASSWORD secrets or STATS_EMAIL_TO variable not set; printing the report without emailing it (docs/STATS_EMAIL.md)"
+            echo "SMTP not set up; the report goes out as a GitHub issue instead"
             args=""
           fi
           python -m romanfeed stats $args | tee report.txt
@@ -69,3 +74,22 @@ jobs:
             cat report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Post as a GitHub issue (GitHub emails the mention)
+        if: ${{ inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          title="$(head -n1 report.txt | sed 's/^Subject: //')"
+          for n in $(gh issue list --label weekly-stats --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Superseded by this week's report."
+          done
+          gh label create weekly-stats --color 0E8A16 --description "Weekly channel stats" 2>/dev/null || true
+          {
+            echo "@$OWNER here are this week's numbers."
+            echo
+            echo '```'
+            tail -n +2 report.txt
+            echo '```'
+          } > body.md
+          gh issue create --title "$title" --body-file body.md --label weekly-stats

@@ -1,5 +1,7 @@
 # Weekly stats email (one time, ~15 minutes)
 
+> **No email setup needed.** Each Monday the workflow opens a GitHub issue with the report and @mentions the repo owner; GitHub emails that to the owner's GitHub address. The only setup is the token re-mint (step 1 below). The SMTP steps are optional, for sending to a different address.
+
 Every Monday at 8:07 AM Central the **Weekly stats** workflow
 (`.github/workflows/weekly-stats.yml`) emails the numbers that decide the
 YouTube Partner Program goal, so there is no need to open YouTube Studio:
