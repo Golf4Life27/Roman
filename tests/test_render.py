@@ -136,7 +136,7 @@ def test_render_video_with_clips_deletes_the_silent_intermediate(sample_asset, t
     audio = synth_placeholder(work / "a.m4a", 3).path
     out = tmp_path / "final.mp4"
 
-    path, clips = render_video_with_clips(
+    path, clips, _ = render_video_with_clips(
         [sample_asset, sample_asset], cfg, work_dir=work, audio_path=audio,
         out_path=out, seconds_per_image=1,
     )
@@ -157,6 +157,6 @@ def test_render_video_with_clips_keeps_output_when_there_is_no_audio(sample_asse
     work = tmp_path / "work"
     work.mkdir()
     out = tmp_path / "silent-final.mp4"
-    path, _ = render_video_with_clips([sample_asset], cfg, work_dir=work, audio_path=None, out_path=out, seconds_per_image=1)
+    path, _, _ = render_video_with_clips([sample_asset], cfg, work_dir=work, audio_path=None, out_path=out, seconds_per_image=1)
     assert path.exists()
     assert not (work / "silent.mp4").exists()       # moved, not copied

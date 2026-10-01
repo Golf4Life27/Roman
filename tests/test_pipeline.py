@@ -37,7 +37,7 @@ def stub_run(monkeypatch, sample_asset, tmp_path):
         out.write_bytes(b"audio")
         return out, [track]
 
-    def fake_render(assets, cfg, *, work_dir, audio_path, out_path, seconds_per_image=None):
+    def fake_render(assets, cfg, *, work_dir, audio_path, out_path, seconds_per_image=None, opener=False):
         clips_dir = Path(work_dir) / "clips"
         clips_dir.mkdir(parents=True, exist_ok=True)
         clips = []
@@ -49,7 +49,9 @@ def stub_run(monkeypatch, sample_asset, tmp_path):
         (Path(work_dir) / "silent.mp4").write_bytes(b"silent")
         Path(out_path).write_bytes(b"video")
         (Path(work_dir) / "silent.mp4").unlink()
-        return Path(out_path), clips
+        first = clips_dir / "opener.mp4"
+        first.write_bytes(b"opener")
+        return Path(out_path), clips, first
 
     def fake_concat(clips, out_path):
         Path(out_path).write_bytes(b"silent" * len(clips))
@@ -65,10 +67,11 @@ def stub_run(monkeypatch, sample_asset, tmp_path):
 
     monkeypatch.setattr(pipeline, "build_source", lambda s: types.SimpleNamespace(name="stub", fetch=lambda: [sample_asset]))
     monkeypatch.setattr(pipeline, "select_assets", lambda *a, **kw: [sample_asset, sample_asset])
-    monkeypatch.setattr(pipeline, "MusicLibrary", lambda path: object())
+    monkeypatch.setattr(pipeline, "open_library", lambda *a, **kw: object())
     monkeypatch.setattr(pipeline, "build_soundtrack", fake_soundtrack)
     monkeypatch.setattr(pipeline, "render_video_with_clips", fake_render)
     monkeypatch.setattr(pipeline, "concat_clips", fake_concat)
+    monkeypatch.setattr(pipeline, "render_dark_clip", lambda cfg, work, seconds_per_image=None: (Path(work) / "clips" / "dark.mp4"))
     monkeypatch.setattr(pipeline, "mux_audio", fake_mux)
     monkeypatch.setattr(pipeline, "probe_duration", lambda p: 60.0)
     monkeypatch.setattr(pipeline, "build_metadata", lambda *a, **kw: types.SimpleNamespace(title="T", privacy="private"))

@@ -24,9 +24,9 @@ What keeps us on the right side, and what the pipeline does about it:
 |---|---|
 | Per-video substance: captions with object, instrument, date; chaptered description with credits | Built (captions + chapters + credits) |
 | Materially varied videos: different subject mix daily, no repeats until pool cycles | Built (ledger + seeded selection) |
-| Original music composed/owned for the channel, not a library loop | **Open** — see §4 |
+| Original music composed/owned for the channel, not a library loop | **Built, not yet switched on** — `romanfeed/audio/composer.py` writes a unique seeded ambient score per run (licence `owned`, nothing for Content ID to match). Switch with `audio.source: composed` in the channel YAML once the owner has listened (see §4) |
 | Real motion design beyond Ken Burns (parallax, depth, grading) | Roadmap |
-| Short spoken or text intro explaining what you're about to see | Roadmap |
+| Short spoken or text intro explaining what you're about to see | **Built** — every long video opens with a 12 s card naming the object and the telescope that imaged it (`romanfeed/render/cards.py`, `romanfeed/telescopes.py`), then a subscribe prompt at 14–40 s |
 | Cadence: daily is above niche norm and raises the mass-production flag | Consider daily + weekly "hero" renders |
 
 ## 3. AI disclosure
@@ -49,6 +49,17 @@ never carry the insignia.
 - **YouTube Audio Library** is safe for YPP members but shared with thousands
   of channels.
 - **Uppbeat** paid plans safelist channels; passive-listening clause unverified.
+
+- **In-house composer** (`romanfeed/audio/composer.py`) is the strongest
+  position we can hold ourselves: code we wrote renders every note, each
+  video's pieces come from a fresh seed (date + piece number), and nothing is
+  uploaded anywhere as a reference, so Content ID has nothing to match.
+  Licence `owned`. Preview with `romanfeed compose sample.m4a --seconds 180
+  --seed anything`; enable per channel with `audio.source: composed`
+  (`composed_pieces` x `composed_seconds`, default 8 x 450 s = 60 min,
+  crossfaded by the normal soundtrack builder). The pipeline builds its
+  library through `romanfeed.audio.composer.open_library(cfg.audio, ...)`
+  for the switch to take effect.
 
 Pipeline enforcement: every track must be in `assets/music/manifest.yaml`
 with a licence of `owned | generated | licensed | cc0`; anything else

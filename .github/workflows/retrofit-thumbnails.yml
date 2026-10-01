@@ -23,6 +23,9 @@ on:
       videos:
         description: "space-separated video_id:LENGTH pairs, e.g. Rsq_ObqR7K4:'8 HOURS' B_gKq9iqD3I:'1 HOUR'"
         required: true
+      subject:
+        description: 'small line under the length (blank = "SPACE FOR SLEEP"), e.g. DEEP SLEEP MUSIC'
+        default: ""
       dry_run:
         description: build the jpgs and send nothing
         type: boolean
@@ -54,6 +57,7 @@ jobs:
           YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
           VIDEOS: ${{ inputs.videos }}
           DRY_RUN: ${{ inputs.dry_run }}
+          SUBJECT: ${{ inputs.subject }}
         run: |
           python - <<'PY'
           import os, shlex, subprocess, sys
@@ -117,6 +121,8 @@ jobs:
                   continue
 
               cmd = [sys.executable, "-m", "romanfeed", "thumbnails", vid, str(out), "--length", length]
+              if os.environ.get("SUBJECT", "").strip():
+                  cmd += ["--subject", os.environ["SUBJECT"].strip()]
               if dry:
                   cmd.append("--dry-run")
               rc = subprocess.run(cmd).returncode

@@ -11,17 +11,19 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from romanfeed.audio import MusicLibrary, build_soundtrack
+from romanfeed.audio import build_soundtrack
+from romanfeed.audio.composer import open_library
 from romanfeed.config import ChannelConfig
 from romanfeed.curation import select_assets
 from romanfeed.publish import build_metadata, publish
 from romanfeed.publish.metadata import length_text
 from romanfeed.render import render_video_with_clips
-from romanfeed.render.compose import concat_clips, mux_audio, repeat_order
+from romanfeed.render.compose import concat_clips, mux_audio, render_dark_clip, repeat_order, sleep_cut_sequence
 from romanfeed.render.ffmpeg import probe_duration
 from romanfeed.render.thumbnail import make_thumbnail
 from romanfeed.sources import build_source
 from romanfeed.state import Ledger, VideoRecord
+from romanfeed.telescopes import prefer_known_lead
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +41,10 @@ def log_disk_free(path: Path, where: str) -> None:
     log.info("disk free: %.1f GB (%s)", free / (1024 ** 3), where)
 
 
-def build_thumbnail(assets, seconds: float, out_path: Path) -> Path | None:
+SLEEP_THUMB_LINE = "DEEP SLEEP · DARK SCREEN"
+
+
+def build_thumbnail(assets, seconds: float, out_path: Path, *, subject: str | None = None) -> Path | None:
     """Thumbnail from the cut's first image -- the one its {lead} title names --
     with the cut's length as the headline. A failure here costs the custom
     thumbnail, not the video, so it is logged and the upload goes ahead."""
@@ -48,6 +53,8 @@ def build_thumbnail(assets, seconds: float, out_path: Path) -> Path | None:
         log.warning("no lead image on disk for %s; uploading without a custom thumbnail", out_path.name)
         return None
     try:
+        if subject:
+            return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds), subject=subject)
         return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds))
     except Exception as exc:  # Pillow on a corrupt file, disk full
         log.warning("thumbnail failed for %s: %s", out_path.name, exc)
@@ -114,10 +121,14 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         )
         if not assets:
             raise RuntimeError("no usable images after curation")
+        # The lead opens the video with the intro card, which names its telescope.
+        assets = prefer_known_lead(assets)
 
         # 3. soundtrack
         target = spi * len(assets)
-        library = MusicLibrary(cfg.audio.library)
+        # audio.source picks the licensed manifest or freshly composed,
+        # owned pieces (romanfeed.audio.composer); the 8h cut reuses it.
+        library = open_library(cfg.audio, work_dir=work, seed=opts.seed or today)
         audio_path, tracks = build_soundtrack(
             library, genre=cfg.audio.genre, duration=target, out_path=work / "soundtrack.m4a",
             fade=cfg.audio.fade_seconds, crossfade=cfg.audio.crossfade_seconds, gain_db=cfg.audio.gain_db,
@@ -129,9 +140,9 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         # full render.
         video_path = out_dir / f"{slug}.mp4"
         log_disk_free(out_dir, "before render")
-        _, clips = render_video_with_clips(
+        _, clips, opener = render_video_with_clips(
             assets, cfg, work_dir=work, audio_path=audio_path,
-            out_path=video_path, seconds_per_image=spi,
+            out_path=video_path, seconds_per_image=spi, opener=True,
         )
         duration = probe_duration(str(video_path))
 
@@ -149,11 +160,16 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         # 4b. extra-length cuts of the same asset set (skipped on smoke tests)
         extra_cuts: list[tuple[float, Path, str | None]] = []
         wanted = [] if opts.private_test else list(cfg.video.extra_lengths_hours)
+        dark_after = cfg.video.sleep_dark_after_minutes * 60
+        dark = render_dark_clip(cfg, work, seconds_per_image=spi) if wanted and dark_after > 0 else None
         for hours in wanted:
             base_len = spi * len(assets)
             passes = max(1, math.ceil((hours * 3600) / base_len))
             order = repeat_order(len(assets), passes, seed=opts.seed or today)
-            cut_assets = [assets[i] for i in order]
+            seq, n_shown = sleep_cut_sequence(order, clips, opener=opener, dark=dark,
+                                              seconds_per_image=spi, dark_after_s=dark_after)
+            cut_assets = [assets[i] for i in order[:n_shown]]
+            cut_total = spi * len(order)
             cut_slug = f"{slug}-{hours:g}h"
             log.info("cut %sh: %d clips (%d passes over %d images)", f"{hours:g}", len(order), passes, len(assets))
             log_disk_free(out_dir, f"before {hours:g}h cut")
@@ -168,13 +184,16 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
                 raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
 
             cut_path = out_dir / f"{cut_slug}.mp4"
-            silent_cut = concat_clips([clips[i] for i in order], work / f"silent-{hours:g}h.mp4")
+            silent_cut = concat_clips(seq, work / f"silent-{hours:g}h.mp4")
             # No +faststart: it would make ffmpeg write a second full-size
             # temp copy of a ~13 GB file, and YouTube re-encodes on ingest.
             mux_audio(silent_cut, cut_audio, cut_path, faststart=False)
             silent_cut.unlink(missing_ok=True)  # freed before the next cut starts
-            cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets))
-            cut_thumb = build_thumbnail(cut_assets, spi * len(cut_assets), out_dir / f"{cut_slug}.thumb.jpg")
+            cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets),
+                                      total_seconds=cut_total, sleep=True,
+                                      dark_after=spi * n_shown if n_shown < len(order) else None)
+            cut_thumb = build_thumbnail(cut_assets, cut_total, out_dir / f"{cut_slug}.thumb.jpg",
+                                        subject=SLEEP_THUMB_LINE if n_shown < len(order) else None)
             cut_id = publish(cut_path, cut_meta, mode=mode, thumbnail=cut_thumb)
             log_disk_free(out_dir, f"after {hours:g}h upload")
             extra_cuts.append((hours, cut_path, cut_id))
@@ -189,6 +208,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 6. record
         ledger.mark_assets_used(cfg.channel.slug, [a.asset_id for a in assets], slug)
+        ledger.record_video_assets(slug, assets)
         ledger.record_video(VideoRecord(
             video_slug=slug, channel=cfg.channel.slug, path=str(video_path), duration_s=duration,
             rendered_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),

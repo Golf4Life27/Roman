@@ -96,10 +96,10 @@ For real uploads set `publish.mode: upload` in the channel config (leave
 Watch the first ones in Studio, set them Public by hand, and once the
 audit clears change `publish.privacy` to `public` for a hands-off loop.
 
-## 8. Widening the token to edit videos already uploaded
+## 8. Widening the token (edit videos already uploaded, weekly stats)
 
-Only needed for the **Fix video metadata** workflow, and only for its
-`fix-descriptions` action.
+Needed for the **Fix video metadata** workflow's `fix-descriptions` action and
+for the **Weekly stats** email (docs/STATS_EMAIL.md).
 
 `youtube.upload` is write-only: it can insert a video and it is accepted by
 `videos.update`, but it cannot *read* a video back, so `videos.list` returns
@@ -110,26 +110,44 @@ the current one first, so that action needs a wider token.
 python -m romanfeed auth --scope manage
 ```
 
-That asks for `youtube.upload` **and** `youtube.force-ssl` together — the
+That asks for `youtube.upload`, `youtube.force-ssl` **and**
+`yt-analytics.readonly` together. The analytics scope is read-only and lets
+the weekly stats email read watch time, views and subscriber churn from the
+YouTube Analytics API; the subscriber count itself comes from the Data API
+under force-ssl.
+
+On the upload/force-ssl pair: the
 force-ssl scope alone would cover every call we make (upload, list, update,
 thumbnails.set, delete), but a token granted only force-ssl makes the daily
 upload path fail on refresh: it asks for `youtube.upload` by name and
 google-auth refuses a refresh whose granted scopes do not include it. Keeping
 both scopes on one token means nothing else has to change.
 
-Before running it, add `https://www.googleapis.com/auth/youtube.force-ssl` to
-**Google Auth Platform → Data Access → Add or remove scopes** (step 2.3),
-otherwise consent comes back with the upload scope only. Then paste the new
-`secrets/youtube.token.json` over the `YOUTUBE_TOKEN_JSON` secret (step 5).
+Before running it:
+
+1. Add `https://www.googleapis.com/auth/youtube.force-ssl` and
+   `https://www.googleapis.com/auth/yt-analytics.readonly` to
+   **Google Auth Platform → Data Access → Add or remove scopes** (step 2.3),
+   otherwise consent comes back with the upload scope only.
+2. **APIs & Services → Library** → "YouTube Analytics API" → **Enable**
+   (the Data API from step 1.2 does not cover it).
+
+Then paste the new `secrets/youtube.token.json` over the `YOUTUBE_TOKEN_JSON`
+secret (step 5). **This step is required** — the workflows read the secret,
+not your local file. The upload scope stays on the re-minted token, so the
+daily uploads keep working unchanged.
 
 Note for the API audit (step 6): the audit request described `youtube.upload`
-only. force-ssl is a sensitive scope, so mention the widening if the audit is
-still open.
+only. force-ssl is a sensitive scope (yt-analytics.readonly is read-only), so
+mention the widening if the audit is still open.
 
 ## Troubleshooting
 
-- `insufficientPermissions` on `romanfeed fix-metadata` → the token predates
-  step 8. Re-mint with `--scope manage` and update the secret.
+- `insufficientPermissions` on `romanfeed fix-metadata` or `romanfeed stats`
+  → the token predates step 8 (or predates the analytics scope being added to
+  it). Re-mint with `--scope manage` and update the secret.
+- `accessNotConfigured` on `romanfeed stats` → the YouTube Analytics API is
+  not enabled on the Cloud project (step 8, item 2).
 - `youtubeSignupRequired` on upload → the token was minted by an account
   with no YouTube channel. Re-run step 4 signed in as the channel owner.
 - `invalid_grant` / token expired after a week → the consent screen is still

@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily library sync for the Space Screens live stream (15:00 Chicago)
+
+[Timer]
+# The render workflow starts 03:00 UTC Mon/Wed/Fri and finishes within ~5 h;
+# its artifact lives 3 days. 15:00 Chicago is long after any render lands and
+# leaves hours for the transcode before the 21:00 stream.
+OnCalendar=*-*-* 15:00:00 America/Chicago
+# A missed sync is harmless to run late (the artifacts outlive a day).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

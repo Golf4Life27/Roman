@@ -12,6 +12,7 @@ dependencies = [
     "pyyaml>=6",
     "requests>=2.31",
     "imageio-ffmpeg>=0.5",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]

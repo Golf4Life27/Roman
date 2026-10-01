@@ -19,6 +19,7 @@ class ChannelInfo:
     slug: str
     name: str
     tagline: str = ""
+    handle: str = ""  # e.g. "@SpaceScreens"; used in on-screen prompts and links
 
 
 @dataclass
@@ -36,6 +37,16 @@ class VideoSettings:
     extra_lengths_hours: list[float] = field(default_factory=list)
     crf: int = 20
     preset: str = "veryfast"
+    # Opening of every long video: an intro card naming the object and the
+    # telescope for `intro_seconds`, then the channel's subscribe prompt between
+    # subscribe_from and subscribe_until (seconds). 0 turns either off.
+    intro_seconds: float = 12.0
+    subscribe_from: float = 14.0
+    subscribe_until: float = 40.0
+    subscribe_line: str = "Space to fall asleep to, every week"
+    # Sleep cuts (the extra lengths) fade to black after this many minutes and
+    # the music plays on, so the screen does not keep a sleeper awake. 0 = off.
+    sleep_dark_after_minutes: float = 0.0
 
     @property
     def duration_seconds(self) -> float:
@@ -60,6 +71,11 @@ class AudioSettings:
     crossfade_seconds: float = 0.0
     gain_db: float = -6.0
     allow_placeholder: bool = False
+    # "library": tracks from the licensed manifest above. "composed": original
+    # pieces written per run by romanfeed.audio.composer (licence "owned").
+    source: str = "library"
+    composed_pieces: int = 8
+    composed_seconds: float = 450.0
 
 
 @dataclass
@@ -68,9 +84,62 @@ class PublishSettings:
     privacy: str = "private"  # private | unlisted | public
     category_id: str = "28"  # Science & Technology
     title_template: str = "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
+    # Title for the extra-length sleep cuts; blank = title_template.
+    sleep_title_template: str = ""
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False
+
+
+# Absolute ceiling on one night's stream. YouTube only auto-archives a live
+# stream as a VOD when it runs under 12 hours; past that the recording is
+# lost. 11.5 h leaves half an hour of slack for a slow start or a late stop,
+# and every cap in romanfeed.live is derived from this one number.
+LIVE_MAX_HOURS = 11.5
+
+
+@dataclass
+class LiveSettings:
+    """The nightly live stream (romanfeed.live). Off unless the owner turns it on.
+
+    Switched on only once the channel has an audience to stream to (100
+    subscribers or 15 watch hours/day); until then a live stream nobody joins
+    is just a second, worse copy of the uploads. The channel YAML has no
+    `live:` block, so these defaults -- enabled false -- are what runs; adding
+    `live: {enabled: true}` there is the owner's switch.
+    """
+    enabled: bool = False
+    hours: float = 10.0
+    # Documentation of the schedule, and the night the broadcast is dated by.
+    # The systemd timer (deploy/live/romanfeed-live.timer) is what actually
+    # fires at this time; keep the two in step.
+    start_local: str = "21:00"
+    timezone: str = "America/Chicago"
+    library_dir: str = "data/live"
+    keep_files: int = 12
+    # Stop pulling new renders when the disk would drop below this much free.
+    min_free_gb: float = 5.0
+    # Where the daily workflow's render-<run_id> artifacts live.
+    artifact_repo: str = "Golf4Life27/Roman"
+
+
+@dataclass
+class ShortsSettings:
+    """Vertical Shorts cut from images the long videos already showed.
+
+    `enabled` is the publish switch: off, the shorts command renders and
+    writes metadata but uploads nothing. It is the owner's call to turn on."""
+
+    enabled: bool = False
+    per_day: int = 3
+    seconds: float = 35.0
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    privacy: str = "public"
+    title_template: str = "{lead_by} | Calm Space for Sleep"
+    # How many of a parent video's images get scored before the best is cut.
+    candidates: int = 6
 
 
 @dataclass
@@ -80,7 +149,9 @@ class ChannelConfig:
     sources: list[SourceSettings]
     audio: AudioSettings
     publish: PublishSettings
+    live: LiveSettings = field(default_factory=LiveSettings)
     path: Path | None = None
+    shorts: ShortsSettings = field(default_factory=ShortsSettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -106,10 +177,43 @@ def load_config(path: str | Path) -> ChannelConfig:
         sources=sources,
         audio=_build(AudioSettings, raw.get("audio")),
         publish=_build(PublishSettings, raw.get("publish")),
+        live=_build(LiveSettings, raw.get("live")),
         path=path,
+        shorts=_build(ShortsSettings, raw.get("shorts")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
     if cfg.publish.privacy not in {"private", "unlisted", "public"}:
         raise ValueError("publish.privacy must be private, unlisted or public")
+    if cfg.shorts.privacy not in {"private", "unlisted", "public"}:
+        raise ValueError("shorts.privacy must be private, unlisted or public")
+    if not 15 <= cfg.shorts.seconds <= 60:
+        raise ValueError("shorts.seconds must be between 15 and 60")
+    if cfg.audio.source not in {"library", "composed"}:
+        raise ValueError("audio.source must be 'library' or 'composed'")
+    _check_live(cfg.live)
     return cfg
+
+
+def _check_live(live: LiveSettings) -> None:
+    """Fail at load time, not at 9 PM, on a live block that cannot work.
+
+    hours above the ceiling is rejected rather than quietly clamped: someone
+    who wrote `hours: 24` meant something this code will never do, and should
+    hear so. (The runtime clamps anyway, as one more layer.)"""
+    from zoneinfo import ZoneInfo
+
+    if not 0 < live.hours <= LIVE_MAX_HOURS:
+        raise ValueError(f"live.hours must be > 0 and <= {LIVE_MAX_HOURS} (YouTube archives streams under 12 h only)")
+    try:
+        hh, mm = (int(x) for x in live.start_local.split(":"))
+        if not (0 <= hh < 24 and 0 <= mm < 60):
+            raise ValueError
+    except ValueError:
+        raise ValueError("live.start_local must be HH:MM") from None
+    try:
+        ZoneInfo(live.timezone)
+    except Exception:
+        raise ValueError(f"live.timezone {live.timezone!r} is not an IANA time zone") from None
+    if live.keep_files < 1:
+        raise ValueError("live.keep_files must be at least 1")

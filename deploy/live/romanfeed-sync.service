@@ -1,0 +1,17 @@
+[Unit]
+Description=Space Screens: pull new renders into the live library
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=romanfeed
+Group=romanfeed
+WorkingDirectory=/opt/romanfeed/app
+EnvironmentFile=/etc/romanfeed/env
+ExecStart=/opt/romanfeed/venv/bin/romanfeed live sync --library-dir /var/lib/romanfeed/live
+# A transcode of one hour of 1080p takes well under an hour on 2 vCPU; this
+# only stops a wedged download from running into the evening's stream.
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=idle
