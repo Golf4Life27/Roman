@@ -135,6 +135,9 @@ sources:
 
 audio:
   genre: ambient
+  # Original music composed per video by romanfeed/audio/composer.py (licence
+  # owned); owner approved 2026-10-01 after listening. `library` = the Suno manifest.
+  source: composed
   library: assets/music/manifest.yaml
   fade_seconds: 8            # fade of the whole soundtrack, at each end
   crossfade_seconds: 8       # overlap between consecutive tracks, so no gap at the joins
@@ -176,7 +179,7 @@ publish:
 # enabled is the PUBLISH SWITCH and is the owner's call: false renders and
 # writes metadata only. Three a day; each links to its full sleep video.
 shorts:
-  enabled: false
+  enabled: true               # owner approved 2026-10-01
   per_day: 3
   seconds: 35
   privacy: public
