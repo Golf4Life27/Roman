@@ -19,6 +19,7 @@ class ChannelInfo:
     slug: str
     name: str
     tagline: str = ""
+    handle: str = ""  # e.g. "@SpaceScreens"; used in on-screen prompts and links
 
 
 @dataclass
@@ -36,6 +37,16 @@ class VideoSettings:
     extra_lengths_hours: list[float] = field(default_factory=list)
     crf: int = 20
     preset: str = "veryfast"
+    # Opening of every long video: an intro card naming the object and the
+    # telescope for `intro_seconds`, then the channel's subscribe prompt between
+    # subscribe_from and subscribe_until (seconds). 0 turns either off.
+    intro_seconds: float = 12.0
+    subscribe_from: float = 14.0
+    subscribe_until: float = 40.0
+    subscribe_line: str = "Space to fall asleep to, every week"
+    # Sleep cuts (the extra lengths) fade to black after this many minutes and
+    # the music plays on, so the screen does not keep a sleeper awake. 0 = off.
+    sleep_dark_after_minutes: float = 0.0
 
     @property
     def duration_seconds(self) -> float:
@@ -68,6 +79,8 @@ class PublishSettings:
     privacy: str = "private"  # private | unlisted | public
     category_id: str = "28"  # Science & Technology
     title_template: str = "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
+    # Title for the extra-length sleep cuts; blank = title_template.
+    sleep_title_template: str = ""
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False

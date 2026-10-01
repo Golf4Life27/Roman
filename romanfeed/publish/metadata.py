@@ -13,10 +13,13 @@ from datetime import date
 from romanfeed.audio.library import Track
 from romanfeed.config import ChannelConfig
 from romanfeed.sources.base import ImageAsset
+from romanfeed.telescopes import TELESCOPES, telescope_short, telescopes_for
 
-DEFAULT_DESCRIPTION = """{tagline}
+DEFAULT_DESCRIPTION = """{hook}
 
-{length} of slow, drifting views across {n_images} space telescope images with calm {genre} music. Put it on, dim the lights, and let it run.
+{subscribe}
+
+{tagline}
 
 IN THIS VIDEO
 {chapters}
@@ -29,10 +32,25 @@ MUSIC
 
 {roman_note}
 
-New space video every day. Subscribe to keep the sky on.
+New space sleep videos every week.
 https://spacescreens.app
 Not affiliated with or endorsed by NASA or ESA.
+
+{hashtags}
 """
+
+# The first two lines are what search shows under the title, so they carry the
+# phrases sleep-searchers type, in a sentence a person would write.
+HOOK_SLEEP = (
+    "{length} of deep sleep music with slow views of real {telescopes} space telescope images. "
+    "The screen fades to black after {dark_after} so the light won't keep you awake; the music plays on."
+)
+HOOK_SLEEP_NO_DARK = "{length} of deep sleep music with slow views of real {telescopes} space telescope images. Put it on, dim the lights, and let it run."
+HOOK = (
+    "{length} of relaxing space music for sleep, study and calm: slow views across {n_images} real "
+    "{telescopes} space telescope images, opening on {lead}."
+)
+HASHTAGS = "#sleepmusic #space #deepsleep"
 
 ROMAN_NOTE = (
     "ABOUT {channel_upper}\n"
@@ -153,9 +171,28 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     return template.format(lead=lead, **tokens)
 
 
-def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float, when: date | None = None, chapter_limit: int | None = None) -> VideoMetadata:
+def _minutes(seconds: float) -> str:
+    return f"{int(round(seconds / 60))} Min"
+
+
+def telescope_names(assets: list[ImageAsset]) -> str:
+    """'Hubble and Webb' -- the telescopes behind most of the set, for prose."""
+    counts: dict[str, int] = {}
+    for a in assets:
+        for k in telescopes_for(a):
+            counts[k] = counts.get(k, 0) + 1
+    short = {k: s for k, _f, s, _p in TELESCOPES}
+    top = [short[k] for k, _ in sorted(counts.items(), key=lambda kv: -kv[1])[:2]]
+    return " and ".join(sorted(top)) if top else "NASA and ESA"
+
+
+def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float,
+                   when: date | None = None, chapter_limit: int | None = None, total_seconds: float | None = None,
+                   sleep: bool = False, dark_after: float | None = None) -> VideoMetadata:
+    """`total_seconds` is the running time when it is longer than the images
+    shown (a sleep cut that goes dark); `dark_after` is when it goes dark."""
     when = when or date.today()
-    total = seconds_per_image * len(assets)
+    total = total_seconds or seconds_per_image * len(assets)
     length = length_text(total)
     subject = pick_subject(assets)
 
@@ -164,25 +201,51 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     # characters, so listing them all would silently swallow the credits.
     shown = chapters if chapter_limit is None else chapters[:chapter_limit]
     chapter_lines = "\n".join(f"{_hms(t)} {title}" for t, title in shown)
-    if len(shown) < len(chapters):
-        chapter_lines += f"\n(then the sequence continues to {_hms(seconds_per_image * len(assets))})"
+    if dark_after:
+        chapter_lines += f"\n{_hms(dark_after)} Screen fades to black, music continues to {_hms(total)}"
+    elif len(shown) < len(chapters) or total > seconds_per_image * len(assets):
+        chapter_lines += f"\n(then the sequence continues to {_hms(total)})"
     credits = "\n".join(sorted({f"- {a.credit or a.source}" for a in assets}))
     music = "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
 
     # The first chapter names the video: the same set of images with a different
     # opener gets a different title, so runs do not stack up identical uploads.
     lead = lead_name(assets[0].title) if assets else ""
+    tele = telescope_short(assets[0]) if assets else None
+    template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
+    title_lead = lead
+    if "{lead_by}" in template:
+        # "{lead_by}" is "{lead} by Webb" when the telescope is known. It goes
+        # through the same shrink-to-fit as {lead}, and a shrink that eats the
+        # telescope must not leave a dangling "by".
+        template = template.replace("{lead_by}", "{lead}")
+        title_lead = f"{lead} by {tele}" if tele else lead
+    dark_label = _minutes(dark_after) if dark_after else ""
     title = _fit_title(
-        cfg.publish.title_template, lead,
-        {"length": length, "subject": subject, "date": when.isoformat(), "channel": cfg.channel.name},
+        template, title_lead,
+        {"length": length, "subject": subject, "date": when.isoformat(), "channel": cfg.channel.name,
+         "telescope": tele or "Telescope", "dark_after": dark_label},
     )
+    title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
+    telescopes = telescope_names(assets)
+    if sleep:
+        hook = (HOOK_SLEEP if dark_after else HOOK_SLEEP_NO_DARK).format(
+            length=length, telescopes=telescopes, dark_after=_minutes(dark_after).replace("Min", "minutes") if dark_after else "")
+    else:
+        hook = HOOK.format(length=length, n_images=len(assets), telescopes=telescopes, lead=lead or "deep space")
+    handle = cfg.channel.handle.strip()
+    subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
+                 if handle else "")
     template = cfg.publish.description_template or DEFAULT_DESCRIPTION
     description = template.format(
         tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
         chapters=chapter_lines, credits=credits, music=music,
         roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
+        hook=hook, subscribe=subscribe, hashtags=HASHTAGS, lead=lead,
     )
-    tags = list(dict.fromkeys(cfg.publish.tags + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
+    description = re.sub(r"\n{3,}", "\n\n", description).strip() + "\n"
+    extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else ["space music for sleep"]
+    tags = list(dict.fromkeys(cfg.publish.tags + extra + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
     return VideoMetadata(
         title=title[:100], description=description[:5000], tags=tags, category_id=cfg.publish.category_id,
         privacy=cfg.publish.privacy, made_for_kids=cfg.publish.made_for_kids, chapters=chapters,
