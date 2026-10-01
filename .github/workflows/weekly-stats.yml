@@ -1,0 +1,71 @@
+# Weekly stats email: subscribers and watch hours against the YouTube Partner
+# Program goal (1,000 subscribers + 4,000 watch hours by 2027-01-31), plus the
+# nightly live-stream trigger (100 subscribers OR 15 watch hours/day).
+#
+# Read-only: nothing here uploads or edits a video.
+#
+# Needs (see docs/STATS_EMAIL.md):
+#   secret   YOUTUBE_TOKEN_JSON  re-minted with `romanfeed auth --scope manage`
+#                                (includes yt-analytics.readonly)
+#   secret   SMTP_USER           sending account, e.g. a Gmail address
+#   secret   SMTP_PASSWORD       that account's app password
+#   variable STATS_EMAIL_TO      recipient. A variable, not a literal: this is a
+#                                public repo and the address stays out of it.
+#
+# Missing SMTP settings do not fail the run: the report is printed to the log
+# and the job summary with a warning, so the numbers are still one click away.
+name: Weekly stats
+on:
+  schedule:
+    - cron: "7 13 * * 1"   # Monday 13:07 UTC = 8:07 AM CDT (7:07 AM CST in winter)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: print the report only, send no email
+        type: boolean
+        default: false
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      # Same shape as fix-metadata.yml: the secret is the contents of
+      # secrets/youtube.token.json, written back to disk at run time.
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      # Secrets cannot be read in an `if:` expression, so their presence is
+      # tested in the shell (as daily.yml does for HEALTHCHECK_URL).
+      - name: Report
+        shell: bash
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          STATS_EMAIL_TO: ${{ vars.STATS_EMAIL_TO }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          args="--email"
+          if [ "$DRY_RUN" = "true" ]; then
+            args="--dry-run"
+          elif [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASSWORD" ] || [ -z "$STATS_EMAIL_TO" ]; then
+            echo "::warning::SMTP_USER / SMTP_PASSWORD secrets or STATS_EMAIL_TO variable not set; printing the report without emailing it (docs/STATS_EMAIL.md)"
+            args=""
+          fi
+          python -m romanfeed stats $args | tee report.txt
+          {
+            echo '## Weekly stats'
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

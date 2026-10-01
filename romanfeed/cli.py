@@ -9,12 +9,14 @@
   romanfeed fix-metadata --video ID --video ID                      # decode bytes-repr chapters on live videos
   romanfeed schedule --video ID --at 2026-09-20T02:00:00Z           # let YouTube publish a private video itself
   romanfeed thumbnails VIDEO_ID image.jpg --length "8 HOURS"        # custom thumbnail on a video already up
+  romanfeed stats [--email] [--dry-run]                             # weekly subscriber / watch-hour report
 """
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
+import os
 from pathlib import Path
 
 from romanfeed.config import load_config
@@ -109,6 +111,63 @@ def _cmd_thumbnails(args) -> int:
     )
 
 
+def _smtp_settings() -> tuple[dict | None, list[str]]:
+    """SMTP settings from the environment, and the names of any missing ones."""
+    env = {k: os.environ.get(k, "").strip() for k in ("STATS_EMAIL_TO", "SMTP_USER", "SMTP_PASSWORD")}
+    missing = [k for k, v in env.items() if not v]
+    if missing:
+        return None, missing
+    port = os.environ.get("SMTP_PORT", "").strip() or "465"
+    return {
+        "to": env["STATS_EMAIL_TO"], "user": env["SMTP_USER"], "password": env["SMTP_PASSWORD"],
+        "smtp_host": os.environ.get("SMTP_HOST", "").strip() or "smtp.gmail.com", "smtp_port": int(port),
+    }, []
+
+
+def _cmd_stats(args) -> int:
+    """Print the weekly report; with --email, also mail it.
+
+    SMTP settings are checked before any API call, so a misconfigured run
+    fails in a second with the names of what is missing rather than after
+    the report has been built.
+    """
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.publish.fixup import _is_scope_error
+
+    smtp = None
+    if args.email and not args.dry_run:
+        smtp, missing = _smtp_settings()
+        if missing:
+            print(f"ERROR: --email needs {', '.join(missing)} set in the environment "
+                  "(SMTP_HOST/SMTP_PORT default to smtp.gmail.com:465) -- see docs/STATS_EMAIL.md")
+            return 2
+
+    today = date.today()
+    try:
+        data = st.fetch_stats(today)
+    except Exception as exc:  # googleapiclient's HttpError, not imported (see fixup.py)
+        blob = str(exc).lower()
+        if "accessnotconfigured" in blob or "has not been used in project" in blob:
+            print(f"ERROR: {st.API_DISABLED_HELP}")
+            return 2
+        if _is_scope_error(exc):
+            print(f"ERROR: {st.SCOPE_HELP}")
+            return 2
+        raise
+
+    subject, text, html = st.report(data, today)
+    print(f"Subject: {subject}\n")
+    print(text)
+    if args.email and args.dry_run:
+        print("(dry run: no email sent)")
+    elif smtp:
+        st.send_email(subject, text, html, **smtp)
+        print("email sent")
+    return 0
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -159,7 +218,8 @@ def main(argv: list[str] | None = None) -> int:
 
     a = sub.add_parser("auth", help="run the one-time YouTube OAuth flow and save the token")
     a.add_argument("--scope", choices=["upload", "manage"], default="upload",
-                   help="manage also grants youtube.force-ssl, needed to read/edit metadata on videos already up")
+                   help="manage also grants youtube.force-ssl (read/edit metadata on videos already up) "
+                        "and yt-analytics.readonly (the weekly stats email)")
     a.set_defaults(fn=_cmd_auth)
 
     fm = sub.add_parser("fix-metadata", help="re-decode bytes-repr text in the descriptions of videos already uploaded")
@@ -184,6 +244,12 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--out-dir", default="output/thumbnails")
     t.add_argument("--dry-run", action="store_true", help="build the jpg and send nothing")
     t.set_defaults(fn=_cmd_thumbnails)
+
+    st = sub.add_parser("stats", help="weekly subscriber / watch-hour report against the YPP goal")
+    st.add_argument("--email", action="store_true",
+                    help="also email it (env STATS_EMAIL_TO, SMTP_USER, SMTP_PASSWORD; SMTP_HOST, SMTP_PORT optional)")
+    st.add_argument("--dry-run", action="store_true", help="print the report and send nothing")
+    st.set_defaults(fn=_cmd_stats)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)

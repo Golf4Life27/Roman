@@ -23,8 +23,13 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 # covers both. The upload scope is kept alongside it deliberately -- a token
 # granted only force-ssl would make the daily upload path fail its refresh,
 # because google-auth refuses a refresh whose granted scopes do not include
-# the ones it asked for.
-MANAGE_SCOPES = SCOPES + ["https://www.googleapis.com/auth/youtube.force-ssl"]
+# the ones it asked for. yt-analytics.readonly rides on the same token so the
+# weekly stats email (romanfeed/publish/stats.py) can read watch time; it is
+# read-only and changes nothing the other paths do.
+MANAGE_SCOPES = SCOPES + [
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+]
 
 
 def request_body(meta: VideoMetadata) -> dict:
