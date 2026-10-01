@@ -140,6 +140,10 @@ class ShortsSettings:
     title_template: str = "{lead_by} | Calm Space for Sleep"
     # How many of a parent video's images get scored before the best is cut.
     candidates: int = 6
+    # Spoken "what you're looking at" from the image's own archive caption
+    # (romanfeed/narration.py). Needs GOOGLE_TTS_API_KEY; without it, music only.
+    narration: bool = True
+    voice: str = "en-US-Chirp3-HD-Charon"
 
 
 @dataclass
