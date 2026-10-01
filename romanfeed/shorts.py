@@ -23,7 +23,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -366,6 +366,9 @@ def _snapshot(ledger: Ledger, cfg: ChannelConfig, today: str) -> None:
         from romanfeed.publish.stats import channel_counts
 
         ledger.record_snapshot(today, *channel_counts(public_client(), cfg.channel.handle))
+        from romanfeed.publish.stats import title_test_rows
+
+        title_test_rows(public_client(), ledger, date.fromisoformat(today))
     except Exception as exc:  # a stats hiccup must never cost a Short
         log.warning("channel snapshot failed: %s", exc)
 

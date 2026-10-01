@@ -295,3 +295,31 @@ def test_public_numbers_report_when_analytics_is_unavailable(tmp_path):
     assert "Since 2026-10-01: +9 (1.3/day)" in text
     assert "Views per new subscriber: 119" in text
     assert "not readable yet" in text and "<table" in html
+
+
+def test_title_split_test_compares_views_per_video_per_day(tmp_path):
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.state import Ledger
+
+    cfg = tmp_path / "t.yaml"
+    cfg.write_text('start: "2026-10-01"\ngroups:\n  new: [A, B]\n  old: [C, D, E]\n')
+    views = {"A": 100, "B": 50, "C": 80, "D": 10, "E": 0}
+
+    class Pub:
+        def videos(self):
+            return self
+
+        def list(self, part, id):
+            items = [{"id": v, "statistics": {"viewCount": str(views[v])}} for v in id.split(",")]
+            return type("R", (), {"execute": lambda self: {"items": items}})()
+
+    with Ledger(tmp_path / "s.db") as led:
+        first = st.title_test_rows(Pub(), led, date(2026, 10, 1), path=str(cfg))
+        assert first == [("Status", "baseline taken 2026-10-01; first comparison next week")]
+        views.update(A=170, B=80, C=110, D=10, E=5)   # new +100, old +35 over 7 days
+        rows = dict(st.title_test_rows(Pub(), led, date(2026, 10, 8), path=str(cfg)))
+    assert rows["New titles (2 videos)"] == "+100 views since 2026-10-01 = 7.14 per video per day"
+    assert rows["Old titles (3 videos)"] == "+35 views since 2026-10-01 = 1.67 per video per day"
+    assert rows["Reading"].startswith("new titles ahead: 4.29x the old after 7 days")

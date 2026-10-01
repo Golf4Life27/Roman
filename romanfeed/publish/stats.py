@@ -107,6 +107,7 @@ class ChannelStats:
     # False when only public numbers were available (API key, no Analytics
     # permission): then the week's change comes from ledger snapshots.
     has_analytics: bool = True
+    title_test: list[tuple[str, str]] = field(default_factory=list)
     week_ago: tuple[str, int, int, int] | None = None   # (date, subscribers, views, videos)
 
 
@@ -257,6 +258,59 @@ def fetch_public_stats(today: date, *, yt_public, ledger, handle: str) -> Channe
                         watch_hours_12m=0.0, has_analytics=False, week_ago=week_ago)
 
 
+TITLE_TEST = "config/title_test.yaml"
+
+
+def video_views(yt_public, ids: list[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for i in range(0, len(ids), 50):
+        items = yt_public.videos().list(part="statistics", id=",".join(ids[i:i + 50])).execute().get("items") or []
+        out.update({v["id"]: int((v.get("statistics") or {}).get("viewCount", 0) or 0) for v in items})
+    return out
+
+
+def title_test_rows(yt_public, ledger, today: date, path: str = TITLE_TEST) -> list[tuple[str, str]]:
+    """Views per video per day for each title group since the test began.
+
+    Saves today's per-video views to the ledger; the baseline is the first
+    snapshot on or after the start date. Per video per day, so a group of 7
+    is not favoured over a group of 6."""
+    from pathlib import Path
+
+    import yaml
+
+    if not Path(path).exists():
+        return []
+    cfg = yaml.safe_load(Path(path).read_text()) or {}
+    groups = cfg.get("groups") or {}
+    ids = [v for g in groups.values() for v in g]
+    if not ids:
+        return []
+    now = video_views(yt_public, ids)
+    ledger.record_video_views(today.isoformat(), now)
+    base = ledger.first_video_views_on_or_after(str(cfg.get("start", today.isoformat())))
+    if base is None or base[0] == today.isoformat():
+        return [("Status", f"baseline taken {today:%Y-%m-%d}; first comparison next week")]
+    then, start_views = base
+    days = max((today - date.fromisoformat(then)).days, 1)
+    rows, rates = [], {}
+    for name, vids in groups.items():
+        gained = sum(now.get(v, 0) - start_views.get(v, now.get(v, 0)) for v in vids)
+        rates[name] = gained / days / max(len(vids), 1)
+        label = "New titles" if name == "new" else "Old titles" if name == "old" else name
+        rows.append((f"{label} ({len(vids)} videos)", f"+{gained:,} views since {then} = {rates[name]:,.2f} per video per day"))
+    if {"new", "old"} <= rates.keys():
+        a, b = rates["new"], rates["old"]
+        if a == b == 0:
+            verdict = "no views on either side yet"
+        elif b == 0:
+            verdict = "new titles ahead (old titles got none)"
+        else:
+            verdict = f"new titles {'ahead' if a > b else 'behind' if a < b else 'level'}: {a / b:,.2f}x the old"
+        rows.append(("Reading", verdict + f" after {days} days. Decide at the Oct 31 checkpoint."))
+    return rows
+
+
 def live_trigger(stats: ChannelStats) -> tuple[bool, str]:
     """Is it time to switch on the nightly live stream? And the measured why."""
     if not stats.has_analytics:
@@ -320,8 +374,13 @@ def _public_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[t
 
 def _sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     """The report as (heading, [(label, value)]) -- shared by text and HTML."""
+    tail = [("Title split test", stats.title_test)] if stats.title_test else []
     if not stats.has_analytics:
-        return _public_sections(stats, today)
+        return _public_sections(stats, today) + tail
+    return _analytics_sections(stats, today) + tail
+
+
+def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     left = days_left(today)
     l7, p7 = stats.last7, stats.prev7
     subs = Pace(stats.subscribers, GOAL_SUBSCRIBERS, left, l7.net_subs / l7.days)

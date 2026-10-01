@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS channel_snapshots (
     views       INTEGER NOT NULL,
     videos      INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS video_views (
+    taken_on TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    views    INTEGER NOT NULL,
+    PRIMARY KEY (taken_on, video_id)
+);
 CREATE TABLE IF NOT EXISTS shorts (
     asset_id    TEXT NOT NULL,
     channel     TEXT NOT NULL,
@@ -167,6 +173,18 @@ class Ledger:
             "SELECT taken_on, subscribers, views, videos FROM channel_snapshots WHERE taken_on <= ? "
             "ORDER BY taken_on DESC LIMIT 1", (day,)).fetchone()
         return tuple(row) if row else None
+
+    def record_video_views(self, taken_on: str, views: dict[str, int]) -> None:
+        self.conn.executemany("INSERT OR REPLACE INTO video_views VALUES (?, ?, ?)",
+                              [(taken_on, vid, n) for vid, n in views.items()])
+        self.conn.commit()
+
+    def first_video_views_on_or_after(self, day: str) -> tuple[str, dict[str, int]] | None:
+        row = self.conn.execute("SELECT MIN(taken_on) FROM video_views WHERE taken_on >= ?", (day,)).fetchone()
+        if not row or not row[0]:
+            return None
+        rows = self.conn.execute("SELECT video_id, views FROM video_views WHERE taken_on = ?", (row[0],)).fetchall()
+        return row[0], {r[0]: r[1] for r in rows}
 
     # -- shorts ---------------------------------------------------------
     def shorts_asset_ids(self, channel: str) -> set[str]:
