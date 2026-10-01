@@ -1,5 +1,6 @@
 # Split test of the sleep-search titles on the back catalogue (owner chose
-# "split test" on 2026-10-01). Group "new" was retitled with romanfeed retitle;
+# "split test" on 2026-10-01). Group "new" got the titles from a retitle dry
+# run, pasted into Studio by hand (the upload token cannot run videos.update);
 # group "old" keeps its original titles as the control. Pairs are whole sets
 # (the 1h and 8h cut of one render) alternated by age, so the groups are
 # balanced. The Monday report compares views per video per day since `start`;
