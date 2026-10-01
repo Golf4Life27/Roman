@@ -66,9 +66,35 @@ def _old_lead(title: str) -> tuple[str, str | None]:
     return title.split(" | ")[0].strip(), None
 
 
-def new_title(cfg: ChannelConfig, old_title: str, seconds: float) -> str:
-    raw, said = _old_lead(old_title)
-    lead = lead_name(raw)
+# The earliest uploads led with the subject, not the image ("Galaxies | 8 Hours
+# ..."). Retitling those from the title alone would name five videos
+# "Galaxies"; their first chapter is the image the video opens on.
+GENERIC_LEADS = {"nebulae", "galaxies", "star clusters", "deep fields", "planets", "deep space",
+                 "roman telescope images", "space", "space screens"}
+_CHAPTER_LINE = re.compile(r"^\d+:\d\d(?::\d\d)?\s+(.+)$", re.M)
+
+
+def _chapters(description: str) -> list[str]:
+    return [m.group(1).strip() for m in _CHAPTER_LINE.finditer(repair_text(description or ""))]
+
+
+def _lead_source(title: str, description: str, skip: int = 0) -> tuple[str, str | None]:
+    """The image a video opens on. Old titles either named a subject
+    ("Galaxies") or a lead cut mid-phrase ("Nearby dust clouds in"); the first
+    chapter has the full name. `skip` moves to later chapters, so two videos
+    that open on the same image do not end up with the same title."""
+    raw, said = _old_lead(title)
+    chapters = _chapters(description)
+    first = chapters[0] if chapters else ""
+    if chapters and (skip or raw.lower() in GENERIC_LEADS or not raw
+                     or (first.startswith(raw) and first != raw)):
+        return chapters[min(skip, len(chapters) - 1)], None
+    return raw, said
+
+
+def new_title(cfg: ChannelConfig, old_title: str, seconds: float, description: str = "", skip: int = 0) -> str:
+    raw, said = _lead_source(old_title, description, skip)
+    lead = lead_name(raw, limit=60)
     tele = said or telescope_short(ImageAsset(asset_id="x:x", title=raw, url="", source=""))
     sleep = seconds >= 2 * 3600
     template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
@@ -76,7 +102,7 @@ def new_title(cfg: ChannelConfig, old_title: str, seconds: float) -> str:
     title_lead = lead
     if "{lead_by}" in template:
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele else lead
+        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
     title = _fit_title(template, title_lead, {
         "length": length_text(seconds), "subject": "Deep Space", "date": "", "channel": cfg.channel.name,
         "telescope": tele or "Telescope", "dark_after": "",
@@ -104,17 +130,37 @@ def new_description(cfg: ChannelConfig, old: str, *, seconds: float, lead: str) 
     if HASHTAGS not in body:
         body = body.rstrip() + "\n\n" + HASHTAGS
     out = "\n\n".join(head) + "\n\n" + body.strip() + "\n"
-    return out if len(out) <= 5000 else text  # never truncate credits to fit a hook
+    # Over YouTube's 5000 characters: chapters give way from the end (credits
+    # are a licence condition and stay), with a line saying the list goes on.
+    lines = out.split("\n")
+    chapter_idx = [i for i, ln in enumerate(lines) if _CHAPTER.match(ln + " ")]
+    dropped = False
+    while len("\n".join(lines)) > 4990 and len(chapter_idx) > 1:
+        lines.pop(chapter_idx.pop())
+        dropped = True
+    if dropped:
+        lines.insert(chapter_idx[-1] + 1, "…")
+    out = "\n".join(lines)
+    return out if len(out) <= 5000 else text
 
 
-def update_body(cfg: ChannelConfig, video: dict) -> dict | None:
-    """The videos.update(part=snippet) body for one video, or None to skip it."""
+def update_body(cfg: ChannelConfig, video: dict, taken: set[str] | None = None) -> dict | None:
+    """The videos.update(part=snippet) body for one video, or None to skip it.
+    `taken` holds titles already given out in this pass; a clash moves the
+    lead to the video's next chapter."""
     snip = dict(video.get("snippet") or {})
     seconds = iso_seconds((video.get("contentDetails") or {}).get("duration", ""))
     if seconds <= 60 or "#shorts" in (snip.get("description") or "").lower():
         return None
-    title = new_title(cfg, snip.get("title", ""), seconds)
-    desc = new_description(cfg, snip.get("description", ""), seconds=seconds, lead=lead_name(_old_lead(snip.get("title", ""))[0]))
+    skip = 0
+    title = new_title(cfg, snip.get("title", ""), seconds, snip.get("description", ""))
+    while taken is not None and title in taken and skip < 5:
+        skip += 1
+        title = new_title(cfg, snip.get("title", ""), seconds, snip.get("description", ""), skip)
+    if taken is not None:
+        taken.add(title)
+    desc = new_description(cfg, snip.get("description", ""), seconds=seconds,
+                           lead=lead_name(_lead_source(snip.get("title", ""), snip.get("description", ""), skip)[0]))
     tags = list(dict.fromkeys((snip.get("tags") or []) + SLEEP_TAGS))
     while len(",".join(tags)) > 450 and len(tags) > 1:  # YouTube caps tags at ~500 characters
         tags.pop()
@@ -165,9 +211,12 @@ def retitle(cfg: ChannelConfig, video_ids: list[str] | None = None, *, dry_run: 
             return 2
         raise
     changed = 0
-    for video in items:
+    taken: set[str] = set()
+    # Oldest first, so an older video keeps its own opener and a later one
+    # that reused it moves on.
+    for video in sorted(items, key=lambda v: (v.get("snippet") or {}).get("publishedAt", "")):
         vid = video["id"]
-        body = update_body(cfg, video)
+        body = update_body(cfg, video, taken)
         old = video.get("snippet") or {}
         if body is None:
             print(f"-- {vid}: Short, left alone")

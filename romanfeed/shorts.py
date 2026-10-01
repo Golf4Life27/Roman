@@ -326,7 +326,7 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     title_lead = lead
     if "{lead_by}" in template:
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele else lead
+        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     link = f"https://youtu.be/{parent.link_id}"

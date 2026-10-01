@@ -157,9 +157,9 @@ def test_title_stays_within_100_chars_with_a_very_long_lead():
     meta = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 9, 5))
     assert len(meta.title) <= 100
     assert meta.title.startswith("1 Hour Relaxing Space Music for Sleep · ")
-    assert meta.title.endswith(" · Telescope Screensaver")
     assert "roman telescope images" in meta.tags  # the subject moved from the title to the tags
-    lead = meta.title.split(" · ")[1]
+    lead = meta.title.split(" · ")[1].removesuffix(" by Webb")
+    assert lead.split()[-1] not in {"the", "of", "in", "and", "a"}
     assert lead and long_title.startswith(lead)  # shortened at a word boundary, not mid-word
     assert not lead.endswith(" ")
 

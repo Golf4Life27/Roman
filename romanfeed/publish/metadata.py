@@ -167,6 +167,13 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     title = template.format(lead=lead, **tokens)
     if len(title) <= limit or not lead:
         return title
+    # A whole name beats a fixed tail phrase: drop a last " · " segment that
+    # carries no token ("· Telescope Screensaver") before cutting the name.
+    parts = re.split(r"(\s+·\s+)", template)
+    if len(parts) >= 3 and "{" not in parts[-1]:
+        shorter = "".join(parts[:-2]).format(lead=lead, **tokens)
+        if len(shorter) <= limit:
+            return shorter
     lead = _shorten(lead, len(lead) - (len(title) - limit))
     # "Cosmic Cliffs in the" reads as a mistake; end on a content word.
     lead = re.sub(r"(?:\s+(?:the|of|in|and|a|an|at|with|from|by|on|&))+$", "", lead, flags=re.IGNORECASE)
@@ -235,7 +242,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
 
     # The first chapter names the video: the same set of images with a different
     # opener gets a different title, so runs do not stack up identical uploads.
-    lead = lead_name(assets[0].title) if assets else ""
+    lead = lead_name(assets[0].title, limit=60) if assets else ""
     tele = telescope_short(assets[0]) if assets else None
     template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
     if not dark_after:
@@ -246,7 +253,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         # through the same shrink-to-fit as {lead}, and a shrink that eats the
         # telescope must not leave a dangling "by".
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele else lead
+        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
     dark_label = _minutes(dark_after) if dark_after else ""
     title = _fit_title(
         template, title_lead,

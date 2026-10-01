@@ -6,8 +6,8 @@ turned on. Each is the owner's call; nothing here flips itself.
 | Switch | Where | State | What turning it on does |
 |---|---|---|---|
 | Daily uploads | repo variable `ROMANFEED_ENABLED`, `publish.mode`, `publish.privacy` | **on** (true / upload / public) | Mon/Wed/Fri: 1h + 8h video, public |
-| Shorts | `shorts.enabled` in `config/channels/deep-space-ambient.yaml` | **off** | 3 Shorts a day (09:10, 14:10, 18:40 CDT), public, each linking its full sleep video. Off, the Shorts workflow still renders them as 3-day artifacts to watch first |
-| Original music | `audio.source: composed` in the channel yaml | **off** (`library`) | Every new video and Short gets music composed by `romanfeed/audio/composer.py` instead of the Suno manifest |
+| Shorts | `shorts.enabled` in `config/channels/deep-space-ambient.yaml` | **on** (2026-10-01) | 3 Shorts a day (09:10, 14:10, 18:40 CDT), public, each linking its full sleep video. Off, the Shorts workflow still renders them as 3-day artifacts to watch first |
+| Original music | `audio.source: composed` in the channel yaml | **on** (2026-10-01) | Every new video and Short gets music composed by `romanfeed/audio/composer.py` instead of the Suno manifest |
 | Nightly live stream | `live.enabled` in the channel yaml + a server | **off**, no server | ~10 h stream from 9 PM Central, ends < 12 h, saves as a public video. Switch-on rule: 100 subscribers or 15 watch hours a day. See LIVE_STREAM.md |
 | Retitle back catalogue | `Retitle videos` workflow, `dry_run` false | not run | Rewrites titles/descriptions/tags of every long upload for sleep searches. Needs the manage-scope token |
 | Sleep thumbnails on old videos | `Retrofit thumbnails` workflow with `subject` | not run | Replaces the custom thumbnail on the listed videos |
