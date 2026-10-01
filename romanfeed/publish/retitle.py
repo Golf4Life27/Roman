@@ -16,8 +16,10 @@ config. This brings the back catalogue in line, from what YouTube itself holds
                #16-#19 is repaired on the way through.
   tags         the sleep tags are merged in.
 
-Shorts (60 s or less) are left alone. Reading needs youtube.force-ssl, so this
-needs a token minted with `romanfeed auth --scope manage`; writing is one
+Shorts (60 s or less) are left alone. Reading uses the project API key
+(GOOGLE_TTS_API_KEY): public videos need no OAuth scope, and adding
+youtube.force-ssl to a production app now means Google's app review. Without
+the key it falls back to a force-ssl token. Writing is one
 videos.update (50 quota units) per changed video. Dry run is the default in
 the workflow: it prints every before/after and writes nothing."""
 from __future__ import annotations
@@ -121,9 +123,11 @@ def update_body(cfg: ChannelConfig, video: dict) -> dict | None:
     return {"id": video["id"], "snippet": out}
 
 
-def channel_video_ids(yt) -> list[str]:
-    """Every upload on the token's channel, newest first."""
-    ch = yt.channels().list(part="contentDetails", mine=True).execute().get("items", [])
+def channel_video_ids(yt, handle: str | None = None) -> list[str]:
+    """Every upload on the channel, newest first. With `handle`, by public
+    lookup (API key); without, as the token's own channel (needs force-ssl)."""
+    query = {"forHandle": handle} if handle else {"mine": True}
+    ch = yt.channels().list(part="contentDetails", **query).execute().get("items", [])
     if not ch:
         return []
     uploads = ch[0]["contentDetails"]["relatedPlaylists"]["uploads"]
@@ -136,15 +140,25 @@ def channel_video_ids(yt) -> list[str]:
             return ids
 
 
-def retitle(cfg: ChannelConfig, video_ids: list[str] | None = None, *, dry_run: bool = True, yt=None) -> int:
-    from romanfeed.publish.youtube import client
+def retitle(cfg: ChannelConfig, video_ids: list[str] | None = None, *, dry_run: bool = True, yt=None, reader=None) -> int:
+    """Reads go through the API key when there is one (public videos, no extra
+    scope); the write is videos.update, which the upload-only token can do."""
+    from romanfeed.publish.youtube import api_key, client, public_client
 
-    yt = yt or client()
+    handle = None
+    if reader is None and yt is None and api_key():
+        reader, handle = public_client(), (cfg.channel.handle or None)
+    elif reader is not None:
+        handle = cfg.channel.handle or None
+    if yt is None and not dry_run:
+        yt = client()
+    reader = reader or yt or client()
+    yt = yt or reader
     try:
-        ids = video_ids or channel_video_ids(yt)
+        ids = video_ids or channel_video_ids(reader, handle)
         items = []
         for i in range(0, len(ids), 50):
-            items += yt.videos().list(part="snippet,contentDetails,status", id=",".join(ids[i:i + 50])).execute().get("items", [])
+            items += reader.videos().list(part="snippet,contentDetails,status", id=",".join(ids[i:i + 50])).execute().get("items", [])
     except Exception as exc:  # HttpError, not imported: CI's dev install lacks it
         if _is_scope_error(exc):
             print(f"ERROR: {SCOPE_HELP}")

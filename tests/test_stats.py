@@ -269,3 +269,29 @@ def test_manage_scopes_include_analytics_and_keep_upload():
 
     assert "https://www.googleapis.com/auth/yt-analytics.readonly" in MANAGE_SCOPES
     assert set(SCOPES) <= set(MANAGE_SCOPES)
+
+
+def test_public_numbers_report_when_analytics_is_unavailable(tmp_path):
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.state import Ledger
+
+    class Pub:
+        def channels(self):
+            return self
+
+        def list(self, part, forHandle):
+            assert forHandle == "@SpaceScreens"
+            return type("R", (), {"execute": lambda self: {"items": [{"statistics": {
+                "subscriberCount": "12", "viewCount": "1500", "videoCount": "20"}}]}})()
+
+    with Ledger(tmp_path / "s.db") as led:
+        led.record_snapshot("2026-10-01", 3, 425, 14)
+        data = st.fetch_public_stats(date(2026, 10, 8), yt_public=Pub(), ledger=led, handle="@SpaceScreens")
+        assert led.snapshot_on_or_before("2026-10-08")[1] == 12  # today's counts saved
+    subject, text, html = st.report(data, date(2026, 10, 8))
+    assert "12 subscribers (+9 this week)" in subject
+    assert "Since 2026-10-01: +9 (1.3/day)" in text
+    assert "Views per new subscriber: 119" in text
+    assert "not readable yet" in text and "<table" in html

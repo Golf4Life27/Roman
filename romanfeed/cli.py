@@ -163,9 +163,28 @@ def _cmd_stats(args) -> int:
             return 2
 
     today = date.today()
+    from romanfeed.publish.youtube import api_key, public_client
+
+    key = api_key()
     try:
         data = st.fetch_stats(today)
     except Exception as exc:  # googleapiclient's HttpError, not imported (see fixup.py)
+        if key:
+            # No Analytics permission: report the public numbers instead.
+            from romanfeed.config import load_config
+            from romanfeed.state import Ledger
+
+            print(f"(analytics unavailable: {str(exc)[:120]}; using public numbers)")
+            handle = load_config(args.config).channel.handle or "@SpaceScreens"
+            with Ledger(Path(args.data_dir) / "state.db") as ledger:
+                data = st.fetch_public_stats(today, yt_public=public_client(key), ledger=ledger, handle=handle)
+            subject, text, html = st.report(data, today)
+            print(f"Subject: {subject}\n")
+            print(text)
+            if smtp:
+                st.send_email(subject, text, html, **smtp)
+                print("email sent")
+            return 0
         blob = str(exc).lower()
         if "accessnotconfigured" in blob or "has not been used in project" in blob:
             print(f"ERROR: {st.API_DISABLED_HELP}")
@@ -314,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
     sh.set_defaults(fn=_cmd_shorts)
 
     st = sub.add_parser("stats", help="weekly subscriber / watch-hour report against the YPP goal")
+    st.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
     st.add_argument("--email", action="store_true",
                     help="also email it (env STATS_EMAIL_TO, SMTP_USER, SMTP_PASSWORD; SMTP_HOST, SMTP_PORT optional)")
     st.add_argument("--dry-run", action="store_true", help="print the report and send nothing")

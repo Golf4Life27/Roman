@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS asset_meta (
     asset_id TEXT PRIMARY KEY,
     data     TEXT NOT NULL
 );
+-- Public channel counts, sampled whenever a job runs with the API key. With
+-- no Analytics permission, week-over-week change comes from these.
+CREATE TABLE IF NOT EXISTS channel_snapshots (
+    taken_on    TEXT PRIMARY KEY,
+    subscribers INTEGER NOT NULL,
+    views       INTEGER NOT NULL,
+    videos      INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS shorts (
     asset_id    TEXT NOT NULL,
     channel     TEXT NOT NULL,
@@ -147,6 +155,18 @@ class Ledger:
             "SELECT asset_id FROM assets_used WHERE video_slug = ? ORDER BY asset_id", (video_slug,)
         ).fetchall()
         return [r[0] for r in rows]
+
+    # -- channel snapshots -------------------------------------------------
+    def record_snapshot(self, taken_on: str, subscribers: int, views: int, videos: int) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO channel_snapshots VALUES (?, ?, ?, ?)",
+                          (taken_on, subscribers, views, videos))
+        self.conn.commit()
+
+    def snapshot_on_or_before(self, day: str) -> tuple[str, int, int, int] | None:
+        row = self.conn.execute(
+            "SELECT taken_on, subscribers, views, videos FROM channel_snapshots WHERE taken_on <= ? "
+            "ORDER BY taken_on DESC LIMIT 1", (day,)).fetchone()
+        return tuple(row) if row else None
 
     # -- shorts ---------------------------------------------------------
     def shorts_asset_ids(self, channel: str) -> set[str]:

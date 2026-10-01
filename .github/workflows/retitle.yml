@@ -8,9 +8,8 @@
 # dry_run defaults to true: the log shows every before/after and nothing is
 # written. Re-run with dry_run false to apply (50 quota units per video).
 #
-# SCOPE: reading needs youtube.force-ssl, so YOUTUBE_TOKEN_JSON must hold a
-# token minted with `romanfeed auth --scope manage` (docs/YOUTUBE_API_SETUP.md
-# section 8). With the upload-only token it stops with that message.
+# Reading uses the GOOGLE_TTS_API_KEY secret (public data, no OAuth scope);
+# writing uses the upload token already in YOUTUBE_TOKEN_JSON.
 name: Retitle videos
 on:
   workflow_dispatch:
@@ -42,6 +41,7 @@ jobs:
       - name: Retitle
         env:
           YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
           VIDEOS: ${{ inputs.videos }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
