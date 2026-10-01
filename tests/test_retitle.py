@@ -143,3 +143,18 @@ def test_long_descriptions_shed_chapters_not_the_new_opening():
     assert len(s["description"]) <= 5000
     assert s["description"].startswith("8 Hours of deep sleep music")
     assert "- NASA, ESA, CSA, STScI" in s["description"] and "\n…\n" in s["description"]
+
+
+def test_cut_off_leads_use_the_full_chapter_and_skip_a_redundant_by():
+    desc = OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 Webb’s View of the Molecular Cloud Chameleon I (Annotated)")
+    t = rt.update_body(CFG, _video("W", "Webb’s View of the | Galaxies | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver", "PT1H", desc=desc))["snippet"]["title"]
+    assert t.startswith("1 Hour Relaxing Space Music for Sleep · Webb’s View of the Molecular Cloud")
+    assert " by Webb" not in t and len(t) <= 100 and t.endswith(" · Telescope Screensaver")
+
+
+def test_two_videos_opening_on_the_same_image_get_different_titles():
+    desc = OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 A glimmer from a dark cosmic era")
+    taken: set[str] = set()
+    a = rt.update_body(CFG, _video("A", "Nebulae | 1 Hour Relaxing Space Video for Sleep", "PT1H", desc=desc), taken)["snippet"]["title"]
+    b = rt.update_body(CFG, _video("B", "Galaxies | 1 Hour Relaxing Space Video for Sleep", "PT1H", desc=desc), taken)["snippet"]["title"]
+    assert a != b and "Ring Nebula" in b
