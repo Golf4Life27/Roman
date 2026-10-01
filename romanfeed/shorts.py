@@ -31,6 +31,7 @@ import requests
 from PIL import Image, ImageFilter, ImageOps, ImageStat
 
 from romanfeed.audio import MusicLibrary, build_soundtrack
+from romanfeed.audio.composer import ComposedLibrary
 from romanfeed.config import ChannelConfig
 from romanfeed.curation.selector import flat_black_fraction, looks_unsuitable
 from romanfeed.publish import publish
@@ -344,7 +345,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             log.warning("shorts: no published video with unused images to cut from")
             return results
         meta = backfill_meta(ledger, cfg, sorted({a for _, ids in picks for a in ids}))
-        library = MusicLibrary(cfg.audio.library)
+        manifest = MusicLibrary(cfg.audio.library)
 
         for parent, ids in picks:
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
@@ -353,6 +354,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
             stem = f"{cfg.channel.slug}-short-{best.asset_id.replace(':', '_')}"
+            # Composed: one fresh piece per Short, seeded by the image, so the
+            # Short's music is as much its own as the long video's.
+            library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=cfg.shorts.seconds + 4,
+                                       seed=best.asset_id) if cfg.audio.source == "composed" else manifest)
             audio, tracks = build_soundtrack(
                 library, genre=cfg.audio.genre, duration=cfg.shorts.seconds, out_path=work / f"{stem}.m4a",
                 fade=1.5, crossfade=0.0, gain_db=0.0,

@@ -67,7 +67,7 @@ def stub_run(monkeypatch, sample_asset, tmp_path):
 
     monkeypatch.setattr(pipeline, "build_source", lambda s: types.SimpleNamespace(name="stub", fetch=lambda: [sample_asset]))
     monkeypatch.setattr(pipeline, "select_assets", lambda *a, **kw: [sample_asset, sample_asset])
-    monkeypatch.setattr(pipeline, "MusicLibrary", lambda path: object())
+    monkeypatch.setattr(pipeline, "open_library", lambda *a, **kw: object())
     monkeypatch.setattr(pipeline, "build_soundtrack", fake_soundtrack)
     monkeypatch.setattr(pipeline, "render_video_with_clips", fake_render)
     monkeypatch.setattr(pipeline, "concat_clips", fake_concat)

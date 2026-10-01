@@ -126,6 +126,9 @@ def _cmd_shorts(args) -> int:
         print(f"{r.asset_id:32} from {r.parent_slug:34} {r.youtube_id or '(not uploaded)':14} {r.title}")
     if not res:
         print("no Shorts made (daily cap reached, or nothing left to cut from)")
+    return 0
+
+
 def _smtp_settings() -> tuple[dict | None, list[str]]:
     """SMTP settings from the environment, and the names of any missing ones."""
     env = {k: os.environ.get(k, "").strip() for k in ("STATS_EMAIL_TO", "SMTP_USER", "SMTP_PASSWORD")}
@@ -180,6 +183,9 @@ def _cmd_stats(args) -> int:
     elif smtp:
         st.send_email(subject, text, html, **smtp)
         print("email sent")
+    return 0
+
+
 def _cmd_compose(args) -> int:
     import secrets
 
@@ -194,6 +200,8 @@ def _cmd_compose(args) -> int:
     print(f"loudness: {measure_loudness(track.path):.1f} LUFS")
     print(f"file:     {track.path}")
     return 0
+
+
 def _cmd_live(args) -> int:
     from romanfeed.live import run as live
 
@@ -293,16 +301,19 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--dry-run", action="store_true", help="render and write metadata, upload nothing")
     sh.add_argument("--output-dir", default="output")
     sh.set_defaults(fn=_cmd_shorts)
+
     st = sub.add_parser("stats", help="weekly subscriber / watch-hour report against the YPP goal")
     st.add_argument("--email", action="store_true",
                     help="also email it (env STATS_EMAIL_TO, SMTP_USER, SMTP_PASSWORD; SMTP_HOST, SMTP_PORT optional)")
     st.add_argument("--dry-run", action="store_true", help="print the report and send nothing")
     st.set_defaults(fn=_cmd_stats)
+
     co = sub.add_parser("compose", help="compose one original ambient piece (licence: owned)")
     co.add_argument("out", help="output .m4a")
     co.add_argument("--seconds", type=float, default=120.0)
     co.add_argument("--seed", help="same seed, same piece (default: random, printed)")
     co.set_defaults(fn=_cmd_compose)
+
     lv = sub.add_parser("live", help="nightly ~10 h live stream from the rendered library (always ends < 12 h)")
     lsub = lv.add_subparsers(dest="live_cmd", required=True)
     for name, text in [("sync", "pull new render artifacts from GitHub and make stream-ready copies"),

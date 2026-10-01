@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from romanfeed.audio import MusicLibrary, build_soundtrack
+from romanfeed.audio import build_soundtrack
+from romanfeed.audio.composer import open_library
 from romanfeed.config import ChannelConfig
 from romanfeed.curation import select_assets
 from romanfeed.publish import build_metadata, publish
@@ -125,7 +126,9 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 3. soundtrack
         target = spi * len(assets)
-        library = MusicLibrary(cfg.audio.library)
+        # audio.source picks the licensed manifest or freshly composed,
+        # owned pieces (romanfeed.audio.composer); the 8h cut reuses it.
+        library = open_library(cfg.audio, work_dir=work, seed=opts.seed or today)
         audio_path, tracks = build_soundtrack(
             library, genre=cfg.audio.genre, duration=target, out_path=work / "soundtrack.m4a",
             fade=cfg.audio.fade_seconds, crossfade=cfg.audio.crossfade_seconds, gain_db=cfg.audio.gain_db,
