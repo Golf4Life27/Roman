@@ -9,6 +9,12 @@ User=romanfeed
 Group=romanfeed
 WorkingDirectory=/opt/romanfeed/app
 EnvironmentFile=/etc/romanfeed/env
+# Pick up the latest code and config from the public repo first, so switches
+# (live.enabled) and fixes reach the server without anyone logging in. The
+# leading '-' means a failed pull (GitHub down) still lets tonight's sync run
+# on yesterday's code.
+ExecStartPre=-/usr/bin/git -C /opt/romanfeed/app pull --ff-only --quiet
+ExecStartPre=-/opt/romanfeed/venv/bin/pip install --quiet -e /opt/romanfeed/app[youtube]
 ExecStart=/opt/romanfeed/venv/bin/romanfeed live sync --library-dir /var/lib/romanfeed/live
 # A transcode of one hour of 1080p takes well under an hour on 2 vCPU; this
 # only stops a wedged download from running into the evening's stream.

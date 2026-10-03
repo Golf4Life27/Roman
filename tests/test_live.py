@@ -445,3 +445,28 @@ def test_watchdog_kills_an_overrunning_ffmpeg():
 def test_ffmpeg_stderr_is_masked(caplog):
     run._pump(io.StringIO(f"rtmp://a.rtmp.youtube.com/live2/{KEY}: Broken pipe\n"), KEY)
     assert caplog.records and KEY not in caplog.text and "****" in caplog.text
+
+
+def test_studio_key_mode_streams_with_no_api_and_the_same_caps(tmp_path, fake_api, monkeypatch):
+    yt = fake_api(_FakeYouTube("live"))
+    monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
+    seen = {}
+
+    def fake_stream(cmd, *, timeout_s, secret=None):
+        seen.update(cmd=cmd, timeout=timeout_s, secret=secret)
+        return 0
+
+    monkeypatch.setattr(run, "run_stream", fake_stream)
+    lib = _library(tmp_path, 12)
+    assert run.cmd_start(_cfg(enabled=True), lib) == 0
+    assert yt.names() == []                                   # not one API call
+    assert seen["cmd"][-1] == "rtmp://a.rtmp.youtube.com/live2/abcd-1234-efgh"
+    assert seen["secret"] == "abcd-1234-efgh"                 # masked in logs
+    assert "-t" in seen["cmd"] and int(seen["cmd"][seen["cmd"].index("-t") + 1]) <= 41400
+    assert seen["timeout"] == 36000 + 15 * 60
+
+
+def test_studio_key_mode_still_refuses_when_disabled(tmp_path, fake_api, monkeypatch):
+    fake_api(_FakeYouTube("live"))
+    monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
+    assert run.cmd_start(_cfg(enabled=False), _library(tmp_path, 12)) == 2

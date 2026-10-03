@@ -94,35 +94,26 @@ keeps 12 videos and the sync stops before the disk falls under 5 GB free.
 
 ## One-time setup (only after the owner says yes)
 
-Nothing here costs money until step 2.
+The owner does four things, none in a terminal. The stream uses Studio's
+persistent stream key, so it needs no extra YouTube API permission (the API
+path needs youtube.force-ssl, which Google gates behind an app review).
 
-1. **Owner decision.** Channel at 100 subscribers or 15 watch hours/day, and
-   the owner agrees to ~€6/month.
-2. **Buy the server.** Hetzner Cloud → new server → CX23, Ubuntu 24.04, an SSH
-   key, primary IPv4 on.
-3. **Enable live streaming on the channel.** YouTube Studio → Create → Go
-   live. The first time, YouTube asks to verify the channel by phone and then
-   takes **up to 24 hours** to activate live streaming. Do this a day ahead.
-4. **Re-mint the YouTube token with the manage scope**, on a computer with a
-   browser: `romanfeed auth --scope manage`. Live broadcasts need
-   `youtube.force-ssl`, which the upload-only token does not have. (The new
-   token also covers uploads, so it can replace the `YOUTUBE_TOKEN_JSON`
-   GitHub secret too.)
-5. **Make a GitHub token for the server.** GitHub → Settings → Developer
-   settings → Fine-grained tokens → repository `Golf4Life27/Roman` only,
-   permission **Actions: read**. It only downloads the render artifacts.
-6. **Install.** Copy the repo to the server and run
-   `sudo bash deploy/live/setup.sh --youtube-token … --env …`
-   (details in [deploy/live/README.md](../deploy/live/README.md)). Timers are
-   installed but off.
-7. **Fill the library.** `sudo systemctl enable --now romanfeed-sync.timer`
-   a few days ahead, then check `romanfeed live start --dry-run` prints a
-   sensible playlist, title and command.
-8. **Switch on.** Add `live: {enabled: true}` to
-   `config/channels/deep-space-ambient.yaml`, update the server copy, and
-   `sudo systemctl enable --now romanfeed-live.timer`.
+1. **Live streaming on** (done 2026-10-03; YouTube takes 24 h to activate).
+2. **Stream key + auto start/stop.** Studio -> Create -> Go live -> **Stream**.
+   Set the title/description once (they carry over night to night), turn on
+   **Auto-start** and **Auto-stop** in the stream settings, set visibility
+   **Public**, and copy the **Stream key**.
+3. **GitHub token** for downloading the daily renders:
+   github.com/settings/personal-access-tokens/new -> Repository access: only
+   Golf4Life27/Roman -> Permissions: **Actions: Read** -> Generate, copy.
+4. **Rent the server** (Hetzner CX23, about €6/month): Create server ->
+   Ubuntu 24.04 -> CX23 -> paste `deploy/live/cloud-init.yaml` into **Cloud
+   config** with the key and token filled in -> Create.
 
-To stop: `sudo systemctl disable --now romanfeed-live.timer`.
+From then on the server updates itself from the repo every day at 15:00
+Central before pulling new renders. The stream starts only when
+`live: {enabled: true}` is in the channel config -- a repo change, not a
+server change.
 
 ## Settings
 

@@ -1,5 +1,9 @@
 # Live-stream server
 
+**Easiest install:** paste `cloud-init.yaml` (two values filled in) into the
+Hetzner "Cloud config" box when creating the server; see docs/LIVE_STREAM.md.
+The manual route below still works.
+
 Files for the always-on box that runs the nightly ~10-hour stream. What it
 does and why is in [docs/LIVE_STREAM.md](../../docs/LIVE_STREAM.md); this page
 is only the commands.
