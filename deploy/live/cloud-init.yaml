@@ -1,0 +1,30 @@
+#cloud-config
+# One-paste setup for the nightly live-stream server.
+#
+# Hetzner: Create server -> Ubuntu 24.04, CX23 -> "Cloud config" box: paste
+# this whole file with the two PASTE_ values filled in -> Create. No terminal,
+# no SSH. In ~5 minutes the server has the code (cloned from the public repo),
+# ffmpeg, the service user, the secrets (0600), and both timers enabled.
+#
+# Safe to enable the timers at once: `romanfeed live start` refuses unless
+# live.enabled is true in config/channels/deep-space-ambient.yaml, and the
+# daily sync pulls the repo, so that switch is flipped in the repo, not here.
+# Until then the server only fills its library (15:00 Central each day).
+write_files:
+  - path: /root/romanfeed.env
+    permissions: "0600"
+    content: |
+      # GitHub fine-grained token: repository Golf4Life27/Roman only, "Actions: read".
+      GITHUB_TOKEN=PASTE_GITHUB_TOKEN
+      # Studio -> Create -> Go live -> Stream -> Stream key.
+      YOUTUBE_STREAM_KEY=PASTE_STREAM_KEY
+runcmd:
+  - apt-get update -q
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y -q git
+  - mkdir -p /opt/romanfeed
+  - git clone --depth 50 https://github.com/Golf4Life27/Roman /opt/romanfeed/app
+  - bash /opt/romanfeed/app/deploy/live/setup.sh --env /root/romanfeed.env
+  - rm -f /root/romanfeed.env
+  - timedatectl set-timezone America/Chicago
+  - systemctl enable --now romanfeed-sync.timer romanfeed-live.timer
+  - systemctl start romanfeed-sync.service --no-block

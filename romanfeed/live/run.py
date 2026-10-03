@@ -37,6 +37,19 @@ log = logging.getLogger(__name__)
 
 WATCHDOG_GRACE_S = 15 * 60
 PLACEHOLDER_URL = "rtmp://a.rtmp.youtube.com/live2/<stream-key>"
+INGEST = "rtmp://a.rtmp.youtube.com/live2"
+
+
+def studio_key() -> str | None:
+    """The channel's persistent stream key from Studio, if configured.
+
+    With it, no YouTube API call is made at all: Studio's default stream,
+    with Auto-start and Auto-stop on, goes live when ffmpeg connects and ends
+    (and saves as a video) when ffmpeg stops. That avoids liveBroadcasts,
+    which needs youtube.force-ssl -- gated behind Google's app review."""
+    import os
+
+    return os.environ.get("YOUTUBE_STREAM_KEY", "").strip() or None
 
 
 @dataclass
@@ -162,10 +175,13 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
     state = lib / "stream.json"
     timeout = plan.duration_s + WATCHDOG_GRACE_S
 
+    key = studio_key()
     if dry_run:
-        info = bc.load_stream(state)
-        url = info.rtmp_url if info else PLACEHOLDER_URL
-        secret = info.stream_name if info else None
+        info = None if key else bc.load_stream(state)
+        url = f"{INGEST}/{key}" if key else (info.rtmp_url if info else PLACEHOLDER_URL)
+        secret = key or (info.stream_name if info else None)
+        if key:
+            print("mode: Studio stream key (no API; Studio's Auto-start/Auto-stop run the broadcast)")
         if not cfg.live.enabled:
             print("NOTE: live.enabled is false; this is a preview only, `start` would refuse.")
         print_plan(plan)
@@ -175,9 +191,19 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         print("ffmpeg:   " + bc.mask(" ".join(ffmpeg_command(plan.concat_path, plan.duration_s, url)), secret))
         return 0
 
+    signal.signal(signal.SIGTERM, _sigterm)
+    if key:
+        # Same caps as the API path: ffmpeg -t, the watchdog, systemd's
+        # RuntimeMaxSec. Ending the stream ends the broadcast (Auto-stop).
+        cmd = ffmpeg_command(plan.concat_path, plan.duration_s, f"{INGEST}/{key}")
+        write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
+        log.info("streaming %d s with the Studio stream key (watchdog %d s)", plan.duration_s, timeout)
+        rc = run_stream(cmd, timeout_s=timeout, secret=key)
+        log.info("ffmpeg exited %d", rc)
+        return 0 if rc == 0 else 1
+
     from romanfeed.publish import youtube
 
-    signal.signal(signal.SIGTERM, _sigterm)
     yt = youtube.client()
     info = bc.ensure_stream(yt, state)
     cmd = ffmpeg_command(plan.concat_path, plan.duration_s, info.rtmp_url)
