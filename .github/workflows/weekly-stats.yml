@@ -89,7 +89,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          title="$(head -n1 report.txt | sed 's/^Subject: //')"
+          title="$(grep -m1 '^Subject: ' report.txt | sed 's/^Subject: //')"
           for n in $(gh issue list --label weekly-stats --state open --json number --jq '.[].number'); do
             gh issue close "$n" --comment "Superseded by this week's report."
           done
@@ -98,7 +98,7 @@ jobs:
             echo "@$OWNER here are this week's numbers."
             echo
             echo '```'
-            tail -n +2 report.txt
+            grep -v '^Subject: ' report.txt
             echo '```'
           } > body.md
           gh issue create --title "$title" --body-file body.md --label weekly-stats

@@ -253,6 +253,13 @@ def fetch_public_stats(today: date, *, yt_public, ledger, handle: str) -> Channe
     subs, views, videos = channel_counts(yt_public, handle)
     ledger.record_snapshot(today.isoformat(), subs, views, videos)
     week_ago = ledger.snapshot_on_or_before((today - timedelta(days=7)).isoformat())
+    if week_ago is None:
+        # Under a week of history: compare with the oldest snapshot that is at
+        # least a day old rather than reporting nothing.
+        row = ledger.conn.execute(
+            "SELECT taken_on, subscribers, views, videos FROM channel_snapshots WHERE taken_on <= ? "
+            "ORDER BY taken_on ASC LIMIT 1", ((today - timedelta(days=1)).isoformat(),)).fetchone()
+        week_ago = tuple(row) if row else None
     empty = Window(today - timedelta(days=6), today)
     return ChannelStats(subscribers=subs, video_count=videos, view_count=views, last7=empty, prev7=empty,
                         watch_hours_12m=0.0, has_analytics=False, week_ago=week_ago)
