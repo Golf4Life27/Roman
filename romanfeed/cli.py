@@ -174,7 +174,9 @@ def _cmd_stats(args) -> int:
             from romanfeed.config import load_config
             from romanfeed.state import Ledger
 
-            print(f"(analytics unavailable: {str(exc)[:120]}; using public numbers)")
+            # stderr: stdout is the report itself, and its first line becomes
+            # the GitHub issue's title.
+            print(f"(analytics unavailable: {str(exc)[:120]}; using public numbers)", file=sys.stderr)
             handle = load_config(args.config).channel.handle or "@SpaceScreens"
             with Ledger(Path(args.data_dir) / "state.db") as ledger:
                 data = st.fetch_public_stats(today, yt_public=public_client(key), ledger=ledger, handle=handle)

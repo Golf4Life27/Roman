@@ -323,3 +323,25 @@ def test_title_split_test_compares_views_per_video_per_day(tmp_path):
     assert rows["New titles (2 videos)"] == "+100 views since 2026-10-01 = 7.14 per video per day"
     assert rows["Old titles (3 videos)"] == "+35 views since 2026-10-01 = 1.67 per video per day"
     assert rows["Reading"].startswith("new titles ahead: 4.29x the old after 7 days")
+
+
+def test_short_history_compares_with_the_oldest_snapshot(tmp_path):
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.state import Ledger
+
+    class Pub:
+        def channels(self):
+            return self
+
+        def list(self, part, forHandle):
+            return type("R", (), {"execute": lambda self: {"items": [{"statistics": {
+                "subscriberCount": "28", "viewCount": "4261", "videoCount": "28"}}]}})()
+
+    with Ledger(tmp_path / "s.db") as led:
+        led.record_snapshot("2026-10-01", 3, 425, 14)
+        led.record_snapshot("2026-10-03", 16, 1900, 20)
+        data = st.fetch_public_stats(date(2026, 10, 5), yt_public=Pub(), ledger=led, handle="@SpaceScreens")
+    _, text, _ = st.report(data, date(2026, 10, 5))
+    assert "Since 2026-10-01: +25 (6.2/day)" in text
