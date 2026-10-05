@@ -9,6 +9,9 @@ User=romanfeed
 Group=romanfeed
 WorkingDirectory=/opt/romanfeed/app
 EnvironmentFile=/etc/romanfeed/env
+# Pull the repo first, so switching live.enabled on (or off) in the repo takes
+# effect the same evening. A failed pull ('-') falls back to the code on disk.
+ExecStartPre=-/usr/bin/git -C /opt/romanfeed/app pull --ff-only --quiet
 # Refuses (exit 2) unless live.enabled is true in the channel config.
 ExecStart=/opt/romanfeed/venv/bin/romanfeed live start --library-dir /var/lib/romanfeed/live
 # One night, then stop. Never restarted: a crash ends the night, it does not
