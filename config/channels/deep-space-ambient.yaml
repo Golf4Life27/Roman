@@ -184,3 +184,5 @@ shorts:
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
+   live:
+     enabled: true
