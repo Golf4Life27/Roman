@@ -142,7 +142,8 @@ def subscribe_card(width: int, height: int, *, channel_name: str, line: str) -> 
     return layer
 
 
-def short_overlay(asset: ImageAsset, width: int, height: int, *, full_label: str, handle: str, cta: bool = True) -> Image.Image:
+def short_overlay(asset: ImageAsset, width: int, height: int, *, full_label: str, handle: str, cta: bool = True,
+                  call: str = "Subscribe to travel through time") -> Image.Image:
     """Overlay for a vertical Short, kept inside YouTube's safe zone.
 
     The Shorts player covers roughly the bottom fifth (title, channel row) and
@@ -175,14 +176,15 @@ def short_overlay(asset: ImageAsset, width: int, height: int, *, full_label: str
             y = _centered(layer, y + int(10 * s), ln, tele_font, (225, 230, 245, 240)) + int(4 * s)
 
     if cta:
-        _cta_plate(layer, full_label=full_label, handle=handle)
+        _cta_plate(layer, full_label=full_label, handle=handle, call=call)
     return layer
 
 
-def short_cta_card(width: int, height: int, *, full_label: str, handle: str) -> Image.Image:
-    """The pointer plate alone, for narrated Shorts where it arrives at the end."""
+def short_cta_card(width: int, height: int, *, full_label: str, handle: str,
+                   call: str = "Subscribe to travel through time") -> Image.Image:
+    """The subscribe plate alone, for narrated Shorts where it arrives at the end."""
     layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    _cta_plate(layer, full_label=full_label, handle=handle)
+    _cta_plate(layer, full_label=full_label, handle=handle, call=call)
     return layer
 
 
@@ -200,21 +202,22 @@ def caption_card(text: str, width: int, height: int) -> Image.Image:
     return layer
 
 
-def _cta_plate(layer: Image.Image, *, full_label: str, handle: str) -> None:
-    """The pointer to the long video, on a plate, two-thirds of the way down."""
+def _cta_plate(layer: Image.Image, *, full_label: str, handle: str, call: str = "Subscribe to travel through time") -> None:
+    """The subscribe call, big, with the pointer to the long video under it,
+    on a plate two-thirds of the way down (inside the Shorts safe zone)."""
     width, height = layer.size
     s = width / 1080
     d = ImageDraw.Draw(layer)
-    cta_font = _font(int(44 * s), bold=True)
-    sub_font = _font(int(34 * s))
+    call_font = _font(int(56 * s), bold=True)
+    sub_font = _font(int(36 * s))
     max_w = width * 0.84
-    cta = f"Full {full_label} sleep video on {handle}"
-    lines = _wrap(d, cta, cta_font, max_w - 60 * s, 2)
-    plate_h = int(len(lines) * 58 * s + 70 * s + 44 * s)
-    py = int(height * 0.60)
+    lines = _wrap(d, call, call_font, max_w - 60 * s, 2)
+    plate_h = int(len(lines) * 72 * s + 70 * s + 52 * s)
+    py = int(height * 0.58)
     d.rounded_rectangle((int(width * 0.06), py, int(width * 0.94), py + plate_h), radius=int(28 * s),
-                        fill=(8, 10, 22, 175), outline=(255, 255, 255, 55), width=max(1, int(2 * s)))
-    yy = py + int(26 * s)
+                        fill=(160, 0, 0, 215), outline=(255, 255, 255, 90), width=max(1, int(3 * s)))
+    yy = py + int(28 * s)
     for ln in lines:
-        yy = _centered(layer, yy, ln, cta_font, (255, 255, 255, 255), blur=2, shadow_alpha=80) + int(16 * s)
-    _centered(layer, yy + int(10 * s), "Subscribe for more space to sleep to", sub_font, (255, 200, 200, 240), blur=2, shadow_alpha=80)
+        yy = _centered(layer, yy, ln, call_font, (255, 255, 255, 255), blur=2, shadow_alpha=90) + int(18 * s)
+    _centered(layer, yy + int(10 * s), f"Full {full_label} sleep video on {handle}", sub_font,
+              (255, 230, 230, 245), blur=2, shadow_alpha=80)

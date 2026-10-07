@@ -37,6 +37,7 @@ video:
   intro_seconds: 12
   subscribe_from: 14
   subscribe_until: 40
+  subscribe_line: Subscribe to travel through time
   # The 8-hour cut shows images for 45 minutes, then fades to black while the
   # music plays on ("dark screen" is what sleep searchers ask for). It also
   # shrinks the 8h file from ~13 GB to about one hour's worth.
@@ -177,12 +178,15 @@ publish:
 
 # Vertical Shorts cut from the long videos (see .github/workflows/shorts.yml).
 # enabled is the PUBLISH SWITCH and is the owner's call: false renders and
-# writes metadata only. Three a day; each links to its full sleep video.
+# writes metadata only. Four a day; each links to its full sleep video.
 shorts:
   enabled: true               # owner approved 2026-10-01
-  per_day: 3
+  per_day: 4                # 4 Shorts + 2 uploads = ~9,700 of the 10,000 daily quota on render days
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
-   live:
-     enabled: true
+
+# Nightly ~10 h live stream (docs/LIVE_STREAM.md). Switched on by the owner
+# on 2026-10-05 after 221 watch hours in 7 days (the rule: 15 a day).
+live:
+  enabled: true
