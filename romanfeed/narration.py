@@ -9,6 +9,7 @@ Short never says a distance or a size the source did not say.
   2. the first other sentence that carries a distance or a size, if any
   3. "This image from <telescope> was released in <year>."
   4. "The full 8-hour version is on the channel."
+  5. a short subscribe call, rotated by image ("Subscribe to travel through time.")
 
 Captions that are mostly credits, links, instrument boilerplate or "this video
 shows" lines yield no script, and the Short picker moves to the next image.
@@ -94,6 +95,23 @@ def _telescope_name(asset: ImageAsset) -> str | None:
     return re.sub(r"^(NASA's |ESA's )", "the ", full) if not full.startswith("the ") else full
 
 
+# Subscribe calls, rotated by image so the feed does not hear the same line
+# three times a day. (spoken, on-screen headline). All literally true: every
+# image is old light, and Shorts post daily.
+SUBSCRIBE_CALLS: list[tuple[str, str]] = [
+    ("Subscribe to travel through time.", "Subscribe to travel through time"),
+    ("Hit subscribe for a new corner of the universe every day.", "A new corner of the universe every day"),
+    ("Subscribe, and fall asleep among the stars tonight.", "Fall asleep among the stars tonight"),
+    ("Everything you just saw is light from the past. Subscribe to see more.", "Subscribe to see light from the past"),
+]
+
+
+def subscribe_call(key: str) -> tuple[str, str]:
+    import hashlib
+
+    return SUBSCRIBE_CALLS[int(hashlib.sha1(key.encode()).hexdigest(), 16) % len(SUBSCRIBE_CALLS)]
+
+
 def fact_script(asset: ImageAsset, *, full_label: str, include_size: bool = True) -> str | None:
     """The spoken script for one image, or None if its caption is not usable."""
     good = [s for s in sentences(clean_caption(asset.description)) if _usable(s)]
@@ -119,6 +137,8 @@ def fact_script(asset: ImageAsset, *, full_label: str, include_size: bool = True
     elif tele:
         lines.append(f"This image comes from {tele}.")
     lines.append(f"The full {full_label} version is on the channel.")
+    # Said while the end card is up (captions stop at "The full ...").
+    lines.append(subscribe_call(asset.asset_id)[0])
     return " ".join(lines)
 
 

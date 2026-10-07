@@ -54,10 +54,13 @@ def _cfg(enabled: bool = False, hours: float = 10.0):
 
 # --- config -----------------------------------------------------------------
 
-def test_live_is_off_by_default_in_the_channel_config():
+def test_shipped_live_block_is_capped():
+    # The owner switched the stream on 2026-10-05; whatever the switch, the
+    # shipped block must stay a ~10 h night that ends well before 12 h.
     cfg = load_config(CONFIG)
-    assert cfg.live.enabled is False
     assert cfg.live.hours == 10.0
+    from romanfeed.config import LiveSettings
+    assert LiveSettings().enabled is False  # the code default stays off
     assert cfg.live.timezone == "America/Chicago"
 
 
@@ -367,10 +370,12 @@ def test_start_refuses_when_disabled(tmp_path, fake_api, monkeypatch, capsys):
     assert "live.enabled is false" in capsys.readouterr().out
 
 
-def test_cli_start_refuses_with_the_shipped_config(tmp_path, monkeypatch, capsys):
+def test_cli_start_refuses_when_the_config_says_off(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(youtube, "client", lambda: pytest.fail("built a client"))
+    off = tmp_path / "off.yaml"
+    off.write_text(Path(CONFIG).read_text().replace("live:\n  enabled: true", "live:\n  enabled: false"))
     lib = _library(tmp_path, 12)
-    rc = cli.main(["live", "start", "--config", str(CONFIG), "--library-dir", str(lib)])
+    rc = cli.main(["live", "start", "--config", str(off), "--library-dir", str(lib)])
     assert rc == 2
 
 

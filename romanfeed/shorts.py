@@ -264,7 +264,8 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     narrated = bool(captions)
     layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
     base = work_dir / "short_overlay.png"
-    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated).save(base, "PNG")
+    call = narration.subscribe_call(asset.asset_id)[1]
+    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call).save(base, "PNG")
     layers.append((base, None))
     if narrated:
         for i, (t0, t1, text) in enumerate(captions):
@@ -272,7 +273,7 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
             caption_card(text, s.width, s.height).save(png, "PNG")
             layers.append((png, f"between(t,{t0:.3f},{t1:.3f})"))
         cta = work_dir / "short_cta.png"
-        short_cta_card(s.width, s.height, full_label=link_label, handle=handle).save(cta, "PNG")
+        short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call).save(cta, "PNG")
         layers.append((cta, f"gte(t,{(cta_from or dur - 4):.3f})"))
     # Alternate pan direction by asset so a run of Shorts does not all drift left.
     flip = int(hashlib.sha1(asset.asset_id.encode()).hexdigest(), 16) % 2

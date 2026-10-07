@@ -25,7 +25,8 @@ def test_script_is_caption_sentences_plus_known_facts():
     assert s.startswith("What looks much like craggy mountains")
     assert "roughly 7,600 light-years away." in s                 # the size/distance sentence is chosen
     assert "This image from the James Webb Space Telescope was released in 2022." in s
-    assert s.endswith("The full 8-hour version is on the channel.")
+    assert "The full 8-hour version is on the channel." in s
+    assert any(s.endswith(spoken) for spoken, _ in narration.SUBSCRIBE_CALLS)  # ends on a subscribe call
     assert "Credit" not in s and "http" not in s and "(NIRCam)" not in s
 
 
