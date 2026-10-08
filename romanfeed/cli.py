@@ -256,6 +256,15 @@ def _cmd_retitle(args) -> int:
     return retitle(cfg, ids or None, dry_run=args.dry_run)
 
 
+def _cmd_ledger_merge(args) -> int:
+    from romanfeed.state import Ledger
+
+    with Ledger(Path(args.into)) as ledger:
+        added = ledger.merge_from(Path(args.other))
+    print("merged: " + ", ".join(f"{t} +{n}" for t, n in added.items()))
+    return 0
+
+
 def _cmd_music_add(args) -> int:
     from romanfeed.audio.library import register_track
 
@@ -372,6 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("--all", action="store_true", help="every upload on the channel (Shorts are skipped)")
     rt.add_argument("--dry-run", action="store_true", help="print before/after and write nothing")
     rt.set_defaults(fn=_cmd_retitle)
+
+    lm = sub.add_parser("ledger-merge", help="union another ledger copy into this one (parallel jobs)")
+    lm.add_argument("other")
+    lm.add_argument("--into", default="data/state.db")
+    lm.set_defaults(fn=_cmd_ledger_merge)
 
     m = sub.add_parser("music", help="manage the licensed music manifest")
     msub = m.add_subparsers(dest="music_cmd", required=True)

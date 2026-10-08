@@ -5,6 +5,7 @@ channel:
   # Chosen 2026-09-05. Handle @SpaceScreens goes live ~2026-09-19 (YouTube's 14-day hold).
   name: Space Screens
   handle: "@SpaceScreens"
+  channel_id: UCUlw1snmaUDAKL965drudgQ
   tagline: Real space telescope imagery, slowly. Hubble and Webb today, Roman when its first images land.
 
 video:

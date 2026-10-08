@@ -87,6 +87,32 @@ def is_public(video_id: str, *, timeout: int = 20) -> bool:
     return r.status_code == 200
 
 
+def recent_upload_titles(channel_id: str, *, timeout: int = 20) -> list[str]:
+    """Titles of the channel's latest public uploads (its RSS feed: free, no key).
+
+    The second guard against posting the same image twice: the ledger can lose
+    a record when parallel jobs race, the channel itself cannot."""
+    import html as _html
+    import re as _re
+
+    if not channel_id:
+        return []
+    try:
+        r = requests.get("https://www.youtube.com/feeds/videos.xml", params={"channel_id": channel_id},
+                         headers={"User-Agent": USER_AGENT}, timeout=timeout)
+        r.raise_for_status()
+    except requests.RequestException as exc:
+        log.warning("upload feed unavailable: %s", exc)
+        return []
+    entries = _re.findall(r"<entry>.*?<title>(.*?)</title>", r.text, _re.S)
+    return [_html.unescape(t) for t in entries]
+
+
+def already_posted(asset: ImageAsset, titles: list[str]) -> bool:
+    name = (lead_name(asset.title, limit=60) or asset.title).strip().lower()
+    return bool(name) and any(t.lower().startswith(name) for t in titles)
+
+
 def full_label(seconds: float) -> str:
     """'8-hour', '1-hour', '45-minute' -- for "Full 8-hour sleep video"."""
     if seconds >= 3000:
@@ -327,7 +353,7 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     title_lead = lead
     if "{lead_by}" in template:
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
+        title_lead = f"{lead} by {tele}" if tele and not any(t.lower() in lead.lower() for t in tele.split(" & ")) else lead
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     link = f"https://youtu.be/{parent.link_id}"
@@ -414,12 +440,13 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         meta = backfill_meta(ledger, cfg, sorted({a for _, ids in picks for a in ids}))
         manifest = MusicLibrary(cfg.audio.library)
 
+        posted = recent_upload_titles(cfg.channel.channel_id)
         key = narration.api_key() if cfg.shorts.narration else None
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
-            ranked = ranked_candidates(cands, cache)
+            ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue

@@ -162,6 +162,42 @@ class Ledger:
         ).fetchall()
         return [r[0] for r in rows]
 
+    # -- merging -------------------------------------------------------
+    MERGE_TABLES = ("assets_used", "videos", "video_assets", "asset_meta", "shorts",
+                    "channel_snapshots", "video_views")
+
+    def merge_from(self, other: str | Path) -> dict[str, int]:
+        """Union another copy of the ledger into this one.
+
+        Jobs run in parallel (a 3-hour render overlaps Shorts slots) and each
+        saves the copy it restored at the start plus its own additions; without
+        a merge the last to finish erases the others' records -- which is how
+        one image became two Shorts on 2026-10-07. Rows only ever get added,
+        so a union is right; the one in-place update (a video getting its
+        YouTube id) is carried over where this copy lacks it."""
+        added: dict[str, int] = {}
+        self.conn.execute("ATTACH DATABASE ? AS o", (str(other),))
+        try:
+            have = {r[0] for r in self.conn.execute("SELECT name FROM o.sqlite_master WHERE type='table'")}
+            for t in self.MERGE_TABLES:
+                if t not in have:
+                    continue
+                before = self.conn.execute(f"SELECT COUNT(*) FROM main.{t}").fetchone()[0]
+                self.conn.execute(f"INSERT OR IGNORE INTO main.{t} SELECT * FROM o.{t}")
+                added[t] = self.conn.execute(f"SELECT COUNT(*) FROM main.{t}").fetchone()[0] - before
+            if "videos" in have:
+                self.conn.execute(
+                    "UPDATE main.videos SET youtube_id = (SELECT o.videos.youtube_id FROM o.videos "
+                    "WHERE o.videos.video_slug = main.videos.video_slug), "
+                    "published_at = (SELECT o.videos.published_at FROM o.videos "
+                    "WHERE o.videos.video_slug = main.videos.video_slug) "
+                    "WHERE youtube_id IS NULL AND EXISTS (SELECT 1 FROM o.videos WHERE "
+                    "o.videos.video_slug = main.videos.video_slug AND o.videos.youtube_id IS NOT NULL)")
+            self.conn.commit()
+        finally:
+            self.conn.execute("DETACH DATABASE o")
+        return added
+
     # -- channel snapshots -------------------------------------------------
     def record_snapshot(self, taken_on: str, subscribers: int, views: int, videos: int) -> None:
         self.conn.execute("INSERT OR REPLACE INTO channel_snapshots VALUES (?, ?, ?, ?)",
