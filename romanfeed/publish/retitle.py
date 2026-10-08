@@ -104,7 +104,7 @@ def new_title(cfg: ChannelConfig, old_title: str, seconds: float, description: s
     title_lead = lead
     if "{lead_by}" in template:
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
+        title_lead = f"{lead} by {tele}" if tele and not any(t.lower() in lead.lower() for t in tele.split(" & ")) else lead
     title = _fit_title(template, title_lead, {
         "length": length_text(seconds), "subject": "Deep Space", "date": "", "channel": cfg.channel.name,
         "telescope": tele or "Telescope", "dark_after": "",

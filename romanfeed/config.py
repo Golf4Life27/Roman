@@ -20,6 +20,7 @@ class ChannelInfo:
     name: str
     tagline: str = ""
     handle: str = ""  # e.g. "@SpaceScreens"; used in on-screen prompts and links
+    channel_id: str = ""  # UC...; the public upload feed is read from it
 
 
 @dataclass

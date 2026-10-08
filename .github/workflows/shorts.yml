@@ -79,6 +79,20 @@ jobs:
           args="--count $COUNT"
           [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
           python -m romanfeed shorts config/channels/deep-space-ambient.yaml $args
+      # Parallel jobs each save the ledger they restored plus their own rows;
+      # merge with the newest saved copy first so nobody erases anybody.
+      - name: Ledger merge (move ours aside)
+        run: mv data/state.db data/mine.db
+      - name: Ledger merge (restore newest)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-merge-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Ledger merge (union)
+        run: |
+          if [ -f data/state.db ]; then python -m romanfeed ledger-merge data/mine.db --into data/state.db
+          else mv data/mine.db data/state.db; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

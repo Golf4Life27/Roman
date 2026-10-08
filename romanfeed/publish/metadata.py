@@ -253,7 +253,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         # through the same shrink-to-fit as {lead}, and a shrink that eats the
         # telescope must not leave a dangling "by".
         template = template.replace("{lead_by}", "{lead}")
-        title_lead = f"{lead} by {tele}" if tele and tele.split(" & ")[0].lower() not in lead.lower() else lead
+        title_lead = f"{lead} by {tele}" if tele and not any(t.lower() in lead.lower() for t in tele.split(" & ")) else lead
     dark_label = _minutes(dark_after) if dark_after else ""
     title = _fit_title(
         template, title_lead,

@@ -151,3 +151,27 @@ def test_render_short_is_vertical_and_timed(tmp_path):
     assert abs(probe_duration(str(out)) - 15) < 0.5
     probe = subprocess.run([ffmpeg_path(), "-i", str(out)], capture_output=True, text=True).stderr
     assert "270x480" in probe
+
+
+def test_ledger_merge_keeps_both_jobs_rows(tmp_path):
+    a, b = tmp_path / "a.db", tmp_path / "b.db"
+    with Ledger(a) as la:
+        la.record_short("chan", "nasa:X1", "p", "S1")            # a Shorts run
+    with Ledger(b) as lb:
+        lb.record_video(VideoRecord("chan-2026-10-07", "chan", "/v.mp4", 3600, "2026-10-07T12:00:00"))
+        lb.mark_published("chan-2026-10-07", "V1", "t")          # the render, same time
+        added = lb.merge_from(a)
+        assert lb.shorts_asset_ids("chan") == {"nasa:X1"} and added["shorts"] == 1
+        assert lb.videos("chan")[0].youtube_id == "V1"
+
+
+def test_feed_titles_block_a_second_short_of_the_same_image():
+    a = _asset(1, title="Extra X-rays at the Hub of Our Milky Way Galaxy")
+    assert shorts.already_posted(a, ["Extra X-rays at the Hub of Our Milky Way Galaxy | Calm Space for Sleep"])
+    assert not shorts.already_posted(a, ["Cosmic fairy lights by Hubble | Calm Space for Sleep"])
+
+
+def test_no_by_when_the_name_already_names_a_telescope():
+    a = _asset(1, title="Spitzer Space Telescope View of Galaxy Messier 101", credit="NASA/JPL-Caltech", keywords=["hubble"])
+    md = shorts.short_metadata(_cfg(), a, shorts.Parent("p", "V", 3600, ""), [])
+    assert " by " not in md.title
