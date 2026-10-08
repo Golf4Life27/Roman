@@ -288,6 +288,50 @@ def _cmd_music_list(args) -> int:
     return 0
 
 
+def _cmd_cozy(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from romanfeed.config import load_config
+
+    cfg = load_config(args.config)
+    day = date.fromisoformat(args.date) if getattr(args, "date", None) else date.today()
+    if args.cozy_cmd == "themes":
+        from datetime import timedelta
+
+        from romanfeed.cozy.calendar import fetch_launches, themes_for
+
+        launches = fetch_launches()
+        for i in range(args.days):
+            d = day + timedelta(days=i)
+            ts = themes_for(d, launches=launches)
+            print(d.isoformat(), " > ".join(t.label + ("*" if t.peak else "") for t in ts))
+        return 0
+    if args.cozy_cmd == "generate":
+        from romanfeed.cozy.generate import generate
+
+        release = None
+        if not args.dry_run:
+            from romanfeed.cozy.release import Release
+
+            release = Release(cfg.cozy.repo, cfg.cozy.release_tag)
+        generate(cfg, today=day, dry_run=args.dry_run, release=release, max_scenes=args.max)
+        return 0
+    if args.cozy_cmd == "import":
+        from romanfeed.cozy.generate import import_scenes, load_items
+        from romanfeed.cozy.release import Release
+
+        text = sys.stdin.read() if args.items == "-" else Path(args.items).read_text()
+        import_scenes(cfg, load_items(text), release=Release(cfg.cozy.repo, cfg.cozy.release_tag), today=day)
+        return 0
+    if args.cozy_cmd == "video":
+        from romanfeed.cozy.video import run
+
+        run(cfg, today=day, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir),
+            dry_run=args.dry_run, hours=args.hours)
+        return 0
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="romanfeed", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -374,6 +418,28 @@ def main(argv: list[str] | None = None) -> int:
             lp.add_argument("--dry-run", action="store_true",
                             help="print the plan, broadcast body and ffmpeg command (key masked); send nothing")
     lv.set_defaults(fn=_cmd_live)
+
+    cz = sub.add_parser("cozy", help="cozy animated scenes: calendar, monthly generator, weekly video")
+    csub = cz.add_subparsers(dest="cozy_cmd", required=True)
+    for name, text in [("themes", "print what each coming day is about (theme order, * = peak night)"),
+                       ("generate", "make new scenes for the coming themes, within cozy.monthly_credits"),
+                       ("import", "add loops made elsewhere: a JSON list of {id, url, title, themes}"),
+                       ("video", "build this week's cozy video; uploads only when cozy.enabled")]:
+        cp = csub.add_parser(name, help=text)
+        cp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
+        cp.add_argument("--date", help="act as if today were YYYY-MM-DD")
+        if name == "themes":
+            cp.add_argument("--days", type=int, default=14)
+        if name == "generate":
+            cp.add_argument("--dry-run", action="store_true", help="print what would be made; spend nothing")
+            cp.add_argument("--max", type=int, help="at most this many scenes this run")
+        if name == "import":
+            cp.add_argument("items", help="JSON file, or - for stdin")
+        if name == "video":
+            cp.add_argument("--dry-run", action="store_true", help="render, upload nothing")
+            cp.add_argument("--hours", type=float, help="override cozy.hours")
+            cp.add_argument("--output-dir", default="output")
+    cz.set_defaults(fn=_cmd_cozy)
 
     rt = sub.add_parser("retitle", help="sleep-search titles/descriptions on videos already up (needs --scope manage token)")
     rt.add_argument("--config", default="config/channels/deep-space-ambient.yaml")

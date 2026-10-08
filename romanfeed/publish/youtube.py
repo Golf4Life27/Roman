@@ -46,6 +46,7 @@ def request_body(meta: VideoMetadata) -> dict:
             "selfDeclaredMadeForKids": meta.made_for_kids,
             "license": "youtube",
             "embeddable": True,
+            "containsSyntheticMedia": meta.synthetic,
         },
     }
 

@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 
 from romanfeed.config import ChannelConfig
 from romanfeed.live import broadcast as bc
+from romanfeed.live import scene as scene_mod
 from romanfeed.live.library import ReadyFile, load_ready, sync
 from romanfeed.live.playlist import (
     MAX_SECONDS, build_playlist, read_last_first, stream_seconds, write_concat, write_last_first,
@@ -151,16 +152,34 @@ def print_plan(plan: NightPlan) -> None:
     print(f"concat:   {plan.concat_path}")
 
 
+def tonight(cfg: ChannelConfig) -> date:
+    return datetime.now(ZoneInfo(cfg.live.timezone)).date()
+
+
+def print_scene(night: scene_mod.SceneNight | None) -> None:
+    if night is None:
+        print("scene:    none tonight (regular night)")
+        return
+    peak = ", peak night" if night.theme.peak else ""
+    print(f"scene:    {night.scene.title} ({night.scene.id}) for {night.theme.label}{peak}")
+    print(f"loop:     {night.loop}")
+    print(f"music:    {night.music}")
+
+
 def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     live = cfg.live
     added = sync(lib, repo=live.artifact_repo, keep=live.keep_files, min_free_gb=live.min_free_gb)
     files = load_ready(lib)
     print(f"added {len(added)}; library holds {len(files)} files, "
           f"{sum(f.duration_s for f in files) / 3600:.1f} h")
+    # Tonight's scene, if it is a scene night: download, encode, compose now,
+    # so 21:00 finds it ready.
+    print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
     return 0
 
 
 def cmd_plan(cfg: ChannelConfig, lib: Path) -> int:
+    print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
     print_plan(plan_night(cfg, lib))
     return 0
 
@@ -174,6 +193,7 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
     plan = plan_night(cfg, lib)
     state = lib / "stream.json"
     timeout = plan.duration_s + WATCHDOG_GRACE_S
+    scene = scene_mod.prepare(cfg, lib, plan.night)
 
     key = studio_key()
     if dry_run:
@@ -184,19 +204,29 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
             print("mode: Studio stream key (no API; Studio's Auto-start/Auto-stop run the broadcast)")
         if not cfg.live.enabled:
             print("NOTE: live.enabled is false; this is a preview only, `start` would refuse.")
-        print_plan(plan)
+        print_scene(scene)
+        if scene is None:
+            print_plan(plan)
         print("broadcast body:")
         print(json.dumps(plan.body, indent=2))
         print(f"watchdog: {timeout} s")
-        print("ffmpeg:   " + bc.mask(" ".join(ffmpeg_command(plan.concat_path, plan.duration_s, url)), secret))
+        cmd = (scene_mod.stream_command(scene, plan.duration_s, url) if scene
+               else ffmpeg_command(plan.concat_path, plan.duration_s, url))
+        print("ffmpeg:   " + bc.mask(" ".join(cmd), secret))
         return 0
 
     signal.signal(signal.SIGTERM, _sigterm)
     if key:
         # Same caps as the API path: ffmpeg -t, the watchdog, systemd's
         # RuntimeMaxSec. Ending the stream ends the broadcast (Auto-stop).
-        cmd = ffmpeg_command(plan.concat_path, plan.duration_s, f"{INGEST}/{key}")
-        write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
+        url = f"{INGEST}/{key}"
+        if scene:
+            cmd = scene_mod.stream_command(scene, plan.duration_s, url)
+            scene_mod.record_played(lib, scene)
+            log.info("scene night: %s for %s", scene.scene.id, scene.theme.label)
+        else:
+            cmd = ffmpeg_command(plan.concat_path, plan.duration_s, url)
+            write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
         log.info("streaming %d s with the Studio stream key (watchdog %d s)", plan.duration_s, timeout)
         rc = run_stream(cmd, timeout_s=timeout, secret=key)
         log.info("ffmpeg exited %d", rc)
@@ -206,8 +236,12 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
 
     yt = youtube.client()
     info = bc.ensure_stream(yt, state)
-    cmd = ffmpeg_command(plan.concat_path, plan.duration_s, info.rtmp_url)
-    write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
+    if scene:
+        cmd = scene_mod.stream_command(scene, plan.duration_s, info.rtmp_url)
+        scene_mod.record_played(lib, scene)
+    else:
+        cmd = ffmpeg_command(plan.concat_path, plan.duration_s, info.rtmp_url)
+        write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
     broadcast_id = bc.create_broadcast(yt, plan.body)
     rc = 1
     try:
