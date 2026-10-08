@@ -211,3 +211,19 @@ def test_config_rejects_a_bad_scene_mode(tmp_path):
     bad.write_text(text)
     with pytest.raises(ValueError, match="live.scenes"):
         load_config(bad)
+
+
+def test_manifest_download_creates_its_folder(monkeypatch, tmp_path):
+    import json as _json
+
+    class R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    body = _json.dumps({"scenes": [{"id": "a", "file": "a.mp4", "title": "A", "themes": ["autumn"]}]}).encode()
+    monkeypatch.setattr(sc.urllib.request, "urlopen", lambda req, timeout: R(body))
+    lib = sc.fetch_manifest("o/r", "t", tmp_path / "fresh" / "scenes" / sc.MANIFEST)
+    assert [s.id for s in lib.scenes] == ["a"]
