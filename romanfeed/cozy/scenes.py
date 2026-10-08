@@ -96,6 +96,7 @@ def release_url(repo: str, tag: str, name: str) -> str:
 
 def _get(url: str, dest: Path, timeout: int = 120) -> Path:
     req = urllib.request.Request(url, headers={"User-Agent": "romanfeed"})
+    dest.parent.mkdir(parents=True, exist_ok=True)  # a fresh server has no scenes/ yet
     tmp = dest.with_suffix(dest.suffix + ".part")
     with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
         while chunk := r.read(1 << 20):
