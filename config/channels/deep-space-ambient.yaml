@@ -191,3 +191,19 @@ shorts:
 # on 2026-10-05 after 221 watch hours in 7 days (the rule: 15 a day).
 live:
   enabled: true
+  # Cozy scene nights (romanfeed/live/scene.py): every other night, plus every
+  # holiday/sky-event peak night, the stream loops a seasonal cozy scene from
+  # the cozy-scenes release instead of the space videos. "always" or "off"
+  # are the other settings. Alternate first, so the two can be compared.
+  scenes: alternate
+
+# Cozy animated scenes (docs/COZY_SCENES.md).
+cozy:
+  # PUBLISH SWITCH for the Saturday cozy video (cozy-weekly.yml); the owner's
+  # call. false: a 6-minute preview is rendered as an artifact, nothing uploads.
+  enabled: false
+  hours: 3
+  # Runway developer API cap per calendar month (1 credit = $0.01, ~420 per
+  # new scene): 2000 = at most $20/month, about 4 new scenes. Nothing is spent
+  # until the RUNWAYML_API_SECRET repository secret exists.
+  monthly_credits: 2000

@@ -122,6 +122,11 @@ class LiveSettings:
     min_free_gb: float = 5.0
     # Where the daily workflow's render-<run_id> artifacts live.
     artifact_repo: str = "Golf4Life27/Roman"
+    # Cozy scene nights (romanfeed/live/scene.py): "off", "alternate" (every
+    # other night, plus every theme's peak night) or "always".
+    scenes: str = "off"
+    # Length of the composed piece a scene night loops under the scene.
+    music_minutes: int = 120
 
 
 @dataclass
@@ -148,6 +153,30 @@ class ShortsSettings:
 
 
 @dataclass
+class CozySettings:
+    """Cozy animated scenes (romanfeed/cozy): the library, the monthly
+    generator's budget, and the weekly cozy upload.
+
+    `enabled` is the weekly upload's publish switch, the owner's call: off,
+    the job renders the video and its metadata as an artifact and uploads
+    nothing. `monthly_credits` caps Runway API spend (1 credit = $0.01);
+    0 leaves the generator off."""
+    repo: str = "Golf4Life27/Roman"
+    release_tag: str = "cozy-scenes"
+    enabled: bool = False
+    privacy: str = "public"
+    hours: float = 3.0
+    title_template: str = "Cozy {scene} · {length} Relaxing Space Music for Sleep · {extra}"
+    monthly_credits: int = 0
+    # Scenes to keep per theme for the weeks ahead; the generator tops up
+    # the soonest themes below this first.
+    per_theme: int = 2
+    lookahead_days: int = 45
+    image_model: str = "gemini_image3_pro"
+    video_model: str = "seedance2"
+
+
+@dataclass
 class ChannelConfig:
     channel: ChannelInfo
     video: VideoSettings
@@ -157,6 +186,7 @@ class ChannelConfig:
     live: LiveSettings = field(default_factory=LiveSettings)
     path: Path | None = None
     shorts: ShortsSettings = field(default_factory=ShortsSettings)
+    cozy: CozySettings = field(default_factory=CozySettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -185,6 +215,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         live=_build(LiveSettings, raw.get("live")),
         path=path,
         shorts=_build(ShortsSettings, raw.get("shorts")),
+        cozy=_build(CozySettings, raw.get("cozy")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
@@ -197,6 +228,12 @@ def load_config(path: str | Path) -> ChannelConfig:
     if cfg.audio.source not in {"library", "composed"}:
         raise ValueError("audio.source must be 'library' or 'composed'")
     _check_live(cfg.live)
+    if cfg.live.scenes not in {"off", "alternate", "always"}:
+        raise ValueError("live.scenes must be off, alternate or always")
+    if cfg.cozy.privacy not in {"private", "unlisted", "public"}:
+        raise ValueError("cozy.privacy must be private, unlisted or public")
+    if not 0.5 <= cfg.cozy.hours <= 11.5:
+        raise ValueError("cozy.hours must be between 0.5 and 11.5")
     return cfg
 
 

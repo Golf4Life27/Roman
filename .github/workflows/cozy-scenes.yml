@@ -1,0 +1,66 @@
+# Cozy scene library: the `cozy-scenes` release (romanfeed/cozy).
+#
+# Monthly, on the 1st: look 45 days ahead (holidays, meteor showers,
+# eclipses, notable launches, the season) and make new scene loops for the
+# soonest themes that have too few, through the Runway developer API, never
+# past cozy.monthly_credits in the channel config (1 credit = $0.01; ~420 per
+# scene). Without the RUNWAYML_API_SECRET secret it prints what it would make
+# and spends nothing.
+#
+# Manual runs:
+#   generate  same as the monthly run (dry_run to only print the plan)
+#   import    add loops made by hand in the Runway app: paste a JSON list of
+#             {"id", "url", "title", "themes": [...]} into `items`
+name: Cozy scenes
+on:
+  schedule:
+    - cron: "17 15 1 * *"   # the 1st, 10:17 CDT
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [generate, import]
+        default: generate
+      dry_run:
+        description: generate only -- print the plan, spend nothing
+        type: boolean
+        default: true
+      max:
+        description: generate only -- at most this many scenes (blank = budget decides)
+        default: ""
+      items:
+        description: import only -- JSON list of {id, url, title, themes}
+        default: ""
+permissions:
+  contents: write   # attach loops and scenes.json to the release
+concurrency:
+  group: cozy-scenes
+  cancel-in-progress: false
+jobs:
+  scenes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Generate
+        if: ${{ github.event_name == 'schedule' || inputs.action == 'generate' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          MAX: ${{ inputs.max }}
+        run: |
+          args=""
+          [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
+          [ -n "$MAX" ] && args="$args --max $MAX"
+          python -m romanfeed cozy generate $args
+      - name: Import
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'import' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ITEMS: ${{ inputs.items }}
+        run: printf '%s' "$ITEMS" | python -m romanfeed cozy import -

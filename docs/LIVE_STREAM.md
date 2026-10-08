@@ -29,6 +29,17 @@ channel — one new long sleep video a night, for free.
   lists the night's line-up, the channel's sleep keywords, and a one-click
   subscribe link (`https://www.youtube.com/@SpaceScreens?sub_confirmation=1`).
 
+**Cozy scene nights** (`live.scenes: alternate`): every other night, and
+every holiday, meteor-peak and launch night, the stream plays one seasonal
+cozy scene loop all night instead of the videos, under music composed for
+that night (see COZY_SCENES.md). The 3 PM sync downloads the scene, encodes
+it once (a keyframe every 2 s, the closing duplicate frame dropped, a small
+"Space Screens · Subscribe to travel through time" line burned in) and
+composes 2 hours of music; at 9 PM ffmpeg loops both with a plain stream
+copy, under the same caps. If anything about the scene fails, the night falls
+back to the videos. With the Studio stream key the title is Studio's, so it
+stays the same on both kinds of night.
+
 It never runs 24/7 and cannot run without an end. One night, one broadcast,
 then the program exits.
 

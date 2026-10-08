@@ -69,6 +69,9 @@ class VideoMetadata:
     privacy: str = "private"
     made_for_kids: bool = False
     chapters: list[tuple[float, str]] = field(default_factory=list)
+    # Altered or synthetic content (YouTube's disclosure): the cozy scenes
+    # are AI-generated. Telescope imagery is real and leaves this False.
+    synthetic: bool = False
 
 
 def _hms(seconds: float) -> str:
