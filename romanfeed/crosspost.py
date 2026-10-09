@@ -153,8 +153,10 @@ def send(relay_url: str, body: dict, *, timeout: int = 120) -> Posted:
         raise RuntimeError(f"relay answered HTTP {r.status_code} without JSON: {r.text[:120]!r}") from None
     if r.status_code != 200 or not data.get("ok") or not data.get("post_id"):
         raise RuntimeError(f"relay answered HTTP {r.status_code}: {data.get('error') or data.get('message') or data}")
-    return Posted(data["post_id"], data.get("post_status", ""), data.get("scheduled_for", ""),
-                  data.get("platforms") or [])
+    plats = data.get("platforms") or []
+    if isinstance(plats, str):  # the relay joins them: "tiktok,instagram"
+        plats = [p for p in plats.split(",") if p]
+    return Posted(data["post_id"], data.get("post_status", ""), data.get("scheduled_for", ""), plats)
 
 
 def relay_url() -> str | None:

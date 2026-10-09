@@ -111,7 +111,7 @@ def test_crosspost_posts_and_never_raises(monkeypatch, tmp_path):
 
         def json(self):
             return {"ok": True, "post_id": "p1", "post_status": "scheduled", "scheduled_for": "2026-10-09T17:00:00Z",
-                    "platforms": ["tiktok", "instagram"]}
+                    "platforms": "tiktok,instagram"}
 
     def fake_post(url, json, timeout):
         sent.update(json)
@@ -121,7 +121,7 @@ def test_crosspost_posts_and_never_raises(monkeypatch, tmp_path):
     rel = FakeRelease()
     got = cp.crosspost(cfg, clip, _webb(), script=None, full_label="8-hour", release=rel, relay="https://relay",
                        now=utc(2026, 10, 9, 14, 10))
-    assert got.post_id == "p1" and rel.uploaded == ["a.social.mp4"]
+    assert got.post_id == "p1" and got.platforms == ["tiktok", "instagram"] and rel.uploaded == ["a.social.mp4"]
     assert sent["method"] == "POST" and sent["path"] == "/posts"
     assert sent["body"]["mediaItems"][0]["url"].endswith("/a.social.mp4")
     # a failure is reported, not raised
