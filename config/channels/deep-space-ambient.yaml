@@ -207,3 +207,14 @@ cozy:
   # new scene): 2000 = at most $20/month, about 4 new scenes. Nothing is spent
   # until the RUNWAYML_API_SECRET repository secret exists.
   monthly_credits: 2000
+
+# Cross-posting each Short's social cut to TikTok @spacescreens and Instagram
+# @space.screens through Zernio (romanfeed/crosspost.py, docs/CROSSPOST.md).
+# mode is the PUBLISH SWITCH, the owner's call: off renders the social cuts
+# as artifacts only; test posts to TikTok privately ("only me"); on posts both,
+# public, at the slots below (Central time).
+crosspost:
+  mode: "off"
+  tiktok_account: 6ac840f23cbc6e876b0c5083      # Zernio account ids, not secrets
+  instagram_account: 6ac846d0baf8dfa25ccbe8a9
+  slots: ["12:00", "19:00", "21:30", "23:30"]

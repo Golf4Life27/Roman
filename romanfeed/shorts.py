@@ -37,7 +37,7 @@ from romanfeed.curation.selector import flat_black_fraction, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
-from romanfeed import narration
+from romanfeed import crosspost, narration
 from romanfeed.render.cards import caption_card, short_cta_card, short_overlay
 from romanfeed.render.ffmpeg import probe_duration
 from romanfeed.sources import build_source
@@ -280,9 +280,11 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
 
 def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
-                 cta_from: float | None = None) -> Path:
+                 cta_from: float | None = None, pointer: tuple[str, str] | None = None) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
-    long video waits until `cta_from`; without, it is on screen throughout."""
+    long video waits until `cta_from`; without, it is on screen throughout.
+    `pointer` (call, line under it) replaces the subscribe plate's text: the
+    social cut's "Full 8-hour version on YouTube / @SpaceScreens"."""
     s = cfg.shorts
     dur = duration or s.seconds
     handle = cfg.channel.handle or cfg.channel.name
@@ -290,8 +292,9 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     narrated = bool(captions)
     layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
     base = work_dir / "short_overlay.png"
-    call = narration.subscribe_call(asset.asset_id)[1]
-    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call).save(base, "PNG")
+    call, sub = pointer if pointer else (narration.subscribe_call(asset.asset_id)[1], None)
+    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call,
+                  sub=sub).save(base, "PNG")
     layers.append((base, None))
     if narrated:
         for i, (t0, t1, text) in enumerate(captions):
@@ -299,7 +302,7 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
             caption_card(text, s.width, s.height).save(png, "PNG")
             layers.append((png, f"between(t,{t0:.3f},{t1:.3f})"))
         cta = work_dir / "short_cta.png"
-        short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call).save(cta, "PNG")
+        short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call, sub=sub).save(cta, "PNG")
         layers.append((cta, f"gte(t,{(cta_from or dur - 4):.3f})"))
     # Alternate pan direction by asset so a run of Shorts does not all drift left.
     flip = int(hashlib.sha1(asset.asset_id.encode()).hexdigest(), 16) % 2
@@ -408,6 +411,47 @@ def shorts_today(ledger: Ledger, channel: str, today: str) -> int:
     return int(row[0])
 
 
+def _length(voice_secs: float) -> float:
+    """A narrated Short's length: the voice plus music either side, 30-45 s."""
+    return min(45.0, max(30.0, voice_secs + 0.8 + 3.5))
+
+
+def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: str, key: str | None):
+    """(script, wav, seconds, cut length) for the social cut, or None for a
+    music-only Short (or if the new voice runs too long)."""
+    if not (spoken and key):
+        return None
+    text = crosspost.social_script(spoken[0], full_label=label)
+    wav = narration.synthesize(text, work / f"{stem}.social.voice.wav", api_key=key, voice=cfg.shorts.voice)
+    secs = probe_duration(str(wav))
+    if secs > 45.0 - 0.8 - 3.0:
+        log.warning("social voice for %s runs %.1fs; the social cut will be music only", stem, secs)
+        return None
+    return text, wav, secs, _length(secs)
+
+
+def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path, label: str, work: Path,
+                duration: float, voice=None, pointer: tuple[str, str] | None = None) -> Path:
+    """One cut of a Short: voice (script, wav, seconds) over the music with
+    captions for the facts and the closing plate under the last line, or
+    music only with the plate throughout."""
+    audio, captions, cta_from = music, None, None
+    if voice:
+        script, wav, secs = voice
+        audio = narration.mix_voice(wav, music, out.with_suffix(".mix.m4a"), voice_start=0.8, duration=duration)
+        # Captions cover the facts; the closing pointer sentence is shown
+        # as the end card instead of as a caption.
+        body = script.rsplit(" The full ", 1)[0]
+        body_secs = secs * len(body) / max(len(script), 1)
+        captions = narration.caption_chunks(body, start=0.8, duration=body_secs)
+        cta_from = 0.8 + body_secs
+    path = render_short(asset, out, cfg=cfg, audio=audio, link_label=label, work_dir=work,
+                        duration=duration, captions=captions, cta_from=cta_from, pointer=pointer)
+    if voice:
+        Path(audio).unlink(missing_ok=True)
+    return path
+
+
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public) -> list[ShortResult]:
@@ -441,6 +485,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         manifest = MusicLibrary(cfg.audio.library)
 
         posted = recent_upload_titles(cfg.channel.channel_id)
+        # The social cut is rendered whenever the channel has cross-posting
+        # accounts set up (to watch while crosspost.mode is off), posted per mode.
+        social_on = bool(cfg.crosspost.tiktok_account or cfg.crosspost.instagram_account)
         key = narration.api_key() if cfg.shorts.narration else None
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
@@ -462,10 +509,16 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                         best = cand
                         break
             stem = f"{cfg.channel.slug}-short-{best.asset_id.replace(':', '_')}"
-            dur = min(45.0, max(30.0, spoken[2] + 0.8 + 3.5)) if spoken else cfg.shorts.seconds
+            dur = _length(spoken[2]) if spoken else cfg.shorts.seconds
+            # The social cut (romanfeed/crosspost.py) says the same facts and
+            # points at YouTube instead; voiced now so the music covers both.
+            social = None
+            if social_on:
+                social = _social_voice(spoken, cfg=cfg, label=label, work=work, stem=stem, key=key)
+            longest = max(dur, social[3] if social else 0.0)
             # Composed: one fresh piece per Short, seeded by the image, so the
             # Short's music is as much its own as the long video's.
-            library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=dur + 4,
+            library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=longest + 4,
                                        seed=best.asset_id) if cfg.audio.source == "composed" else manifest)
             audio, tracks = build_soundtrack(
                 library, genre=cfg.audio.genre, duration=dur, out_path=work / f"{stem}.m4a",
@@ -474,23 +527,26 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             )
             if upload and any(not t.publishable for t in tracks):
                 raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
-            captions, cta_from, script = None, None, None
-            if spoken:
-                script, wav, secs = spoken
-                audio = narration.mix_voice(wav, audio, work / f"{stem}.mix.m4a", voice_start=0.8, duration=dur)
-                # Captions cover the facts; the closing pointer sentence is shown
-                # as the end card instead of as a caption.
-                body = script.rsplit(" The full ", 1)[0]
-                body_secs = secs * len(body) / max(len(script), 1)
-                captions = narration.caption_chunks(body, start=0.8, duration=body_secs)
-                cta_from = 0.8 + body_secs
-            path = render_short(best, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio, link_label=label, work_dir=work,
-                                duration=dur, captions=captions, cta_from=cta_from)
+            script = spoken[0] if spoken else None
+            path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
+                               duration=dur, voice=spoken)
             md = short_metadata(cfg, best, parent, tracks, script=script)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
             log.info("short %s from %s (%s) -> %s", best.asset_id, parent.slug,
                      "narrated" if spoken else "music only", vid or "(dry run)")
+            if social_on:
+                s_dur = social[3] if social else dur
+                s_audio = audio if s_dur == dur else build_soundtrack(
+                    library, genre=cfg.audio.genre, duration=s_dur, out_path=work / f"{stem}.social.m4a",
+                    fade=1.5, crossfade=0.0, gain_db=0.0,
+                    allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run", seed=best.asset_id)[0]
+                s_path = _render_cut(best, out_dir / f"{stem}.social.mp4", cfg=cfg, music=s_audio, label=label,
+                                     work=work, duration=s_dur, voice=social[:3] if social else None,
+                                     pointer=crosspost.end_card(label, cfg.channel.handle))
+                # Posts only for real runs, or in test mode (private, TikTok only).
+                if upload or crosspost.effective_mode(cfg) == "test":
+                    crosspost.crosspost(cfg, s_path, best, script=social[0] if social else None, full_label=label)
             results.append(ShortResult(best.asset_id, parent.slug, path, vid, md.title))
     return results
