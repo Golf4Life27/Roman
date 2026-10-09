@@ -123,6 +123,9 @@ def test_crosspost_posts_and_never_raises(monkeypatch, tmp_path):
     rel = FakeRelease()
     got = cp.crosspost(cfg, clip, _webb(), script=None, full_label="8-hour", release=rel, relay="https://relay",
                        now=utc(2026, 10, 9, 14, 10))
+    # a Short joins the queue: no fixed time, Zernio picks the next free slot
+    assert "scheduledFor" not in sent["body"] and sent["body"]["queueId"] == cfg.crosspost.queue_id
+    assert sent["body"]["queuedFromProfile"] == cfg.crosspost.queue_profile
     assert got.post_id == "p1" and got.platforms == ["tiktok", "instagram"] and rel.uploaded == ["a.social.mp4"]
     assert sent["method"] == "POST" and sent["path"] == "/posts"
     assert sent["body"]["mediaItems"][0]["url"].endswith("/a.social.mp4")

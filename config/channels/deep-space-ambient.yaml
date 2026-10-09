@@ -220,3 +220,6 @@ crosspost:
   tiktok_account: 6ac840f23cbc6e876b0c5083      # Zernio account ids, not secrets
   instagram_account: 6ac846d0baf8dfa25ccbe8a9
   slots: ["12:00", "19:00", "21:30", "23:30"]
+  # Zernio queue with the same 4 daily slots: each clip takes the next free one.
+  queue_profile: 6ac84031c233ad918cb14a88
+  queue_id: 6ac9233fd55ed1bd5e450dc6

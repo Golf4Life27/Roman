@@ -108,8 +108,10 @@ def caption(asset: ImageAsset, *, script: str | None, full_label: str, handle: s
     return "\n\n".join(lines)[:2000]
 
 
-def post_body(cfg: ChannelConfig, *, video_url: str, text: str, when: datetime) -> dict:
-    """The Zernio POST /posts body for this run's mode."""
+def post_body(cfg: ChannelConfig, *, video_url: str, text: str, when: datetime | None) -> dict:
+    """The Zernio POST /posts body for this run's mode. `when` None means
+    "join the posting queue" (crosspost.queue_id): Zernio gives the post the
+    next free slot itself."""
     c = cfg.crosspost
     platforms = []
     test = effective_mode(cfg) == "test"
@@ -124,7 +126,6 @@ def post_body(cfg: ChannelConfig, *, video_url: str, text: str, when: datetime) 
         "content": text,
         "mediaItems": [{"type": "video", "url": video_url}],
         "platforms": platforms,
-        "scheduledFor": when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "timezone": c.timezone,
         "tiktokSettings": {
             "allowComment": True, "allowDuet": False, "allowStitch": False,
@@ -136,6 +137,11 @@ def post_body(cfg: ChannelConfig, *, video_url: str, text: str, when: datetime) 
     # (creator-info, 2026-10-09), so "only me" is refused. A test goes to the
     # TikTok app's Creator Inbox as a draft instead: private until the owner
     # posts or deletes it in the app.
+    if when is None:
+        body["queuedFromProfile"] = c.queue_profile
+        body["queueId"] = c.queue_id
+    else:
+        body["scheduledFor"] = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if test:
         body["tiktokSettings"]["draft"] = True
     else:
@@ -203,8 +209,16 @@ def post_clip(cfg: ChannelConfig, clip: Path, text: str, *, label: str, slots: l
         url = release.upload(clip, clip.name)
         now = now or datetime.now(timezone.utc)
         # A test posts at once (a time already past publishes immediately), so
-        # it can be checked on the spot; real posts wait for their slot.
-        when = now if mode == "test" else next_slot(now, slots or c.slots, c.timezone, lead_minutes=c.lead_minutes)
+        # it can be checked on the spot. Shorts join Zernio's posting queue,
+        # which hands out the 4 daily slots itself: GitHub's scheduled runs
+        # start hours late, so a slot worked out from the run time is unreliable.
+        # Clips with slots of their own (the cozy clip) are scheduled directly.
+        if mode == "test":
+            when = now
+        elif slots is None and c.queue_id and c.queue_profile:
+            when = None
+        else:
+            when = next_slot(now, slots or c.slots, c.timezone, lead_minutes=c.lead_minutes)
         posted = send(relay, post_body(cfg, video_url=url, text=text, when=when))
         log.info("crosspost %s: Zernio post %s (%s) for %s on %s", label, posted.post_id, posted.status,
                  posted.scheduled_for, ", ".join(posted.platforms) or "?")
