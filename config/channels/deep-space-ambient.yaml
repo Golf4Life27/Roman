@@ -195,7 +195,9 @@ live:
   # holiday/sky-event peak night, the stream loops a seasonal cozy scene from
   # the cozy-scenes release instead of the space videos. "always" or "off"
   # are the other settings. Alternate first, so the two can be compared.
-  scenes: alternate
+  scenes: always            # TEMPORARY (2026-10-08 night): cozy every night while the stuck
+                            # "Preparing stream" is diagnosed; back to alternate after Oct 9
+  music_minutes: 60         # composed on the server before the stream; 60 min starts ~5 min sooner
 
 # Cozy animated scenes (docs/COZY_SCENES.md).
 cozy:

@@ -49,6 +49,9 @@ def _cfg(enabled: bool = False, hours: float = 10.0):
     cfg = load_config(CONFIG)
     cfg.live.enabled = enabled
     cfg.live.hours = hours
+    # Scene nights have their own tests (test_cozy.py); these test the
+    # playlist path, whatever the shipped live.scenes says tonight.
+    cfg.live.scenes = "off"
     return cfg
 
 

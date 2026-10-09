@@ -206,7 +206,9 @@ def test_weekly_video_metadata_and_pick():
 
 
 def test_config_rejects_a_bad_scene_mode(tmp_path):
-    text = Path(CFG).read_text().replace("scenes: alternate", "scenes: sometimes")
+    import re
+
+    text = re.sub(r"(?m)^(\s+scenes:) \w+", r"\1 sometimes", Path(CFG).read_text())
     bad = tmp_path / "c.yaml"
     bad.write_text(text)
     with pytest.raises(ValueError, match="live.scenes"):
