@@ -211,7 +211,7 @@ cozy:
 # Cross-posting each Short's social cut to TikTok @spacescreens and Instagram
 # @space.screens through Zernio (romanfeed/crosspost.py, docs/CROSSPOST.md).
 # mode is the PUBLISH SWITCH, the owner's call: off renders the social cuts
-# as artifacts only; test posts to TikTok privately ("only me"); on posts both,
+# as artifacts only; test sends a TikTok inbox draft; on posts both,
 # public, at the slots below (Central time).
 crosspost:
   mode: "off"

@@ -32,11 +32,16 @@ YouTube Short and its ledger row are never lost to a posting problem).
 | mode | What happens |
 |---|---|
 | `off` | social cuts are rendered as run artifacts (watch them), nothing posts |
-| `test` | TikTok only, "only me" privacy; Instagram has no private posts, so skipped |
+| `test` | TikTok only, as a draft in the TikTok app's Creator Inbox (private until you post it there); Instagram is skipped |
 | `on` | both platforms, public, at the slots |
 
-A manual Shorts run with **crosspost_test** ticked posts its social cut
-privately to TikTok whatever the mode says. Nothing can force `on` except the
+A manual Shorts run with **crosspost_test** ticked sends its social cut to
+the TikTok Creator Inbox as a draft, whatever the mode says. TikTok lets this
+account post only public videos through the API, so "only me" is not
+available; the inbox draft is the private test.
+
+The relay sends Zernio the request body as JSON text: Make's "Make an API
+call" step garbles a body passed as an object, which Zernio then rejects. Nothing can force `on` except the
 config.
 
 ## Each post
