@@ -7,7 +7,7 @@ turned on. Each is the owner's call; nothing here flips itself.
 |---|---|---|---|
 | Daily uploads | repo variable `ROMANFEED_ENABLED`, `publish.mode`, `publish.privacy` | **on** (true / upload / public) | Mon/Wed/Fri: 1h + 8h video, public |
 | Shorts | `shorts.enabled` in `config/channels/deep-space-ambient.yaml` | **on** (2026-10-01) | 4 Shorts a day (11:10, 18:10, 20:40, 22:40 CDT), public, each linking its full sleep video. Off, the Shorts workflow still renders them as 3-day artifacts to watch first |
-| Cross-posting | `crosspost.mode` in the channel yaml + secret `CROSSPOST_RELAY_URL` | **off** | Each Short's social cut goes to TikTok and Instagram at 12:00, 19:00, 21:30, 23:30 Central. `test` = TikTok, private. See CROSSPOST.md |
+| Cross-posting | `crosspost.mode` in the channel yaml + secret `CROSSPOST_RELAY_URL` | **on** (2026-10-09) | Each Short's social cut goes to TikTok and Instagram at 12:00, 19:00, 21:30, 23:30 Central. `test` = TikTok, private. See CROSSPOST.md |
 | Original music | `audio.source: composed` in the channel yaml | **on** (2026-10-01) | Every new video and Short gets music composed by `romanfeed/audio/composer.py` instead of the Suno manifest |
 | Nightly live stream | `live.enabled` in the channel yaml + a server | **on** (2026-10-05) | ~10 h stream from 9 PM Central, ends < 12 h, saves as a public video. See LIVE_STREAM.md |
 | Cozy scene nights | `live.scenes` in the channel yaml | **alternate** (2026-10-08) | Every other night, and every holiday / meteor-peak / launch night, the stream loops a seasonal cozy scene instead of the space videos. `always` or `off`. See COZY_SCENES.md |
