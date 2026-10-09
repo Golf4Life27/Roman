@@ -170,10 +170,11 @@ def annotate(level: str, message: str) -> None:
         print(f"::{level}::{message}")
 
 
-def crosspost(cfg: ChannelConfig, clip: Path, asset: ImageAsset, *, script: str | None, full_label: str,
+def post_clip(cfg: ChannelConfig, clip: Path, text: str, *, label: str, slots: list[str] | None = None,
               now: datetime | None = None, release=None, relay: str | None = None) -> Posted | None:
-    """Upload the social cut and schedule it. None when switched off or not set up;
-    never raises (see the module docstring)."""
+    """Upload `clip` to the release and schedule it with `text` at the next of
+    `slots` (default crosspost.slots). None when switched off or not set up;
+    never raises (see the module docstring). `label` names it in messages."""
     c = cfg.crosspost
     mode = effective_mode(cfg)
     if mode == "off":
@@ -193,10 +194,9 @@ def crosspost(cfg: ChannelConfig, clip: Path, asset: ImageAsset, *, script: str 
                               body="Vertical clips cross-posted to TikTok and Instagram (romanfeed/crosspost.py). "
                                    f"Deleted after {c.keep_days} days. Do not edit by hand.")
         url = release.upload(clip, clip.name)
-        text = caption(asset, script=script, full_label=full_label, handle=cfg.channel.handle, hashtags=c.hashtags)
-        when = next_slot(now or datetime.now(timezone.utc), c.slots, c.timezone, lead_minutes=c.lead_minutes)
+        when = next_slot(now or datetime.now(timezone.utc), slots or c.slots, c.timezone, lead_minutes=c.lead_minutes)
         posted = send(relay, post_body(cfg, video_url=url, text=text, when=when))
-        log.info("crosspost %s: Zernio post %s (%s) for %s on %s", asset.asset_id, posted.post_id, posted.status,
+        log.info("crosspost %s: Zernio post %s (%s) for %s on %s", label, posted.post_id, posted.status,
                  posted.scheduled_for, ", ".join(posted.platforms) or "?")
         try:
             gone = release.prune(c.keep_days)
@@ -206,5 +206,13 @@ def crosspost(cfg: ChannelConfig, clip: Path, asset: ImageAsset, *, script: str 
             log.warning("crosspost: pruning old clips failed: %s", exc)
         return posted
     except Exception as exc:
-        annotate("error", f"crosspost of {asset.asset_id} failed: {exc}")
+        annotate("error", f"crosspost of {label} failed: {exc}")
         return None
+
+
+def crosspost(cfg: ChannelConfig, clip: Path, asset: ImageAsset, *, script: str | None, full_label: str,
+              now: datetime | None = None, release=None, relay: str | None = None) -> Posted | None:
+    """A Short's social cut, captioned from its image and script."""
+    text = caption(asset, script=script, full_label=full_label, handle=cfg.channel.handle,
+                   hashtags=cfg.crosspost.hashtags)
+    return post_clip(cfg, clip, text, label=asset.asset_id, now=now, release=release, relay=relay)

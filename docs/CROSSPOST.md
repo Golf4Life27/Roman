@@ -54,3 +54,14 @@ config.
 Zernio TikTok account `6ac840f23cbc6e876b0c5083`, Instagram account
 `6ac846d0baf8dfa25ccbe8a9`; Make relay scenario 6566278, webhook 2912796,
 Zernio connection 11587474.
+
+## The weekly cozy clip
+
+Saturdays, `.github/workflows/cozy-clip.yml` turns the season's cozy scene
+(the same calendar pick as the live stream) into a 20-second vertical clip:
+the whole scene over a blurred copy of itself, its name above, and "Cozy
+nights live on YouTube · @SpaceScreens" below. Twenty seconds is exactly two
+passes of the loop, so TikTok's replay does not jump. It posts at 20:15
+Central (`crosspost.cozy_slots`), a slot of its own, and follows
+`crosspost.mode` like everything else. The caption says "AI-animated scene,
+original music."

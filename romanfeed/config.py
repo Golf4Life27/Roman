@@ -203,6 +203,12 @@ class CrosspostSettings:
     release_tag: str = "social-clips"
     keep_days: int = 30           # clips are deleted from the release after this
     hashtags: list[str] = field(default_factory=lambda: ["#space", "#sleepmusic", "#ambient", "#relaxing"])
+    # The weekly cozy clip (romanfeed/cozy/clip.py, cozy-clip.yml): the
+    # season's cozy scene, posted on its own slot so it never doubles up with
+    # a Short. Posting follows `mode` like everything above.
+    cozy_slots: list[str] = field(default_factory=lambda: ["20:15"])
+    cozy_seconds: int = 20        # two passes of the 10 s loop, so it replays seamlessly
+    cozy_hashtags: list[str] = field(default_factory=lambda: ["#cozy", "#ambience", "#sleep", "#cozyvibes"])
 
 
 @dataclass
