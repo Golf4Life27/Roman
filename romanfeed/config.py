@@ -196,6 +196,11 @@ class CrosspostSettings:
     slots: list[str] = field(default_factory=lambda: ["12:00", "19:00", "21:30", "23:30"])
     timezone: str = "America/Chicago"
     lead_minutes: int = 5
+    # Zernio's posting queue holding the slots above (created 2026-10-09).
+    # With it set, each Short's clip takes the queue's next free slot, so
+    # GitHub starting a run late (hours, measured) no longer moves a post.
+    queue_profile: str = ""
+    queue_id: str = ""
     made_with_ai: bool = True     # TikTok's AI disclosure: the voice is synthetic
     # Instagram Trial Reels: shown to non-followers first. Off by default;
     # worth a test once the account has some posts.
