@@ -227,3 +227,41 @@ def test_manifest_download_creates_its_folder(monkeypatch, tmp_path):
     monkeypatch.setattr(sc.urllib.request, "urlopen", lambda req, timeout: R(body))
     lib = sc.fetch_manifest("o/r", "t", tmp_path / "fresh" / "scenes" / sc.MANIFEST)
     assert [s.id for s in lib.scenes] == ["a"]
+
+
+def test_cozy_clip_caption_and_posting(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+
+    from romanfeed import crosspost as cp
+    from romanfeed.cozy import clip
+
+    cfg = load_config(CFG)
+    scene = sc.Scene("halloween-cabin", "halloween-cabin.mp4", "Halloween Cabin", ["halloween"])
+    text = clip.caption(cfg, scene, cal.Theme("halloween", "Halloween", cal.HOLIDAY))
+    assert text.startswith("Cozy Halloween Cabin 🎃")
+    assert "Cozy nights live on YouTube: @SpaceScreens" in text and "AI-animated scene" in text
+    assert "#halloween" in text.split("\n\n")[-1]
+
+    lib = sc.Library([scene])
+    monkeypatch.setattr(clip.sc, "fetch_manifest", lambda *a, **k: lib)
+    monkeypatch.setattr(clip.sc, "fetch_scene", lambda *a, **k: tmp_path / "loop.mp4")
+    monkeypatch.setattr(clip, "fetch_launches", lambda **k: [])
+    monkeypatch.setattr(clip, "render_clip", lambda loop, out, **kw: out.write_bytes(b"mp4") or out)
+    sent = []
+    monkeypatch.setattr(cp, "send", lambda relay, body: sent.append(body) or cp.Posted("p9", "scheduled", "", ["tiktok"]))
+
+    class Rel:
+        def upload(self, path, name=None, **kw):
+            return f"https://example/{name}"
+
+        def prune(self, days):
+            return []
+
+    now = datetime(2026, 10, 11, 0, 20, tzinfo=timezone.utc)   # Saturday 19:20 CDT
+    out, posted = clip.run(cfg, today=date(2026, 10, 10), output_dir=tmp_path, now=now, release=Rel(), relay="r")
+    assert posted is None and sent == []                       # crosspost.mode is off
+    cfg.crosspost.mode = "on"
+    out, posted = clip.run(cfg, today=date(2026, 10, 10), output_dir=tmp_path, now=now, release=Rel(), relay="r")
+    assert posted.post_id == "p9" and out.name.startswith("cozy-clip-2026-10-10-halloween-cabin")
+    assert sent[0]["scheduledFor"] == "2026-10-11T01:15:00Z"   # 20:15 CDT, its own slot
+    assert sent[0]["content"] == text

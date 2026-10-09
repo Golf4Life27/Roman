@@ -323,6 +323,11 @@ def _cmd_cozy(args: argparse.Namespace) -> int:
         text = sys.stdin.read() if args.items == "-" else Path(args.items).read_text()
         import_scenes(cfg, load_items(text), release=Release(cfg.cozy.repo, cfg.cozy.release_tag), today=day)
         return 0
+    if args.cozy_cmd == "clip":
+        from romanfeed.cozy.clip import run as run_clip
+
+        run_clip(cfg, today=day, output_dir=Path(args.output_dir))
+        return 0
     if args.cozy_cmd == "video":
         from romanfeed.cozy.video import run
 
@@ -424,7 +429,8 @@ def main(argv: list[str] | None = None) -> int:
     for name, text in [("themes", "print what each coming day is about (theme order, * = peak night)"),
                        ("generate", "make new scenes for the coming themes, within cozy.monthly_credits"),
                        ("import", "add loops made elsewhere: a JSON list of {id, url, title, themes}"),
-                       ("video", "build this week's cozy video; uploads only when cozy.enabled")]:
+                       ("video", "build this week's cozy video; uploads only when cozy.enabled"),
+                       ("clip", "render the weekly cozy clip for TikTok/Instagram; posts per crosspost.mode")]:
         cp = csub.add_parser(name, help=text)
         cp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
         cp.add_argument("--date", help="act as if today were YYYY-MM-DD")
@@ -438,6 +444,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "video":
             cp.add_argument("--dry-run", action="store_true", help="render, upload nothing")
             cp.add_argument("--hours", type=float, help="override cozy.hours")
+            cp.add_argument("--output-dir", default="output")
+        if name == "clip":
             cp.add_argument("--output-dir", default="output")
     cz.set_defaults(fn=_cmd_cozy)
 

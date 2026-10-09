@@ -1,0 +1,51 @@
+# The weekly cozy clip: the season's cozy scene as a 20-second vertical clip
+# for TikTok and Instagram (romanfeed/cozy/clip.py), posted through the same
+# Zernio relay as the Shorts' social cuts, at its own slot (crosspost.cozy_slots,
+# 20:15 Central) so it never lands on top of a Short.
+#
+# The switch is crosspost.mode in the channel config, like all cross-posting:
+# off renders the clip as an artifact to watch and posts nothing; test posts
+# to TikTok privately; on posts both, public.
+name: Cozy clip
+on:
+  schedule:
+    - cron: "20 0 * * 0"   # Saturday 19:20 CDT / 18:20 CST -> the 20:15 slot
+  workflow_dispatch:
+    inputs:
+      crosspost_test:
+        description: post it to TikTok privately ("only me"), whatever crosspost.mode says
+        type: boolean
+        default: false
+permissions:
+  contents: write   # attach the clip to the social-clips release
+concurrency:
+  group: cozy-clip
+  cancel-in-progress: false
+jobs:
+  clip:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ROMANFEED_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Font
+        run: |
+          fc-list | grep -qi "DejaVuSans-Bold" && exit 0
+          timeout 180 sudo apt-get install -y -q fonts-dejavu-core || echo "::warning::font install failed"
+      - run: pip install -e .
+      - name: Cozy clip
+        env:
+          CROSSPOST_RELAY_URL: ${{ secrets.CROSSPOST_RELAY_URL }}
+          CROSSPOST_MODE: ${{ inputs.crosspost_test && 'test' || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m romanfeed cozy clip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cozy-clip-${{ github.run_id }}
+          path: output/cozy/*.mp4
+          retention-days: 3
+          if-no-files-found: ignore
