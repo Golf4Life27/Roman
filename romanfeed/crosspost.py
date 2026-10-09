@@ -194,7 +194,10 @@ def post_clip(cfg: ChannelConfig, clip: Path, text: str, *, label: str, slots: l
                               body="Vertical clips cross-posted to TikTok and Instagram (romanfeed/crosspost.py). "
                                    f"Deleted after {c.keep_days} days. Do not edit by hand.")
         url = release.upload(clip, clip.name)
-        when = next_slot(now or datetime.now(timezone.utc), slots or c.slots, c.timezone, lead_minutes=c.lead_minutes)
+        now = now or datetime.now(timezone.utc)
+        # A test posts at once (a time already past publishes immediately), so
+        # it can be checked on the spot; real posts wait for their slot.
+        when = now if mode == "test" else next_slot(now, slots or c.slots, c.timezone, lead_minutes=c.lead_minutes)
         posted = send(relay, post_body(cfg, video_url=url, text=text, when=when))
         log.info("crosspost %s: Zernio post %s (%s) for %s on %s", label, posted.post_id, posted.status,
                  posted.scheduled_for, ", ".join(posted.platforms) or "?")

@@ -153,3 +153,16 @@ def test_config_rejects_bad_mode_and_slot(tmp_path):
         bad.write_text(text.replace(old, new))
         with pytest.raises(ValueError, match=msg):
             load_config(bad)
+
+
+def test_a_test_post_goes_out_at_once(monkeypatch, tmp_path):
+    cfg = load_config(CFG)
+    cfg.crosspost.mode = "test"
+    clip = tmp_path / "t.mp4"
+    clip.write_bytes(b"x")
+    sent = []
+    monkeypatch.setattr(cp, "send", lambda relay, body: sent.append(body) or cp.Posted("p", "published", "", ["tiktok"]))
+    cp.post_clip(cfg, clip, "hi", label="t", now=utc(2026, 10, 9, 2, 50), release=FakeRelease(), relay="r")
+    assert sent[0]["scheduledFor"] == "2026-10-09T02:50:00Z"
+    assert [p["platform"] for p in sent[0]["platforms"]] == ["tiktok"]
+    assert sent[0]["tiktokSettings"]["privacyLevel"] == "SELF_ONLY"
