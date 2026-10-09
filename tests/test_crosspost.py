@@ -69,7 +69,8 @@ def test_body_test_mode_is_private_tiktok_only(monkeypatch):
     assert on["scheduledFor"] == "2026-10-09T17:00:00Z" and on["mediaItems"][0]["type"] == "video"
     cfg.crosspost.mode = "test"
     t = cp.post_body(cfg, video_url="https://x/clip.mp4", text="hi", when=when)
-    assert [p["platform"] for p in t["platforms"]] == ["tiktok"] and t["tiktokSettings"]["privacyLevel"] == "SELF_ONLY"
+    assert [p["platform"] for p in t["platforms"]] == ["tiktok"] and t["tiktokSettings"]["draft"] is True
+    assert "privacyLevel" not in t["tiktokSettings"]
 
 
 def test_a_manual_run_can_force_test_but_never_on(monkeypatch):
@@ -165,4 +166,4 @@ def test_a_test_post_goes_out_at_once(monkeypatch, tmp_path):
     cp.post_clip(cfg, clip, "hi", label="t", now=utc(2026, 10, 9, 2, 50), release=FakeRelease(), relay="r")
     assert sent[0]["scheduledFor"] == "2026-10-09T02:50:00Z"
     assert [p["platform"] for p in sent[0]["platforms"]] == ["tiktok"]
-    assert sent[0]["tiktokSettings"]["privacyLevel"] == "SELF_ONLY"
+    assert sent[0]["tiktokSettings"]["draft"] is True

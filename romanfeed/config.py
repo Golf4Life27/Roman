@@ -184,8 +184,8 @@ class CrosspostSettings:
 
     mode is the owner's switch:
       off   social cuts are rendered (as artifacts, to watch) and nothing posts
-      test  TikTok only, visible to the account alone ("only me"); Instagram
-            has no private posts, so it is skipped
+      test  TikTok only, as a draft in the TikTok app's Creator Inbox
+            (private until posted there); Instagram is skipped
       on    both platforms, public, at the next slot"""
     mode: str = "off"
     tiktok_account: str = ""      # Zernio account ids (GET /accounts), not secrets

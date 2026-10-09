@@ -4,8 +4,8 @@
 # 20:15 Central) so it never lands on top of a Short.
 #
 # The switch is crosspost.mode in the channel config, like all cross-posting:
-# off renders the clip as an artifact to watch and posts nothing; test posts
-# to TikTok privately; on posts both, public.
+# off renders the clip as an artifact to watch and posts nothing; test sends
+# a TikTok inbox draft; on posts both, public.
 name: Cozy clip
 on:
   schedule:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       crosspost_test:
-        description: post it to TikTok privately ("only me"), whatever crosspost.mode says
+        description: send it to the TikTok inbox as a private draft, whatever crosspost.mode says
         type: boolean
         default: false
 permissions:

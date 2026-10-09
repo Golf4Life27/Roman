@@ -14,8 +14,8 @@ Screens"). The social cut goes to TikTok and Instagram:
 The four Shorts runs a day feed the four slots, so there is no queue to run
 dry: a run that fails just leaves its slot empty, and GitHub says so.
 
-`crosspost.mode` is the owner's switch: off (render only), test (TikTok,
-visible to the account alone), on (both, public). A failure here never fails
+`crosspost.mode` is the owner's switch: off (render only), test (a TikTok
+draft in the app's Creator Inbox), on (both, public). A failure here never fails
 the Shorts job: the YouTube Short and its ledger row matter more, so problems
 are reported as workflow annotations instead.
 """
@@ -127,12 +127,19 @@ def post_body(cfg: ChannelConfig, *, video_url: str, text: str, when: datetime) 
         "scheduledFor": when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "timezone": c.timezone,
         "tiktokSettings": {
-            "privacyLevel": "SELF_ONLY" if test else "PUBLIC_TO_EVERYONE",
             "allowComment": True, "allowDuet": False, "allowStitch": False,
             "videoMadeWithAi": c.made_with_ai,
             "contentPreviewConfirmed": True, "expressConsentGiven": True,
         },
     }
+    # TikTok lets this account post only PUBLIC_TO_EVERYONE through the API
+    # (creator-info, 2026-10-09), so "only me" is refused. A test goes to the
+    # TikTok app's Creator Inbox as a draft instead: private until the owner
+    # posts or deletes it in the app.
+    if test:
+        body["tiktokSettings"]["draft"] = True
+    else:
+        body["tiktokSettings"]["privacyLevel"] = "PUBLIC_TO_EVERYONE"
     return body
 
 

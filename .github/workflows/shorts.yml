@@ -41,7 +41,7 @@ on:
         type: boolean
         default: true
       crosspost_test:
-        description: also post the social cut to TikTok privately ("only me"), whatever crosspost.mode says
+        description: also send the social cut to the TikTok inbox as a private draft, whatever crosspost.mode says
         type: boolean
         default: false
 permissions:
