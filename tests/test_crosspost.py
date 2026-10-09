@@ -1,6 +1,7 @@
 """Cross-posting the social cut: slots, caption, Zernio body, the switch."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -148,7 +149,13 @@ def test_send_rejects_a_relay_that_did_not_create_a_post(monkeypatch):
 
 def test_config_rejects_bad_mode_and_slot(tmp_path):
     text = Path(CFG).read_text()
-    for old, new, msg in [('mode: "off"', 'mode: "sometimes"', "crosspost.mode"),
+    text = re.sub(r'(?m)^(  mode:) "\w+"', r'\1 "sometimes"', text)
+    bad = tmp_path / "m.yaml"
+    bad.write_text(text)
+    with pytest.raises(ValueError, match="crosspost.mode"):
+        load_config(bad)
+    text = Path(CFG).read_text()
+    for old, new, msg in [
                           ('"23:30"]', '"25:30"]', "crosspost.slots")]:
         bad = tmp_path / "c.yaml"
         bad.write_text(text.replace(old, new))

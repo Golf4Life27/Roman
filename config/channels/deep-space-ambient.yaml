@@ -216,7 +216,7 @@ cozy:
 # as artifacts only; test sends a TikTok inbox draft; on posts both,
 # public, at the slots below (Central time).
 crosspost:
-  mode: "off"
+  mode: "on"                 # owner approved 2026-10-09 ("go public")
   tiktok_account: 6ac840f23cbc6e876b0c5083      # Zernio account ids, not secrets
   instagram_account: 6ac846d0baf8dfa25ccbe8a9
   slots: ["12:00", "19:00", "21:30", "23:30"]

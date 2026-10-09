@@ -260,6 +260,7 @@ def test_cozy_clip_caption_and_posting(monkeypatch, tmp_path):
             return []
 
     now = datetime(2026, 10, 11, 0, 20, tzinfo=timezone.utc)   # Saturday 19:20 CDT
+    cfg.crosspost.mode = "off"
     out, posted = clip.run(cfg, today=date(2026, 10, 10), output_dir=tmp_path, now=now, release=Rel(), relay="r")
     assert posted is None and sent == []                       # crosspost.mode is off
     cfg.crosspost.mode = "on"
