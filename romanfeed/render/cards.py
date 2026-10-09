@@ -143,7 +143,7 @@ def subscribe_card(width: int, height: int, *, channel_name: str, line: str) -> 
 
 
 def short_overlay(asset: ImageAsset, width: int, height: int, *, full_label: str, handle: str, cta: bool = True,
-                  call: str = "Subscribe to travel through time") -> Image.Image:
+                  call: str = "Subscribe to travel through time", sub: str | None = None) -> Image.Image:
     """Overlay for a vertical Short, kept inside YouTube's safe zone.
 
     The Shorts player covers roughly the bottom fifth (title, channel row) and
@@ -176,15 +176,15 @@ def short_overlay(asset: ImageAsset, width: int, height: int, *, full_label: str
             y = _centered(layer, y + int(10 * s), ln, tele_font, (225, 230, 245, 240)) + int(4 * s)
 
     if cta:
-        _cta_plate(layer, full_label=full_label, handle=handle, call=call)
+        _cta_plate(layer, full_label=full_label, handle=handle, call=call, sub=sub)
     return layer
 
 
 def short_cta_card(width: int, height: int, *, full_label: str, handle: str,
-                   call: str = "Subscribe to travel through time") -> Image.Image:
+                   call: str = "Subscribe to travel through time", sub: str | None = None) -> Image.Image:
     """The subscribe plate alone, for narrated Shorts where it arrives at the end."""
     layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    _cta_plate(layer, full_label=full_label, handle=handle, call=call)
+    _cta_plate(layer, full_label=full_label, handle=handle, call=call, sub=sub)
     return layer
 
 
@@ -202,9 +202,11 @@ def caption_card(text: str, width: int, height: int) -> Image.Image:
     return layer
 
 
-def _cta_plate(layer: Image.Image, *, full_label: str, handle: str, call: str = "Subscribe to travel through time") -> None:
+def _cta_plate(layer: Image.Image, *, full_label: str, handle: str, call: str = "Subscribe to travel through time",
+               sub: str | None = None) -> None:
     """The subscribe call, big, with the pointer to the long video under it,
-    on a plate two-thirds of the way down (inside the Shorts safe zone)."""
+    on a plate two-thirds of the way down (inside the Shorts safe zone).
+    `sub` replaces the pointer line (the social cut puts the handle there)."""
     width, height = layer.size
     s = width / 1080
     d = ImageDraw.Draw(layer)
@@ -219,5 +221,5 @@ def _cta_plate(layer: Image.Image, *, full_label: str, handle: str, call: str = 
     yy = py + int(28 * s)
     for ln in lines:
         yy = _centered(layer, yy, ln, call_font, (255, 255, 255, 255), blur=2, shadow_alpha=90) + int(18 * s)
-    _centered(layer, yy + int(10 * s), f"Full {full_label} sleep video on {handle}", sub_font,
+    _centered(layer, yy + int(10 * s), sub or f"Full {full_label} sleep video on {handle}", sub_font,
               (255, 230, 230, 245), blur=2, shadow_alpha=80)

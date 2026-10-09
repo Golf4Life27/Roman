@@ -177,6 +177,35 @@ class CozySettings:
 
 
 @dataclass
+class CrosspostSettings:
+    """Each Short's social cut, posted to TikTok and Instagram through Zernio
+    (romanfeed/crosspost.py). The relay is a Make scenario that holds the
+    Zernio key; its webhook URL is the CROSSPOST_RELAY_URL secret.
+
+    mode is the owner's switch:
+      off   social cuts are rendered (as artifacts, to watch) and nothing posts
+      test  TikTok only, visible to the account alone ("only me"); Instagram
+            has no private posts, so it is skipped
+      on    both platforms, public, at the next slot"""
+    mode: str = "off"
+    tiktok_account: str = ""      # Zernio account ids (GET /accounts), not secrets
+    instagram_account: str = ""
+    # Posting times, local to `timezone`. Each Short is scheduled for the
+    # first slot at least `lead_minutes` after it is rendered; the Shorts
+    # workflow runs ~50 minutes before each slot (.github/workflows/shorts.yml).
+    slots: list[str] = field(default_factory=lambda: ["12:00", "19:00", "21:30", "23:30"])
+    timezone: str = "America/Chicago"
+    lead_minutes: int = 5
+    made_with_ai: bool = True     # TikTok's AI disclosure: the voice is synthetic
+    # Instagram Trial Reels: shown to non-followers first. Off by default;
+    # worth a test once the account has some posts.
+    instagram_trial: bool = False
+    release_tag: str = "social-clips"
+    keep_days: int = 30           # clips are deleted from the release after this
+    hashtags: list[str] = field(default_factory=lambda: ["#space", "#sleepmusic", "#ambient", "#relaxing"])
+
+
+@dataclass
 class ChannelConfig:
     channel: ChannelInfo
     video: VideoSettings
@@ -187,6 +216,7 @@ class ChannelConfig:
     path: Path | None = None
     shorts: ShortsSettings = field(default_factory=ShortsSettings)
     cozy: CozySettings = field(default_factory=CozySettings)
+    crosspost: CrosspostSettings = field(default_factory=CrosspostSettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -216,6 +246,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         path=path,
         shorts=_build(ShortsSettings, raw.get("shorts")),
         cozy=_build(CozySettings, raw.get("cozy")),
+        crosspost=_build(CrosspostSettings, raw.get("crosspost")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
@@ -232,6 +263,12 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("live.scenes must be off, alternate or always")
     if cfg.cozy.privacy not in {"private", "unlisted", "public"}:
         raise ValueError("cozy.privacy must be private, unlisted or public")
+    if cfg.crosspost.mode not in {"off", "test", "on"}:
+        raise ValueError("crosspost.mode must be off, test or on")
+    for t in cfg.crosspost.slots:
+        hh, _, mm = t.partition(":")
+        if not (hh.isdigit() and mm.isdigit() and int(hh) < 24 and int(mm) < 60):
+            raise ValueError(f"crosspost.slots: {t!r} is not HH:MM")
     if not 0.5 <= cfg.cozy.hours <= 11.5:
         raise ValueError("cozy.hours must be between 0.5 and 11.5")
     return cfg

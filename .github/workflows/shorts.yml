@@ -9,6 +9,9 @@
 # nothing; the files are kept as an artifact for three days so they can be
 # watched first. Turning it on is the owner's call.
 #
+# Each Short also gets a social cut (same image and facts, pointing at
+# YouTube) for TikTok and Instagram; crosspost.mode decides whether it posts.
+#
 # Quota: each Short is one videos.insert (1,600 units). On a render day the
 # daily job spends 2 x 1,600 + 2 x 50, so four Shorts bring the day to about
 # 9,700 of the 10,000-unit default -- at the ceiling. Anything else that
@@ -21,10 +24,13 @@
 name: Shorts
 on:
   schedule:
-    - cron: "10 14 * * *"   # 09:10 CDT
-    - cron: "10 19 * * *"   # 14:10 CDT
-    - cron: "40 23 * * *"   # 18:40 CDT
-    - cron: "40 2 * * *"    # 21:40 CDT, bedtime scrolling
+    # ~50 minutes before each cross-posting slot (crosspost.slots: 12:00,
+    # 19:00, 21:30, 23:30 Central), so each run feeds exactly one slot in
+    # both CDT and CST; a run up to ~40 minutes late still makes its slot.
+    - cron: "10 16 * * *"   # 11:10 CDT / 10:10 CST -> 12:00 slot
+    - cron: "10 23 * * *"   # 18:10 CDT / 17:10 CST -> 19:00 slot
+    - cron: "40 1 * * *"    # 20:40 CDT / 19:40 CST -> 21:30 slot
+    - cron: "40 3 * * *"    # 22:40 CDT / 21:40 CST -> 23:30 slot
   workflow_dispatch:
     inputs:
       count:
@@ -34,6 +40,12 @@ on:
         description: render and write metadata, upload nothing
         type: boolean
         default: true
+      crosspost_test:
+        description: also post the social cut to TikTok privately ("only me"), whatever crosspost.mode says
+        type: boolean
+        default: false
+permissions:
+  contents: write   # attach social cuts to the social-clips release (romanfeed/crosspost.py)
 concurrency:
   group: ledger-writers-shorts
   cancel-in-progress: false
@@ -75,6 +87,11 @@ jobs:
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
           COUNT: ${{ inputs.count || '1' }}
           DRY_RUN: ${{ inputs.dry_run }}
+          # Cross-posting (crosspost.mode in the channel config is the switch).
+          # The relay is the Make scenario holding the Zernio key.
+          CROSSPOST_RELAY_URL: ${{ secrets.CROSSPOST_RELAY_URL }}
+          CROSSPOST_MODE: ${{ inputs.crosspost_test && 'test' || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           args="--count $COUNT"
           [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
