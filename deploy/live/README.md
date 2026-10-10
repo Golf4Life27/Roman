@@ -65,5 +65,9 @@ sudo systemctl disable --now romanfeed-live.timer   # no more nights
 sudo systemctl stop romanfeed-live.service          # end tonight's stream now (completes the broadcast)
 ```
 
+Format check of the library (a regular night joins the files without re-encoding, so one odd file
+can leave YouTube at "Preparing stream"):
+`sudo -u romanfeed /opt/romanfeed/venv/bin/romanfeed live doctor --library-dir /var/lib/romanfeed/live`
+
 Logs: `journalctl -u romanfeed-live -u romanfeed-sync --since today`. The
 stream key never appears in them: ffmpeg's output is masked before logging.

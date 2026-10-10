@@ -236,6 +236,10 @@ def _cmd_live(args) -> int:
     lib = live.library_dir(cfg, args.library_dir)
     if args.live_cmd == "sync":
         return live.cmd_sync(cfg, lib)
+    if args.live_cmd == "doctor":
+        from romanfeed.live import doctor
+
+        return doctor.run(lib)
     try:
         if args.live_cmd == "plan":
             return live.cmd_plan(cfg, lib)
@@ -437,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
     lsub = lv.add_subparsers(dest="live_cmd", required=True)
     for name, text in [("sync", "pull new render artifacts from GitHub and make stream-ready copies"),
                        ("plan", "print tonight's playlist; nothing is sent"),
-                       ("start", "run tonight's broadcast (refuses unless live.enabled is true)")]:
+                       ("start", "run tonight's broadcast (refuses unless live.enabled is true)"),
+                       ("doctor", "check every library file shares one format (a regular night joins them)")]:
         lp = lsub.add_parser(name, help=text)
         lp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
         lp.add_argument("--library-dir", help="override live.library_dir (the server uses /var/lib/romanfeed/live)")
