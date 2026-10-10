@@ -337,6 +337,28 @@ def _cmd_cozy(args: argparse.Namespace) -> int:
     return 2
 
 
+def _cmd_crosspost(args: argparse.Namespace) -> int:
+    """Read back through the relay; exit 1 when something needs the owner."""
+    from romanfeed import crosspost as cp
+    from romanfeed.config import load_config
+
+    cfg = load_config(args.config)
+    relay = cp.relay_url()
+    if not relay:
+        print(f"ERROR: the {cp.RELAY_ENV} secret is not set")
+        return 2
+    lines, problems = cp.check(cfg, relay, hours=args.hours)
+    print("\n".join(lines))
+    if problems:
+        print("\nNEEDS ATTENTION:")
+        for p in problems:
+            print(f"- {p}")
+            cp.annotate("error", p)
+        return 1
+    print("\nall good")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="romanfeed", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -448,6 +470,13 @@ def main(argv: list[str] | None = None) -> int:
         if name == "clip":
             cp.add_argument("--output-dir", default="output")
     cz.set_defaults(fn=_cmd_cozy)
+
+    xp = sub.add_parser("crosspost", help="TikTok/Instagram cross-posting")
+    xsub = xp.add_subparsers(dest="crosspost_cmd", required=True)
+    xc = xsub.add_parser("check", help="account health, failed or stuck posts, empty queue (exit 1 if any)")
+    xc.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
+    xc.add_argument("--hours", type=int, default=26, help="look back this far for failed posts")
+    xp.set_defaults(fn=_cmd_crosspost)
 
     rt = sub.add_parser("retitle", help="sleep-search titles/descriptions on videos already up (needs --scope manage token)")
     rt.add_argument("--config", default="config/channels/deep-space-ambient.yaml")

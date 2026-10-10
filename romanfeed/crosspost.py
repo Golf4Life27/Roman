@@ -9,10 +9,12 @@ Screens"). The social cut goes to TikTok and Instagram:
      public HTTPS URL for Zernio to fetch
   2. sent to the relay (a Make scenario holding the Zernio key; its webhook
      URL is the CROSSPOST_RELAY_URL secret), which creates one Zernio post for
-     both platforms, scheduled for the next slot in `crosspost.slots`
+     both platforms, in Zernio's posting queue (`crosspost.queue_id`), which
+     hands out the four daily slots
 
-The four Shorts runs a day feed the four slots, so there is no queue to run
-dry: a run that fails just leaves its slot empty, and GitHub says so.
+`romanfeed crosspost check` (daily, .github/workflows/crosspost-check.yml)
+reads back through the relay: account health, recent posts that failed or
+are stuck past their time, and whether anything is queued at all.
 
 `crosspost.mode` is the owner's switch: off (render only), test (a TikTok
 draft in the app's Creator Inbox), on (both, public). A failure here never fails
@@ -232,6 +234,90 @@ def post_clip(cfg: ChannelConfig, clip: Path, text: str, *, label: str, slots: l
     except Exception as exc:
         annotate("error", f"crosspost of {label} failed: {exc}")
         return None
+
+
+def relay_get(relay: str, path: str, *, timeout: int = 90) -> dict:
+    """A read through the relay (GET /accounts/health, /posts?..., /posts/<id>).
+    The relay answers every allowed read with the same flat field set; the
+    fields that do not apply come back empty."""
+    r = requests.post(relay, json={"method": "GET", "path": path}, timeout=timeout)
+    try:
+        data = r.json()
+    except ValueError:
+        raise RuntimeError(f"relay answered HTTP {r.status_code} without JSON for GET {path}: {r.text[:80]!r}") from None
+    if r.status_code != 200 or not data.get("ok"):
+        raise RuntimeError(f"relay refused GET {path}: {data.get('error') or data}")
+    return data
+
+
+def _cols(data: dict, *keys: str, sep: str = ",") -> list[tuple[str, ...]]:
+    """Zip the relay's joined columns back into rows."""
+    split = [(data.get(k) or "").split(" | " if k.endswith(("errors", "issues")) else sep) for k in keys]
+    n = max(len(s) for s in split)
+    rows = [tuple(s[i].strip() if i < len(s) else "" for s in split) for i in range(n)]
+    return [r for r in rows if any(r)]
+
+
+def _when(text: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def check(cfg: ChannelConfig, relay: str, *, now: datetime | None = None, hours: int = 26,
+          stuck_minutes: int = 45) -> tuple[list[str], list[str]]:
+    """(report lines, problems). Problems: an account that cannot post, a post
+    of the last `hours` that failed or is stuck past its time, and an empty
+    queue (no post waiting in the next day while crosspost.mode is on)."""
+    now = now or datetime.now(timezone.utc)
+    lines, problems = [], []
+    names = {cfg.crosspost.tiktok_account: "TikTok", cfg.crosspost.instagram_account: "Instagram"}
+
+    h = relay_get(relay, "/accounts/health")
+    for acc, status, can_post, token_ok, reconnect in _cols(
+            h, "health_ids", "health_status", "health_can_post", "health_token_valid", "health_needs_reconnect"):
+        if acc not in names:
+            continue
+        name = names[acc]
+        lines.append(f"{name}: {status or '?'}, can post {can_post or '?'}")
+        if can_post != "true" or reconnect == "true" or token_ok == "false":
+            problems.append(f"{name} cannot post (status {status}, token valid {token_ok}, needs reconnect "
+                            f"{reconnect}): reconnect it in Zernio")
+    if h.get("health_issues", "").strip(" |"):
+        lines.append(f"account issues: {h['health_issues']}")
+    for acc in names:
+        if acc and acc not in (h.get("health_ids") or ""):
+            problems.append(f"{names[acc]} account {acc} is not connected in Zernio")
+
+    profile = cfg.crosspost.queue_profile
+    listing = relay_get(relay, "/posts?limit=20&sortBy=scheduled-desc" + (f"&profileId={profile}" if profile else ""))
+    waiting = 0
+    for pid, status, sched in _cols(listing, "posts_ids", "posts_status", "posts_scheduled"):
+        at = _when(sched)
+        if at is None:
+            continue
+        if at > now:
+            waiting += status in ("scheduled", "publishing")
+            if at <= now + timedelta(days=1):
+                lines.append(f"queued   {sched[:16]}Z  {pid}")
+            continue
+        if at < now - timedelta(hours=hours):
+            continue
+        if status in ("failed", "partial"):
+            detail = relay_get(relay, f"/posts/{pid}")
+            errs = [f"{p}: {e}" for p, s, e in _cols(detail, "platforms", "platform_status", "platform_errors")
+                    if s != "published"]
+            problems.append(f"post {pid} ({sched[:16]}Z) {status}: " + ("; ".join(errs) or "no error given"))
+            lines.append(f"{status:8} {sched[:16]}Z  {pid}")
+        elif status in ("scheduled", "publishing") and at < now - timedelta(minutes=stuck_minutes):
+            problems.append(f"post {pid} was due {sched[:16]}Z and is still {status}")
+            lines.append(f"stuck    {sched[:16]}Z  {pid}")
+        else:
+            lines.append(f"{status:8} {sched[:16]}Z  {pid}")
+    if effective_mode(cfg) == "on" and not waiting:
+        problems.append("nothing is queued: no Shorts run has fed the posting queue lately (check shorts.yml)")
+    return lines, problems
 
 
 def crosspost(cfg: ChannelConfig, clip: Path, asset: ImageAsset, *, script: str | None, full_label: str,
