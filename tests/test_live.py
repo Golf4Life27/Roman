@@ -478,3 +478,20 @@ def test_studio_key_mode_still_refuses_when_disabled(tmp_path, fake_api, monkeyp
     fake_api(_FakeYouTube("live"))
     monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
     assert run.cmd_start(_cfg(enabled=False), _library(tmp_path, 12)) == 2
+
+
+def test_doctor_flags_a_file_that_would_break_a_copy_join():
+    from romanfeed.live import doctor
+
+    def out(fps, hz):
+        return ("Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'x.mp4':\n  Duration: 01:00:00.04, start: 0.000000\n"
+                "  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive),"
+                f" 1920x1080 [SAR 1:1 DAR 16:9], 4500 kb/s, {fps} fps, {fps} tbr, 12288 tbn (default)\n"
+                f"  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), {hz} Hz, stereo, fltp, 160 kb/s\n")
+    a, b, c = (doctor.parse(n, out(f, h)) for n, f, h in [("a", 24, 44100), ("b", 24, 44100), ("c", 25, 48000)])
+    assert a.video == "h264 (High) yuv420p 1920x1080 24 fps" and a.audio == "aac 44100 Hz stereo"
+    assert a.duration == "01:00:00.04"
+    common, odd = doctor.odd_ones([a, b, c])
+    assert common == a.signature and odd == [c]
+    bad = doctor.parse("d", "d.mp4: Invalid data found when processing input")
+    assert bad.error == "unreadable file" and doctor.odd_ones([a, bad])[1] == [bad]
