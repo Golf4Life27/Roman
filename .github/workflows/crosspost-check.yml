@@ -1,0 +1,73 @@
+# Daily cross-posting check (docs/CROSSPOST.md): reads back through the relay
+# whether both Zernio accounts can post, whether any post of the last day
+# failed or got stuck, and whether anything is waiting in the posting queue.
+#
+# Read-only: the relay allows no deletes and this job creates no posts.
+#
+# When something needs the owner, the job opens (or updates) one GitHub issue
+# labelled crosspost-alert that @mentions the repo owner, and GitHub emails
+# that mention. A clean run closes the open alert.
+name: Crosspost check
+on:
+  schedule:
+    - cron: "41 14 * * *"   # 14:41 UTC = 9:41 AM CDT; GitHub often starts it later
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Check
+        id: check
+        shell: bash
+        env:
+          CROSSPOST_RELAY_URL: ${{ secrets.CROSSPOST_RELAY_URL }}
+        run: |
+          set -o pipefail
+          status=0
+          python -m romanfeed crosspost check | tee report.txt || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo '## Crosspost check'
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # 1 = something needs the owner (handled below); anything else is a broken check
+          if [ "$status" != 0 ] && [ "$status" != 1 ]; then exit "$status"; fi
+      - name: Alert the owner (GitHub emails the mention)
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh label create crosspost-alert --color D93F0B --description "TikTok/Instagram posting needs attention" 2>/dev/null || true
+          {
+            echo "@$OWNER TikTok/Instagram posting needs attention."
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > body.md
+          open="$(gh issue list --label crosspost-alert --state open --json number --jq '.[0].number')"
+          if [ -n "$open" ]; then gh issue comment "$open" --body-file body.md
+          else gh issue create --title "Cross-posting needs attention" --body-file body.md --label crosspost-alert; fi
+          exit 1
+      - name: Close a resolved alert
+        if: steps.check.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --label crosspost-alert --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --comment "Cross-posting check is clean again."
+          done

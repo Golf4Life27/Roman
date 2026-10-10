@@ -177,3 +177,55 @@ def test_a_test_post_goes_out_at_once(monkeypatch, tmp_path):
     assert sent[0]["scheduledFor"] == "2026-10-09T02:50:00Z"
     assert [p["platform"] for p in sent[0]["platforms"]] == ["tiktok"]
     assert sent[0]["tiktokSettings"]["draft"] is True
+
+
+def _relay(health=None, posts=None, detail=None):
+    tt, ig = "6ac840f23cbc6e876b0c5083", "6ac846d0baf8dfa25ccbe8a9"
+    h = {"health_ids": f"{tt},{ig}", "health_status": "healthy,healthy", "health_can_post": "true,true",
+         "health_token_valid": "true,true", "health_needs_reconnect": "false,false", "health_issues": " | "}
+    h.update(health or {})
+    rows = posts or [("a", "scheduled", "2026-10-10T02:30:00.000Z"), ("b", "published", "2026-10-10T00:00:00.000Z")]
+    listing = {"posts_ids": ",".join(r[0] for r in rows), "posts_status": ",".join(r[1] for r in rows),
+               "posts_scheduled": ",".join(r[2] for r in rows)}
+    seen = []
+
+    def get(relay, path):
+        seen.append(path)
+        if path == "/accounts/health":
+            return h
+        if path.startswith("/posts?"):
+            return listing
+        return detail or {}
+    return get, seen
+
+
+def test_check_reads_health_posts_and_queue(monkeypatch):
+    cfg = load_config(CFG)
+    cfg.crosspost.mode = "on"
+    now = utc(2026, 10, 10, 1, 0)
+    get, seen = _relay()
+    monkeypatch.setattr(cp, "relay_get", get)
+    lines, problems = cp.check(cfg, "r", now=now)
+    assert problems == [] and "TikTok: healthy, can post true" in lines
+    assert seen[1].startswith("/posts?") and "profileId=" in seen[1]
+
+    get, _ = _relay(health={"health_can_post": "false,true", "health_needs_reconnect": "true,false"})
+    monkeypatch.setattr(cp, "relay_get", get)
+    assert any(p.startswith("TikTok cannot post") for p in cp.check(cfg, "r", now=now)[1])
+
+    detail = {"platforms": "tiktok,instagram", "platform_status": "published,failed",
+              "platform_errors": " | Media download timed out"}
+    get, seen = _relay(posts=[("a", "scheduled", "2026-10-10T02:30:00.000Z"),
+                              ("f", "partial", "2026-10-10T00:00:00.000Z"),
+                              ("s", "scheduled", "2026-10-09T23:00:00.000Z")], detail=detail)
+    monkeypatch.setattr(cp, "relay_get", get)
+    _, problems = cp.check(cfg, "r", now=now)
+    assert "/posts/f" in seen
+    assert any("partial" in p and "instagram: Media download timed out" in p for p in problems)
+    assert any("post s was due" in p for p in problems)
+
+    get, _ = _relay(posts=[("b", "published", "2026-10-10T00:00:00.000Z")])
+    monkeypatch.setattr(cp, "relay_get", get)
+    assert any("nothing is queued" in p for p in cp.check(cfg, "r", now=now)[1])
+    cfg.crosspost.mode = "off"   # an empty queue is fine when posting is switched off
+    assert cp.check(cfg, "r", now=now)[1] == []
