@@ -203,7 +203,8 @@ live:
 cozy:
   # PUBLISH SWITCH for the Saturday cozy video (cozy-weekly.yml); the owner's
   # call. false: a 6-minute preview is rendered as an artifact, nothing uploads.
-  enabled: false
+  # Turned on by the owner 2026-10-10: a public 3-hour video every Saturday.
+  enabled: true
   hours: 3
   # Runway developer API cap per calendar month (1 credit = $0.01, ~420 per
   # new scene): 2000 = at most $20/month, about 4 new scenes. Nothing is spent
