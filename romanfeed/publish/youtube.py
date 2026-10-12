@@ -91,7 +91,7 @@ def _credentials():
     return creds
 
 
-def stored_credentials():
+def stored_credentials(path: Path | None = None):
     """Credentials carrying whatever scopes the saved token was actually granted.
 
     The upload path pins SCOPES so a refresh fails loudly if the token ever
@@ -104,7 +104,7 @@ def stored_credentials():
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
 
-    path = token_path()
+    path = path or token_path()
     if not path.exists():
         raise SystemExit(f"no YouTube token at {path}; run `romanfeed auth` or set YOUTUBE_TOKEN_PATH")
     creds = Credentials.from_authorized_user_file(path)

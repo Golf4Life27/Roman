@@ -153,6 +153,57 @@ def ensure_stream(yt, state_path: Path) -> StreamInfo:
     return info
 
 
+SCENE_TITLE = "Cozy {scene} · {hours} Hours of Relaxing Space Music for Sleep · Live"
+
+SCENE_DESCRIPTION = """{tagline}
+
+Tonight's live stream: {hours} hours in the {scene}, a cozy {theme} room with the stars outside the window and calm original music. Put it on, dim the lights, and stay as long as you like. The stream ends on its own and stays on the channel to replay any night.
+
+Subscribe for a new space video every few days and a live sleep stream every night:
+{subscribe}
+
+{keywords}
+
+AI-animated scene, original music.
+"""
+
+
+def scene_body(*, scene: str, theme: str, hours: float, start: datetime, tagline: str, tags: list[str]) -> dict:
+    """The broadcast body for a cozy scene night: the title names the room on
+    screen, and the description says the scene is AI-animated."""
+    title = SCENE_TITLE.format(scene=scene, hours=_hours_label(hours))
+    desc = SCENE_DESCRIPTION.format(tagline=tagline, hours=_hours_label(hours), scene=scene, theme=theme.lower(),
+                                    subscribe=SUBSCRIBE_URL, keywords=" · ".join(tags)).strip() + "\n"
+    return broadcast_body(title=title, description=desc, start=start)
+
+
+def find_stream_id(yt, key: str, cache: Path) -> str:
+    """The id of the liveStream whose key is Studio's stream key (the one the
+    server sends to), cached by key hash. The id is not a secret; the key is
+    never written here."""
+    import hashlib
+
+    tag = hashlib.sha256(key.encode()).hexdigest()[:16]
+    try:
+        d = json.loads(cache.read_text())
+        if d.get("key_hash") == tag and d.get("stream_id"):
+            return d["stream_id"]
+    except (OSError, ValueError):
+        pass
+    token = None
+    while True:
+        resp = yt.liveStreams().list(part="id,cdn", mine=True, maxResults=50,
+                                     **({"pageToken": token} if token else {})).execute()
+        for item in resp.get("items", []):
+            if item.get("cdn", {}).get("ingestionInfo", {}).get("streamName") == key:
+                cache.write_text(json.dumps({"stream_id": item["id"], "key_hash": tag}))
+                log.info("Studio stream key belongs to live stream %s", item["id"])
+                return item["id"]
+        token = resp.get("nextPageToken")
+        if not token:
+            raise LookupError("no live stream on the channel uses this stream key")
+
+
 def create_broadcast(yt, body: dict) -> str:
     resp = yt.liveBroadcasts().insert(part="snippet,status,contentDetails", body=body).execute()
     log.info("created broadcast https://youtu.be/%s", resp["id"])

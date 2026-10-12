@@ -37,8 +37,18 @@ it once (a keyframe every 2 s, the closing duplicate frame dropped, a small
 "Space Screens · Subscribe to travel through time" line burned in) and
 composes 2 hours of music; at 9 PM ffmpeg loops both with a plain stream
 copy, under the same caps. If anything about the scene fails, the night falls
-back to the videos. With the Studio stream key the title is Studio's, so it
-stays the same on both kinds of night.
+back to the videos.
+
+**The broadcast.** YouTube shows a stream only when a broadcast exists for
+it, and Studio makes one only while its Stream page is open (Oct 9-11 the
+server streamed every night and nothing appeared). So when the server has a
+YouTube token with youtube.force-ssl (`/etc/romanfeed/youtube.token.json`),
+it creates each night's broadcast itself before sending: public,
+auto-start, auto-stop, bound to the Studio key's stream, titled for tonight
+("Cozy Halloween Observatory · 10 Hours of Relaxing Space Music for Sleep ·
+Live" on a scene night). After the night it ends the broadcast, or deletes
+it if it never went live. Without a token, or if YouTube refuses, the night
+streams exactly as before.
 
 It never runs 24/7 and cannot run without an end. One night, one broadcast,
 then the program exits.
