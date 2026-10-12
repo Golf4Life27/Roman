@@ -184,6 +184,65 @@ def cmd_plan(cfg: ChannelConfig, lib: Path) -> int:
     return 0
 
 
+SERVER_TOKEN = Path("/etc/romanfeed/youtube.token.json")   # where deploy/live/setup.sh installs it
+
+
+def server_token() -> Path:
+    import os
+
+    return Path(os.environ.get("YOUTUBE_TOKEN_PATH") or SERVER_TOKEN)
+
+
+def night_body(cfg: ChannelConfig, plan: NightPlan, scene) -> dict:
+    """Tonight's broadcast body: the space-video one, or the cozy room's."""
+    if scene is None:
+        return plan.body
+    return bc.scene_body(scene=scene.scene.title, theme=scene.theme.label, hours=round(plan.duration_s / 3600, 1),
+                         start=plan.start, tagline=cfg.channel.tagline, tags=cfg.publish.tags)
+
+
+def server_youtube():
+    """A YouTube client on the server's token (youtube.force-ssl), or None."""
+    from romanfeed.publish import youtube
+
+    path = server_token()
+    if not path.exists():
+        return None
+    return youtube.client(youtube.stored_credentials(path))
+
+
+def open_broadcast(cfg: ChannelConfig, lib: Path, plan: NightPlan, scene, key: str):
+    """Create tonight's broadcast (auto-start, auto-stop) on Studio's stream.
+
+    YouTube only shows a stream that arrives into a broadcast, and Studio
+    makes one only while its Stream page is open. Returns (client, id), or
+    (None, None) when there is no token or the API refuses: the night then
+    streams as before, so a YouTube hiccup never costs the stream itself."""
+    try:
+        yt = server_youtube()
+    except (Exception, SystemExit) as exc:  # stored_credentials exits on a missing file
+        log.warning("YouTube token unusable (%s); streaming without creating a broadcast", exc)
+        return None, None
+    if yt is None:
+        log.warning("no YouTube token at %s; streaming without creating a broadcast "
+                    "(it shows on YouTube only if Studio's Stream page has one ready)", server_token())
+        return None, None
+    broadcast_id = None
+    try:
+        stream_id = bc.find_stream_id(yt, key, lib / "studio-stream.json")
+        broadcast_id = bc.create_broadcast(yt, night_body(cfg, plan, scene))
+        bc.bind(yt, broadcast_id, stream_id)
+        return yt, broadcast_id
+    except Exception:
+        log.exception("could not set up tonight's broadcast; streaming without one")
+        if broadcast_id:
+            try:
+                yt.liveBroadcasts().delete(id=broadcast_id).execute()
+            except Exception:
+                log.warning("could not delete the half-made broadcast %s", broadcast_id)
+        return None, None
+
+
 def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
     """One night's broadcast, or a printout of it with --dry-run."""
     if not cfg.live.enabled and not dry_run:
@@ -201,14 +260,16 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         url = f"{INGEST}/{key}" if key else (info.rtmp_url if info else PLACEHOLDER_URL)
         secret = key or (info.stream_name if info else None)
         if key:
-            print("mode: Studio stream key (no API; Studio's Auto-start/Auto-stop run the broadcast)")
+            print("mode: Studio stream key" + (" + a broadcast created through the API (auto-start, auto-stop)"
+                                               if server_token().exists()
+                                               else f" only: no YouTube token at {server_token()}, so no broadcast"))
         if not cfg.live.enabled:
             print("NOTE: live.enabled is false; this is a preview only, `start` would refuse.")
         print_scene(scene)
         if scene is None:
             print_plan(plan)
         print("broadcast body:")
-        print(json.dumps(plan.body, indent=2))
+        print(json.dumps(night_body(cfg, plan, scene), indent=2))
         print(f"watchdog: {timeout} s")
         cmd = (scene_mod.stream_command(scene, plan.duration_s, url) if scene
                else ffmpeg_command(plan.concat_path, plan.duration_s, url))
@@ -227,9 +288,18 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         else:
             cmd = ffmpeg_command(plan.concat_path, plan.duration_s, url)
             write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
-        log.info("streaming %d s with the Studio stream key (watchdog %d s)", plan.duration_s, timeout)
-        rc = run_stream(cmd, timeout_s=timeout, secret=key)
-        log.info("ffmpeg exited %d", rc)
+        yt, broadcast_id = open_broadcast(cfg, lib, plan, scene, key)
+        rc = 1
+        try:
+            log.info("streaming %d s with the Studio stream key (watchdog %d s)", plan.duration_s, timeout)
+            rc = run_stream(cmd, timeout_s=timeout, secret=key)
+            log.info("ffmpeg exited %d", rc)
+        finally:
+            if broadcast_id:
+                try:
+                    bc.complete(yt, broadcast_id)
+                except Exception:
+                    log.exception("could not complete broadcast %s; relying on YouTube auto-stop", broadcast_id)
         return 0 if rc == 0 else 1
 
     from romanfeed.publish import youtube

@@ -455,9 +455,10 @@ def test_ffmpeg_stderr_is_masked(caplog):
     assert caplog.records and KEY not in caplog.text and "****" in caplog.text
 
 
-def test_studio_key_mode_streams_with_no_api_and_the_same_caps(tmp_path, fake_api, monkeypatch):
+def test_studio_key_mode_without_a_token_makes_no_api_call_and_keeps_the_caps(tmp_path, fake_api, monkeypatch):
     yt = fake_api(_FakeYouTube("live"))
     monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
+    monkeypatch.setenv("YOUTUBE_TOKEN_PATH", str(tmp_path / "no-token.json"))
     seen = {}
 
     def fake_stream(cmd, *, timeout_s, secret=None):
@@ -495,3 +496,74 @@ def test_doctor_flags_a_file_that_would_break_a_copy_join():
     assert common == a.signature and odd == [c]
     bad = doctor.parse("d", "d.mp4: Invalid data found when processing input")
     assert bad.error == "unreadable file" and doctor.odd_ones([a, bad])[1] == [bad]
+
+
+class _KeyedYouTube(_FakeYouTube):
+    """Studio's stream key belongs to live stream "studio-sid"."""
+    def __init__(self, key, lifecycle="live", fail_insert=False):
+        super().__init__(lifecycle)
+        self.key, self.fail_insert = key, fail_insert
+
+    def liveStreams(self):
+        return types.SimpleNamespace(list=self._rec("streams.list", {"items": [
+            {"id": "other", "cdn": {"ingestionInfo": {"streamName": "not-it"}}},
+            {"id": "studio-sid", "cdn": {"ingestionInfo": {"streamName": self.key}}}]}))
+
+    def liveBroadcasts(self):
+        ns = super().liveBroadcasts()
+        if self.fail_insert:
+            def insert(**kw):
+                self.calls.append(("insert", kw))
+                return _Call(exc=RuntimeError("403 liveStreamingNotEnabled"))
+            ns.insert = insert
+        return ns
+
+
+def test_studio_key_mode_creates_tonights_broadcast_when_the_server_has_a_token(tmp_path, monkeypatch):
+    key = "abcd-1234-efgh"
+    monkeypatch.setenv("YOUTUBE_STREAM_KEY", key)
+    yt = _KeyedYouTube(key)
+    monkeypatch.setattr(run, "server_youtube", lambda: yt)
+    order = []
+    monkeypatch.setattr(run, "run_stream", lambda cmd, **k: order.append("stream") or 0)
+    lib = _library(tmp_path, 12)
+    assert run.cmd_start(_cfg(enabled=True), lib) == 0
+    # find the key's stream, broadcast, bind -- all before ffmpeg starts -- then always end it
+    assert yt.names() == ["streams.list", "insert", "bind", "list", "transition"]
+    body = yt.calls[1][1]["body"]
+    assert body["contentDetails"]["enableAutoStart"] and body["contentDetails"]["enableAutoStop"]
+    assert body["status"]["privacyStatus"] == "public"
+    assert yt.calls[2][1] == {"part": "id,contentDetails", "id": "bid", "streamId": "studio-sid"}
+    assert key not in (lib / "studio-stream.json").read_text()        # only the id is cached
+    yt.calls.clear()
+    run.cmd_start(_cfg(enabled=True), lib)
+    assert yt.names()[0] == "insert"                                  # cached: no second lookup
+
+
+def test_studio_key_mode_streams_anyway_when_youtube_refuses_the_broadcast(tmp_path, monkeypatch):
+    monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
+    yt = _KeyedYouTube("abcd-1234-efgh", fail_insert=True)
+    monkeypatch.setattr(run, "server_youtube", lambda: yt)
+    streamed = []
+    monkeypatch.setattr(run, "run_stream", lambda cmd, **k: streamed.append(cmd) or 0)
+    assert run.cmd_start(_cfg(enabled=True), _library(tmp_path, 12)) == 0
+    assert streamed and "transition" not in yt.names() and "bind" not in yt.names()
+
+
+def test_studio_key_mode_without_a_token_streams_as_before(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("YOUTUBE_STREAM_KEY", "abcd-1234-efgh")
+    monkeypatch.setenv("YOUTUBE_TOKEN_PATH", str(tmp_path / "none.json"))
+    monkeypatch.setattr(run, "run_stream", lambda cmd, **k: 0)
+    assert run.cmd_start(_cfg(enabled=True), _library(tmp_path, 12)) == 0
+    assert "no YouTube token" in caplog.text
+
+
+def test_scene_nights_get_a_cozy_title():
+    cfg = _cfg(enabled=True)
+    plan = types.SimpleNamespace(body={"x": 1}, duration_s=36000, start=datetime(2026, 10, 12, 21, 0))
+    scene = types.SimpleNamespace(scene=types.SimpleNamespace(title="Halloween Observatory"),
+                                  theme=types.SimpleNamespace(label="Halloween"))
+    body = run.night_body(cfg, plan, scene)
+    assert body["snippet"]["title"] == "Cozy Halloween Observatory · 10 Hours of Relaxing Space Music for Sleep · Live"
+    assert "AI-animated scene" in body["snippet"]["description"]
+    assert run.night_body(cfg, plan, None) == {"x": 1}
