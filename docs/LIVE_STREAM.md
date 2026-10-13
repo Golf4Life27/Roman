@@ -53,8 +53,13 @@ YouTube login. (If the server is ever given a token at
 `/etc/romanfeed/youtube.token.json`, `live start` can create the broadcast
 itself instead; without one it just streams.)
 
-It never runs 24/7 and cannot run without an end. One night, one broadcast,
-then the program exits.
+**The rule (owner, 2026-10-13): every stream ends before 12 hours.** That is
+what makes YouTube save it as a replay, gives each night a fresh start on the
+Live shelf, and lets a glitch clear itself by the next start. It replaced the
+earlier "never 24/7": round-the-clock coverage is allowed as back-to-back
+streams, each under 12 hours (e.g. a weather channel's two 11.5-hour streams
+a day). Space Screens runs one ~10-hour night: one broadcast, then the program
+exits.
 
 ## How it is guaranteed to stop (three layers, plus one)
 
