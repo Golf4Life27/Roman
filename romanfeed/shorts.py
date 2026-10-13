@@ -292,7 +292,9 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     narrated = bool(captions)
     layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
     base = work_dir / "short_overlay.png"
-    call, sub = pointer if pointer else (narration.subscribe_call(asset.asset_id)[1], None)
+    from romanfeed.curation.selector import is_earth
+
+    call, sub = pointer if pointer else (narration.subscribe_call(asset.asset_id, earth=is_earth(asset))[1], None)
     short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call,
                   sub=sub).save(base, "PNG")
     layers.append((base, None))

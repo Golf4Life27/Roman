@@ -39,6 +39,9 @@ def _extract_credit(text: str, fallback: str, max_len: int = 90) -> str:
     return credit or fallback
 
 
+EARTH_TAG = "earth from orbit"
+
+
 class NasaImageLibrary(ImageSource):
     name = "NASA Image Library"
 
@@ -48,6 +51,9 @@ class NasaImageLibrary(ImageSource):
         self.session.headers["User-Agent"] = USER_AGENT
         self.timeout = int(settings.options.get("timeout", 30))
         self.resolve_originals = bool(settings.options.get("resolve_originals", True))
+        # subject: earth marks every asset from this source as an Earth-from-orbit
+        # photo, so the selector keeps it out of deep-space videos and in Earth ones.
+        self.subject = str(settings.options.get("subject", "space"))
 
     def _search(self, query: str) -> list[dict]:
         items: list[dict] = []
@@ -109,7 +115,8 @@ class NasaImageLibrary(ImageSource):
                     credit=_extract_credit(desc, data.get("center", "NASA")),
                     description=desc,
                     date=(data.get("date_created") or "")[:10],
-                    keywords=list(data.get("keywords") or []),
+                    keywords=list(data.get("keywords") or []) + (
+                        [EARTH_TAG, "International Space Station"] if self.subject == "earth" else []),
                     resolver=(lambda nid=nasa_id: self.resolve_original(nid)) if self.resolve_originals else None,
                 )
         log.info("nasa_images: %d candidate assets from %d queries", len(out), len(self.settings.queries))

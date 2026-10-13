@@ -152,6 +152,24 @@ class ShortsSettings:
     voice: str = "en-US-Chirp3-HD-Charon"
 
 
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+@dataclass
+class EarthSettings:
+    """Earth-from-orbit videos inside the channel (photos taken from the
+    International Space Station). On `weekdays` the daily render uses only the
+    Earth source's photos (a nasa_images source with options.subject: earth)
+    and these titles; every other day stays deep space. Empty = never."""
+    weekdays: list[str] = field(default_factory=list)
+    title_template: str = "{length} Earth from Space for Sleep · {lead} · Space Station Screensaver"
+    sleep_title_template: str = ("{length} Earth at Night for Deep Sleep · {lead} · "
+                                 "Dark Screen After {dark_after}")
+    tags: list[str] = field(default_factory=lambda: [
+        "earth from space", "earth at night", "international space station", "iss", "planet earth",
+        "earth from orbit", "aurora"])
+
+
 @dataclass
 class CozySettings:
     """Cozy animated scenes (romanfeed/cozy): the library, the monthly
@@ -228,6 +246,7 @@ class ChannelConfig:
     shorts: ShortsSettings = field(default_factory=ShortsSettings)
     cozy: CozySettings = field(default_factory=CozySettings)
     crosspost: CrosspostSettings = field(default_factory=CrosspostSettings)
+    earth: EarthSettings = field(default_factory=EarthSettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -258,6 +277,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         shorts=_build(ShortsSettings, raw.get("shorts")),
         cozy=_build(CozySettings, raw.get("cozy")),
         crosspost=_build(CrosspostSettings, raw.get("crosspost")),
+        earth=_build(EarthSettings, raw.get("earth")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
@@ -280,6 +300,9 @@ def load_config(path: str | Path) -> ChannelConfig:
         hh, _, mm = t.partition(":")
         if not (hh.isdigit() and mm.isdigit() and int(hh) < 24 and int(mm) < 60):
             raise ValueError(f"crosspost.slots: {t!r} is not HH:MM")
+    bad_days = [d for d in cfg.earth.weekdays if d not in WEEKDAYS]
+    if bad_days:
+        raise ValueError(f"earth.weekdays: {bad_days} are not among {list(WEEKDAYS)}")
     if not 0.5 <= cfg.cozy.hours <= 11.5:
         raise ValueError("cozy.hours must be between 0.5 and 11.5")
     return cfg

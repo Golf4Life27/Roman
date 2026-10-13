@@ -87,10 +87,68 @@ def _is_filename_title(title: str) -> bool:
     return bool(_IMAGE_EXT_RE.search(title) or (_FILENAME_RE.match(title) and re.search(r"\d", title)))
 
 
-def looks_unsuitable(asset: ImageAsset) -> bool:
-    """True if the asset is not sky imagery. Titles and keywords carry the
-    most signal; descriptions mention 'galaxy' even for press photos, so the
-    positive test uses title+keywords, and the blocklist scans everything."""
+# Earth-from-orbit photos (subject "earth"): what must show, and what must not.
+EARTH_HINTS = (
+    "city lights", "lights of", "aurora", "sunrise", "sunset", "limb", "glacier", "desert", "mountain", "volcano",
+    "island", "coast", "river", "lake", "ocean", "sea ", "bay", "reef", "delta", "peninsula", "himalaya", "alps",
+    "andes", "sahara", "cloud", "storm", "hurricane", "typhoon", "cyclone", "night", "earth's atmosphere",
+    "atmosphere", "airglow", "moon", "milky way", "canyon", "valley", "plateau", "snow", "ice", "sand", "dunes",
+)
+EARTH_BLOCK = (
+    "spacewalk", "spacewalker", "astronaut", "portrait", "crew member", "crew members", "inside", "module",
+    "cupola", "robotic arm", "canadarm", "cargo", "dragon", "soyuz", "progress", "cygnus", "dock", "hatch",
+    "experiment", "laboratory", "solar array", "radiator", "logo", "diagram", "patch", "boom", "sensor",
+    "shuttle", "orbiter", "payload", "spacecraft", "station's", "airplane", "aircraft", "pilatus", "comet",
+    "titan", "mars", "martian", "saturn", "jupiter", "venus", "cassini", "hubble", "webb",
+)
+
+
+EARTH_PROOF = ("international space station", "expedition", "sts-", "space shuttle", "crew earth observation",
+               "earth observation", "from orbit", "iss0", "iss1", "iss crew", "gemini", "skylab", "apollo")
+
+
+def is_earth(asset: ImageAsset) -> bool:
+    from romanfeed.sources.nasa_images import EARTH_TAG
+
+    return EARTH_TAG in {k.lower() for k in asset.keywords}
+
+
+def earth_unsuitable(asset: ImageAsset) -> bool:
+    """True unless this is a captioned photo of Earth itself. The title has to
+    describe the scene (archive frame numbers like "iss070e091714" and bare
+    "Earth Observation" make useless captions), and hardware or people in the
+    title rule it out. Descriptions say "taken by an Expedition 70 crew
+    member" on every frame, so only the title is tested."""
+    title = asset.title.strip()
+    low = title.lower()
+    if _PHOTO_ID_RE.match(title) or _is_filename_title(title) or re.match(r"^iss\d{3}e\d+", low):
+        return True
+    if re.sub(r"[^a-z ]", "", low).strip() in {"earth observation", "earth observations", "earth science",
+                                               "earth", "crew earth observations"}:
+        return True
+    if low.startswith(("earth observation", "crew earth observations", "earth observations taken")):
+        return True
+    if any(h in low for h in EARTH_BLOCK) or low.startswith(("the international space station", "space station")):
+        return True
+    if not any(h in low for h in EARTH_HINTS):
+        return True
+    # The record itself must say it was shot from Earth orbit: a search for
+    # "the nile river" also finds Cassini's "Titan Nile-Like River Valley".
+    record = f"{low} {asset.description.lower()}"
+    return not any(p in record for p in EARTH_PROOF)
+
+
+def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
+    """True if the asset does not belong in a video about `subject`.
+
+    space: sky imagery only. Titles and keywords carry the most signal;
+    descriptions mention 'galaxy' even for press photos, so the positive test
+    uses title+keywords, and the blocklist scans everything.
+    earth: only the Earth-from-orbit source's photos, judged by earth_unsuitable."""
+    if subject == "earth":
+        return not is_earth(asset) or earth_unsuitable(asset)
+    if is_earth(asset):
+        return True
     title = asset.title.strip()
     if _PHOTO_ID_RE.match(title) or any(h in title.lower() for h in _TITLE_BLOCK):
         return True
@@ -136,9 +194,10 @@ def select_assets(
     seed: str | None = None,
     prefer_keyword: str = "roman",
     max_flat_black: float = 0.02,
+    subject: str = "space",
 ) -> list[ImageAsset]:
     used = ledger.used_asset_ids(channel)
-    suitable = [a for a in candidates if not looks_unsuitable(a)]
+    suitable = [a for a in candidates if not looks_unsuitable(a, subject)]
     pool = [a for a in suitable if a.asset_id not in used]
     recycled = False
     # Exhaustion is silent until the day it isn't: the run still produces a video,

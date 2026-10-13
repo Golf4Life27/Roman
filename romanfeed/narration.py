@@ -106,10 +106,20 @@ SUBSCRIBE_CALLS: list[tuple[str, str]] = [
 ]
 
 
-def subscribe_call(key: str) -> tuple[str, str]:
+# Earth-from-orbit photos: the "old light" lines above are not true of a city
+# at night seen from 400 km up, so these say what is.
+EARTH_SUBSCRIBE_CALLS: list[tuple[str, str]] = [
+    ("Subscribe to see Earth the way astronauts do.", "See Earth the way astronauts do"),
+    ("Hit subscribe, and fall asleep above the clouds tonight.", "Fall asleep above the clouds tonight"),
+    ("Subscribe for a new view from orbit every week.", "A new view from orbit every week"),
+]
+
+
+def subscribe_call(key: str, *, earth: bool = False) -> tuple[str, str]:
     import hashlib
 
-    return SUBSCRIBE_CALLS[int(hashlib.sha1(key.encode()).hexdigest(), 16) % len(SUBSCRIBE_CALLS)]
+    calls = EARTH_SUBSCRIBE_CALLS if earth else SUBSCRIBE_CALLS
+    return calls[int(hashlib.sha1(key.encode()).hexdigest(), 16) % len(calls)]
 
 
 def fact_script(asset: ImageAsset, *, full_label: str, include_size: bool = True) -> str | None:
@@ -128,17 +138,20 @@ def fact_script(asset: ImageAsset, *, full_label: str, include_size: bool = True
     if len(" ".join(lines).split()) < (MIN_FACT_WORDS if include_size else 10):
         return None  # one thin line is not a reason to stop scrolling
     tele = _telescope_name(asset)
+    earth = bool(tele) and telescopes_for(asset)[0] == "iss"
     # Only the ESA archives date an image by its release. NASA's library dates
     # are often the upload date (a 2011 release filed in 2017), and a wrong
     # year read aloud is worse than none.
     year = (asset.date or "")[:4] if asset.source.upper().startswith("ESA") else ""
-    if tele and year.isdigit():
+    if earth:
+        lines.append("This photo was taken by astronauts on the International Space Station.")
+    elif tele and year.isdigit():
         lines.append(f"This image from {tele} was released in {year}.")
     elif tele:
         lines.append(f"This image comes from {tele}.")
     lines.append(f"The full {full_label} version is on the channel.")
     # Said while the end card is up (captions stop at "The full ...").
-    lines.append(subscribe_call(asset.asset_id)[0])
+    lines.append(subscribe_call(asset.asset_id, earth=earth)[0])
     return " ".join(lines)
 
 

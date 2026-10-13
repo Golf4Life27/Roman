@@ -1,0 +1,55 @@
+# Channel playlists (romanfeed/publish/playlists.py): creates any that are
+# missing and adds what each is missing, newest on top.
+#
+# Quota: each addition is 50 of the 10,000 daily units and the Shorts use
+# ~6,400, so this runs on days without a daily render (Sun/Tue/Thu) and adds
+# at most 30 per run. The first runs fill the backlog; after that each run
+# only adds the new videos.
+#
+# Needs: secret YOUTUBE_TOKEN_JSON minted with `romanfeed auth --scope manage`.
+name: Playlists
+on:
+  schedule:
+    - cron: "37 16 * * 0,2,4"   # Sun/Tue/Thu 16:37 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: print what would change; change nothing
+        type: boolean
+        default: true
+      max_inserts:
+        description: at most this many additions this run
+        default: "30"
+permissions:
+  contents: read
+concurrency:
+  group: playlists
+  cancel-in-progress: false
+jobs:
+  playlists:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Sync playlists
+        shell: bash
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          MAX: ${{ inputs.max_inserts || '30' }}
+        run: |
+          set -o pipefail
+          args="--max-inserts $MAX"
+          [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
+          python -m romanfeed playlists $args | tee -a "$GITHUB_STEP_SUMMARY"

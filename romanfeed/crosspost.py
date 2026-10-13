@@ -85,6 +85,8 @@ def _tags(asset: ImageAsset, base: list[str]) -> list[str]:
         extra.append("#jwst")
     if "hubble" in teles:
         extra.append("#hubble")
+    if "iss" in teles:
+        extra.append("#earthfromspace")
     tags = list(dict.fromkeys(base + extra))
     return tags[:5]
 

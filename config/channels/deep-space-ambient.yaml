@@ -135,6 +135,56 @@ sources:
       label: ESA/Webb
       categories: [nebulae, galaxies, starclusters, stars, cosmology]
 
+  # Earth from orbit (see `earth:` below): photos taken by astronauts on the
+  # International Space Station. Public domain (NASA). Tagged at the source, so
+  # deep-space videos never show them and Earth videos show nothing else.
+  - type: nasa_images
+    enabled: true
+    min_width: 1600
+    max_per_query: 100
+    options:
+      subject: earth
+    queries:
+      - city lights from the international space station
+      - the city lights of
+      - aurora from the international space station
+      - aurora australis
+      - aurora borealis space station
+      - earth at night from the international space station
+      - orbital sunrise
+      - orbital sunset
+      - earth limb international space station
+      - airglow
+      - glacier from the international space station
+      - desert from the international space station
+      - sand dunes from the international space station
+      - volcano from the international space station
+      - island from the international space station
+      - atoll from the international space station
+      - hurricane from the international space station
+      - typhoon from the international space station
+      - river delta from the international space station
+      - mountains from the international space station
+      - the himalayas
+      - the andes mountain range
+      - coastline from the international space station
+      - clouds from the international space station
+      - moon over earth international space station
+      - milky way over earth international space station
+      - sun glint ocean space station
+      - lake from the international space station
+      - canyon from the international space station
+      - snow covered from the international space station
+      - the mediterranean sea
+      - the nile river
+      - the bahamas from space station
+      - the alps from space station
+      - the sahara desert
+      - the gulf of mexico from space station
+      - the pacific ocean from space station
+      - the indian ocean from space station
+      - the atlantic ocean from space station
+
 audio:
   genre: ambient
   # Original music composed per video by romanfeed/audio/composer.py (licence
@@ -225,3 +275,11 @@ crosspost:
   # Zernio queue with the same 4 daily slots: each clip takes the next free one.
   queue_profile: 6ac84031c233ad918cb14a88
   queue_id: 6ac9233fd55ed1bd5e450dc6
+
+# Earth-from-orbit videos inside Space Screens (owner approved 2026-10-13).
+# On these days the daily render uses only the space-station photos above,
+# with Earth titles and narration; every other day stays deep space. If
+# fewer than 1.5 videos' worth of fresh Earth photos remain, that day falls
+# back to deep space (and the log says so).
+earth:
+  weekdays: [fri]
