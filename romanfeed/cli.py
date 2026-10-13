@@ -375,6 +375,14 @@ def _cmd_crosspost(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_playlists(args) -> int:
+    from romanfeed.publish import playlists, youtube
+
+    for line in playlists.sync(youtube.client(), max_inserts=args.max_inserts, dry_run=args.dry_run):
+        print(line)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="romanfeed", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -497,6 +505,11 @@ def main(argv: list[str] | None = None) -> int:
     xc.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
     xc.add_argument("--hours", type=int, default=26, help="look back this far for failed posts")
     xp.set_defaults(fn=_cmd_crosspost)
+
+    pl = sub.add_parser("playlists", help="create the channel playlists and add what each is missing (needs --scope manage token)")
+    pl.add_argument("--max-inserts", type=int, default=30, help="at most this many additions (50 quota units each)")
+    pl.add_argument("--dry-run", action="store_true", help="print what would change; change nothing")
+    pl.set_defaults(fn=_cmd_playlists)
 
     rt = sub.add_parser("retitle", help="sleep-search titles/descriptions on videos already up (needs --scope manage token)")
     rt.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
