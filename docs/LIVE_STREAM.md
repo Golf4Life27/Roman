@@ -41,14 +41,17 @@ back to the videos.
 
 **The broadcast.** YouTube shows a stream only when a broadcast exists for
 it, and Studio makes one only while its Stream page is open (Oct 9-11 the
-server streamed every night and nothing appeared). So when the server has a
-YouTube token with youtube.force-ssl (`/etc/romanfeed/youtube.token.json`),
-it creates each night's broadcast itself before sending: public,
-auto-start, auto-stop, bound to the Studio key's stream, titled for tonight
-("Cozy Halloween Observatory · 10 Hours of Relaxing Space Music for Sleep ·
-Live" on a scene night). After the night it ends the broadcast, or deletes
-it if it never went live. Without a token, or if YouTube refuses, the night
-streams exactly as before.
+server streamed every night and nothing appeared). So
+`.github/workflows/live-broadcast.yml` runs `romanfeed live schedule` several
+times each morning: it creates tonight's 21:00 broadcast (public,
+auto-start, auto-stop, titled for the night, e.g. "Cozy Halloween Night · 10
+Hours of Relaxing Space Music for Sleep · Live") bound to the stream behind
+Studio's key, does nothing once it exists, and deletes our upcoming
+broadcasts from earlier nights that never went live. It uses the repo's
+YouTube token and the `YOUTUBE_STREAM_KEY` secret; the server needs no
+YouTube login. (If the server is ever given a token at
+`/etc/romanfeed/youtube.token.json`, `live start` can create the broadcast
+itself instead; without one it just streams.)
 
 It never runs 24/7 and cannot run without an end. One night, one broadcast,
 then the program exits.

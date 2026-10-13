@@ -1,0 +1,59 @@
+# Tonight's live broadcast (romanfeed/live/schedule.py, docs/LIVE_STREAM.md).
+#
+# YouTube shows a stream only when a broadcast exists for it, and Studio
+# makes one only while its Stream page is open. The server streams to
+# Studio's key at 21:00 Chicago; this job creates that night's broadcast
+# ahead of time (public, auto-start, auto-stop, bound to the key's stream),
+# so YouTube goes live the moment the video arrives.
+#
+# Several runs a day because GitHub starts scheduled runs late or drops them;
+# once tonight's broadcast exists the rest do nothing. Each run also deletes
+# our upcoming broadcasts from earlier nights that never went live.
+#
+# Needs: secret YOUTUBE_TOKEN_JSON (youtube.force-ssl, `romanfeed auth
+# --scope manage`) and secret YOUTUBE_STREAM_KEY (Studio's stream key).
+name: Live broadcast
+on:
+  schedule:
+    - cron: "13 11 * * *"   # 06:13 CDT
+    - cron: "13 14 * * *"   # 09:13 CDT
+    - cron: "13 17 * * *"   # 12:13 CDT
+    - cron: "43 19 * * *"   # 14:43 CDT
+    - cron: "13 22 * * *"   # 17:13 CDT
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: print what would be created; change nothing
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: live-broadcast
+  cancel-in-progress: false
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::error::YOUTUBE_TOKEN_JSON secret not set"; exit 1; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Schedule tonight
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=""
+          [ "$DRY_RUN" = "true" ] && args="--dry-run"
+          python -m romanfeed live schedule $args | tee -a "$GITHUB_STEP_SUMMARY"

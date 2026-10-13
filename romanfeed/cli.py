@@ -240,6 +240,18 @@ def _cmd_live(args) -> int:
         from romanfeed.live import doctor
 
         return doctor.run(lib)
+    if args.live_cmd == "schedule":
+        import os
+
+        from romanfeed.live import schedule
+        from romanfeed.publish import youtube
+
+        key = os.environ.get("YOUTUBE_STREAM_KEY", "").strip()
+        if not key:
+            print("ERROR: YOUTUBE_STREAM_KEY is not set (the repo secret holding Studio's stream key)")
+            return 2
+        print(schedule.run(cfg, youtube.client(), key=key, dry_run=args.dry_run))
+        return 0
     try:
         if args.live_cmd == "plan":
             return live.cmd_plan(cfg, lib)
@@ -442,13 +454,16 @@ def main(argv: list[str] | None = None) -> int:
     for name, text in [("sync", "pull new render artifacts from GitHub and make stream-ready copies"),
                        ("plan", "print tonight's playlist; nothing is sent"),
                        ("start", "run tonight's broadcast (refuses unless live.enabled is true)"),
-                       ("doctor", "check every library file shares one format (a regular night joins them)")]:
+                       ("doctor", "check every library file shares one format (a regular night joins them)"),
+                       ("schedule", "create tonight's broadcast on Studio's stream (GitHub runs this each morning)")]:
         lp = lsub.add_parser(name, help=text)
         lp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
         lp.add_argument("--library-dir", help="override live.library_dir (the server uses /var/lib/romanfeed/live)")
         if name == "start":
             lp.add_argument("--dry-run", action="store_true",
                             help="print the plan, broadcast body and ffmpeg command (key masked); send nothing")
+        if name == "schedule":
+            lp.add_argument("--dry-run", action="store_true", help="print what would be created; change nothing")
     lv.set_defaults(fn=_cmd_live)
 
     cz = sub.add_parser("cozy", help="cozy animated scenes: calendar, monthly generator, weekly video")
