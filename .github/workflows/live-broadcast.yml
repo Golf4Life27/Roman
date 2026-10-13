@@ -10,8 +10,9 @@
 # once tonight's broadcast exists the rest do nothing. Each run also deletes
 # our upcoming broadcasts from earlier nights that never went live.
 #
-# Needs: secret YOUTUBE_TOKEN_JSON (youtube.force-ssl, `romanfeed auth
-# --scope manage`) and secret YOUTUBE_STREAM_KEY (Studio's stream key).
+# Needs: secret YOUTUBE_TOKEN_JSON minted with `romanfeed auth --scope manage`
+# (an upload-only token gets 403 "insufficient authentication scopes") and
+# secret YOUTUBE_STREAM_KEY (Studio's stream key).
 name: Live broadcast
 on:
   schedule:
@@ -53,7 +54,9 @@ jobs:
           YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
         run: |
+          set -o pipefail
           args=""
           [ "$DRY_RUN" = "true" ] && args="--dry-run"
           python -m romanfeed live schedule $args | tee -a "$GITHUB_STEP_SUMMARY"
