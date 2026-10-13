@@ -86,6 +86,27 @@ class RunResult:
     extra_cuts: list[tuple[float, Path, str | None]] = field(default_factory=list)
 
 
+def todays_subject(cfg: ChannelConfig, candidates, ledger, count: int, *, day: date | None = None) -> str:
+    """"earth" on cfg.earth.weekdays while enough fresh Earth photos remain,
+    else "space". Falling back keeps the run going and keeps an Earth shortage
+    from resetting the whole channel's used-image ledger."""
+    from romanfeed.config import WEEKDAYS
+    from romanfeed.curation.selector import looks_unsuitable
+
+    day = day or date.today()
+    if WEEKDAYS[day.weekday()] not in cfg.earth.weekdays:
+        return "space"
+    used = ledger.used_asset_ids(cfg.channel.slug)
+    fresh = [a for a in candidates if a.asset_id not in used and not looks_unsuitable(a, "earth")]
+    # Some fail the size check after download; ask for headroom before committing.
+    if len(fresh) < count * 1.5:
+        log.warning("EARTH SUPPLY: %d fresh Earth photos for a %d-image video; making a deep-space video "
+                    "today instead. Add earth queries to the subject: earth source.", len(fresh), count)
+        return "space"
+    log.info("today is an Earth day: %d fresh Earth photos", len(fresh))
+    return "earth"
+
+
 def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
     opts = opts or RunOptions()
     n_images = opts.images or cfg.video.images_per_video
@@ -114,10 +135,13 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 2. curate
         min_width = min((s.min_width for s in cfg.enabled_sources), default=1600)
+        subject = todays_subject(cfg, candidates, ledger, n_images)
         assets = select_assets(
             candidates, channel=cfg.channel.slug, ledger=ledger, count=n_images,
             min_width=min_width, cache_dir=str(cache), seed=opts.seed or today,
-            max_flat_black=cfg.video.max_flat_black,
+            # Night-side Earth photos have real black sky, not a mosaic hole.
+            max_flat_black=0 if subject == "earth" else cfg.video.max_flat_black,
+            subject=subject,
         )
         if not assets:
             raise RuntimeError("no usable images after curation")

@@ -51,6 +51,18 @@ HOOK = (
     "{telescopes} space telescope images, opening on {lead}."
 )
 HASHTAGS = "#sleepmusic #space #deepsleep"
+# Earth-from-orbit videos: photos taken by astronauts, not telescope images.
+EARTH_HOOK = (
+    "{length} of relaxing space music for sleep, study and calm: slow views across {n_images} real photos "
+    "of Earth taken from the International Space Station, opening on {lead}."
+)
+EARTH_HOOK_SLEEP = (
+    "{length} of deep sleep music with slow views of Earth from the International Space Station: city lights, "
+    "auroras and sunrises over the planet. The screen fades to black after {dark_after} so the light won't keep "
+    "you awake; the music plays on."
+)
+EARTH_HOOK_SLEEP_NO_DARK = ("{length} of deep sleep music with slow views of Earth from the International Space "
+                            "Station. Put it on, dim the lights, and let it run.")
 
 ROMAN_NOTE = (
     "ABOUT {channel_upper}\n"
@@ -247,7 +259,13 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     # opener gets a different title, so runs do not stack up identical uploads.
     lead = lead_name(assets[0].title, limit=60) if assets else ""
     tele = telescope_short(assets[0]) if assets else None
-    template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
+    from romanfeed.curation.selector import is_earth
+
+    earth = bool(assets) and all(is_earth(a) for a in assets)
+    if earth:
+        template = (cfg.earth.sleep_title_template if sleep else "") or cfg.earth.title_template
+    else:
+        template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
     if not dark_after:
         template = drop_segment(template, "{dark_after}")
     title_lead = lead
@@ -265,7 +283,11 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     )
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     telescopes = telescope_names(assets)
-    if sleep:
+    if earth:
+        dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
+        hook = ((EARTH_HOOK_SLEEP if dark_after else EARTH_HOOK_SLEEP_NO_DARK) if sleep else EARTH_HOOK).format(
+            length=length, n_images=len(assets), lead=lead or "Earth", dark_after=dark_words)
+    elif sleep:
         hook = (HOOK_SLEEP if dark_after else HOOK_SLEEP_NO_DARK).format(
             length=length, telescopes=telescopes, dark_after=_minutes(dark_after).replace("Min", "minutes") if dark_after else "")
     else:
@@ -292,7 +314,8 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         n = max(1, n - max(1, (len(description) - 5000) // 60))
         description = render(n)
     extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else ["space music for sleep"]
-    tags = list(dict.fromkeys(cfg.publish.tags + extra + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
+    base_tags = (cfg.earth.tags + cfg.publish.tags) if earth else cfg.publish.tags
+    tags = list(dict.fromkeys(base_tags + extra + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
     return VideoMetadata(
         title=title[:100], description=description[:5000], tags=tags, category_id=cfg.publish.category_id,
         privacy=cfg.publish.privacy, made_for_kids=cfg.publish.made_for_kids, chapters=chapters,

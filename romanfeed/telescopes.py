@@ -28,7 +28,12 @@ TELESCOPES: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("wise", "NASA's WISE space telescope", "WISE", (r"\bwise\b", r"\bneowise\b")),
     ("galex", "NASA's GALEX space telescope", "GALEX", (r"\bgalex\b",)),
     ("herschel", "ESA's Herschel Space Observatory", "Herschel", (r"\bherschel\b",)),
+    # Not a telescope: the Earth-from-orbit photos (subject "earth"), taken by
+    # astronauts with hand-held cameras. Only ever matched on those assets.
+    ("iss", "the International Space Station", "the ISS", (r"\binternational space station\b",
+                                                           r"\biss\d{3}e\d+", r"\bcrew earth observations?\b")),
 ]
+EARTH = "iss"
 
 
 def _blob(asset: ImageAsset) -> str:
@@ -62,8 +67,10 @@ def telescope_line(asset: ImageAsset) -> str | None:
     keys = telescopes_for(asset)
     if not keys:
         return None
+    if keys[0] == EARTH:
+        return "Photographed from the International Space Station"
     full = {k: f for k, f, _s, _p in TELESCOPES}
-    names = [full[k] for k in keys[:2]]
+    names = [full[k] for k in keys[:2] if k != EARTH]
     if len(names) == 2:
         # "the James Webb Space Telescope and the Hubble Space Telescope" is a
         # mouthful; drop the repeated article/agency on the second.
@@ -77,8 +84,10 @@ def telescope_short(asset: ImageAsset) -> str | None:
     keys = telescopes_for(asset)
     if not keys:
         return None
+    if keys[0] == EARTH:
+        return None   # "by the ISS" reads wrong in a title; Earth titles say it themselves
     short = {k: s for k, _f, s, _p in TELESCOPES}
-    return " & ".join(short[k] for k in keys[:2])
+    return " & ".join(short[k] for k in keys[:2] if k != EARTH)
 
 
 def prefer_known_lead(assets: list[ImageAsset]) -> list[ImageAsset]:
