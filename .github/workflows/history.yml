@@ -1,0 +1,69 @@
+# The history channel (romanfeed/history, docs/HISTORY_CHANNEL.md): three
+# narrated vertical videos about today's date, posted per crosspost.mode in
+# config/channels/this-day-in-history.yaml at its three slots.
+#
+# Runs at 01:17 Central so GitHub's late starts still land before the first
+# 09:30 slot. Videos are kept as run artifacts for a week either way.
+#
+# Needs: GOOGLE_TTS_API_KEY (voice; without it nothing posts),
+# ANTHROPIC_API_KEY (script writer; without it a plain template),
+# CROSSPOST_RELAY_URL (posting).
+name: History
+on:
+  schedule:
+    - cron: "17 6 * * *"   # 06:17 UTC = 01:17 CDT
+  workflow_dispatch:
+    inputs:
+      date:
+        description: make the videos for YYYY-MM-DD (blank = today, Central)
+        default: ""
+      no_post:
+        description: render only, post nothing
+        type: boolean
+        default: true
+      crosspost_test:
+        description: send the videos to the TikTok Creator Inbox as drafts
+        type: boolean
+        default: false
+permissions:
+  contents: write   # the social-clips release gives each clip a public URL
+concurrency:
+  group: history
+  cancel-in-progress: false
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fonts
+        run: fc-list | grep -qi "DejaVuSerif-Bold" || timeout 180 sudo apt-get install -y -q fonts-dejavu-core
+      - run: pip install -e ".[history]"
+      - name: Make today's videos
+        shell: bash
+        env:
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CROSSPOST_RELAY_URL: ${{ secrets.CROSSPOST_RELAY_URL }}
+          CROSSPOST_MODE: ${{ inputs.crosspost_test && 'test' || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAY: ${{ inputs.date }}
+          NO_POST: ${{ github.event_name == 'workflow_dispatch' && inputs.no_post && !inputs.crosspost_test }}
+        run: |
+          set -o pipefail
+          args=""
+          [ -n "$DAY" ] && args="$args --date $DAY"
+          [ "$NO_POST" = "true" ] && args="$args --no-post"
+          python -m romanfeed history $args | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: history-${{ github.run_id }}
+          path: |
+            output/history/*/*.mp4
+            output/history/*/*.json
+          retention-days: 7
+          if-no-files-found: ignore
