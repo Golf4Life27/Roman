@@ -57,12 +57,14 @@ def post_text(cfg: ChannelConfig, event: ev.Event, script: sc.Script, day: date)
 def download(url: str, dest: Path) -> Path:
     s = requests.Session()
     s.headers["User-Agent"] = ev.USER_AGENT
-    for attempt in range(5):
+    for attempt in range(4):
         r = s.get(url, timeout=60)
         if r.ok and r.headers.get("content-type", "").startswith("image"):
             dest.write_bytes(r.content)
             return dest
-        time.sleep(min(60, 5 * 2 ** attempt))
+        if attempt < 3:
+            log.warning("image download answered HTTP %s; retrying", r.status_code)
+            time.sleep(min(60, 5 * 2 ** attempt))
     raise RuntimeError(f"could not download {url}: HTTP {r.status_code}")
 
 
@@ -120,6 +122,7 @@ def run(cfg: ChannelConfig, *, day: date | None = None, output_dir: Path = Path(
     work.mkdir(parents=True, exist_ok=True)
     chosen = ev.pick(day, cfg.history.per_day)
     log.info("history %s: %d events: %s", day, len(chosen), ", ".join(str(e.year) for e in chosen))
+    print(f"{day}: {len(chosen)} events: {', '.join(str(e.year) for e in chosen)}", flush=True)
     tts_key = narration.api_key()
     made: list[Made] = []
     for i, event in enumerate(chosen):
