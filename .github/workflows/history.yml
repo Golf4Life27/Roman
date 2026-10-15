@@ -44,7 +44,9 @@ jobs:
       - run: pip install -e ".[history]"
       - name: Make today's videos
         shell: bash
+        timeout-minutes: 30
         env:
+          PYTHONUNBUFFERED: "1"
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CROSSPOST_RELAY_URL: ${{ secrets.CROSSPOST_RELAY_URL }}
