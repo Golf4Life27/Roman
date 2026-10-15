@@ -21,6 +21,9 @@ youtube = [
     "google-auth-oauthlib>=1.1",
     "google-auth-httplib2>=0.1",
 ]
+# The history channel's script writer (romanfeed/history/script.py); without
+# it, or without ANTHROPIC_API_KEY, scripts come from a plain template.
+history = ["anthropic>=0.70"]
 dev = ["pytest>=7"]
 
 [project.scripts]

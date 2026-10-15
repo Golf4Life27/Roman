@@ -375,6 +375,18 @@ def _cmd_crosspost(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_history(args) -> int:
+    from datetime import date
+
+    from romanfeed.history.run import run
+
+    cfg = load_config(args.config)
+    made = run(cfg, day=date.fromisoformat(args.date) if args.date else None,
+               output_dir=Path(args.output_dir), post=not args.no_post)
+    print(f"{len(made)} videos")
+    return 0 if made else 1
+
+
 def _cmd_playlists(args) -> int:
     from romanfeed.publish import playlists, youtube
 
@@ -505,6 +517,13 @@ def main(argv: list[str] | None = None) -> int:
     xc.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
     xc.add_argument("--hours", type=int, default=26, help="look back this far for failed posts")
     xp.set_defaults(fn=_cmd_crosspost)
+
+    hi = sub.add_parser("history", help="today's history-channel videos (posts per crosspost.mode)")
+    hi.add_argument("--config", default="config/channels/this-day-in-history.yaml")
+    hi.add_argument("--date", help="make the videos for YYYY-MM-DD instead of today (Central)")
+    hi.add_argument("--no-post", action="store_true", help="render only, post nothing")
+    hi.add_argument("--output-dir", default="output")
+    hi.set_defaults(fn=_cmd_history)
 
     pl = sub.add_parser("playlists", help="create the channel playlists and add what each is missing (needs --scope manage token)")
     pl.add_argument("--max-inserts", type=int, default=30, help="at most this many additions (50 quota units each)")

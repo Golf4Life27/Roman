@@ -171,6 +171,17 @@ class EarthSettings:
 
 
 @dataclass
+class HistorySettings:
+    """The history channel (romanfeed/history): narrated vertical videos about
+    the date's events. Posting follows crosspost.mode like everything else;
+    `slots` are the Central times the day's videos go out, one each."""
+    per_day: int = 3
+    voice: str = "en-US-Chirp3-HD-Iapetus"
+    music_gain: float = 0.16
+    hashtags: list[str] = field(default_factory=lambda: ["#history", "#onthisday", "#todayinhistory", "#historyfacts"])
+
+
+@dataclass
 class CozySettings:
     """Cozy animated scenes (romanfeed/cozy): the library, the monthly
     generator's budget, and the weekly cozy upload.
@@ -247,6 +258,7 @@ class ChannelConfig:
     cozy: CozySettings = field(default_factory=CozySettings)
     crosspost: CrosspostSettings = field(default_factory=CrosspostSettings)
     earth: EarthSettings = field(default_factory=EarthSettings)
+    history: HistorySettings = field(default_factory=HistorySettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -278,6 +290,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         cozy=_build(CozySettings, raw.get("cozy")),
         crosspost=_build(CrosspostSettings, raw.get("crosspost")),
         earth=_build(EarthSettings, raw.get("earth")),
+        history=_build(HistorySettings, raw.get("history")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
