@@ -110,16 +110,22 @@ def render(photo: Path, out: Path, *, audio: Path, seconds: float, work: Path, d
     layers = [(top, None)]
     for i, (t0, t1, text) in enumerate(captions or []):
         layers.append((caption(work / f"cap{i:02d}.png", text, top=cap_top), f"between(t,{t0:.3f},{t1:.3f})"))
-    frames = int(seconds * FPS)
-    # The photo zooms in 8% over the clip, centred: zoompan on a 2x copy keeps it sharp.
-    zoom = (f"[1:v]scale={pw * 2}:{ph * 2},zoompan=z='1+0.08*on/{frames}':x='iw/2-(iw/zoom/2)':"
-            f"y='ih/2-(ih/zoom/2)':d=1:s={pw}x{ph}:fps={FPS},"
-            f"pad={pw + 12}:{ph + 12}:6:6:color=0xE9D9B8[ph]")
-    parts = [zoom, f"[0:v][ph]overlay={(W - pw - 12) // 2}:{PHOTO_TOP - 6}[b0]"]
-    inputs = ["-loop", "1", "-framerate", str(FPS), "-i", str(bg), "-loop", "1", "-framerate", str(FPS), "-i", str(photo)]
+    # The photo zooms in 8% over the clip, centred: scaled up a little more
+    # each frame and cropped back to its box. (zoompan was far slower, and on
+    # GitHub's small runners the still inputs queued frames faster than it
+    # drew them until the machine ran out of memory.)
+    # Both sides grow in even steps from exactly the box size, so the crop
+    # never asks for more than the frame has (h=-2 rounded tall photos short).
+    grow = f"2*ceil(%d*0.04*t/{seconds:.3f})"
+    zoom = (f"[1:v]scale=w='{pw}+{grow % pw}':h='{ph}+{grow % ph}':eval=frame:flags=bicubic,"
+            f"crop={pw}:{ph},pad={pw + 12}:{ph + 12}:6:6:color=0xE9D9B8[ph]")
+    parts = [zoom, f"[0:v][ph]overlay={(W - pw - 12) // 2}:{PHOTO_TOP - 6}:shortest=1[b0]"]
+    # Every still input is exactly as long as the clip, so nothing can queue up.
+    still = ["-loop", "1", "-framerate", str(FPS), "-t", f"{seconds:.3f}"]
+    inputs = [*still, "-i", str(bg), *still, "-i", str(photo)]
     prev = "[b0]"
     for k, (png, enable) in enumerate(layers, start=2):
-        inputs += ["-loop", "1", "-framerate", str(FPS), "-i", str(png)]
+        inputs += [*still, "-i", str(png)]
         en = f":enable='{enable}'" if enable else ""
         parts.append(f"{prev}[{k}:v]overlay=0:0{en}[b{k}]")
         prev = f"[b{k}]"

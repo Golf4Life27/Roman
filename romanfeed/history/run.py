@@ -57,12 +57,14 @@ def post_text(cfg: ChannelConfig, event: ev.Event, script: sc.Script, day: date)
 def download(url: str, dest: Path) -> Path:
     s = requests.Session()
     s.headers["User-Agent"] = ev.USER_AGENT
-    for attempt in range(5):
+    for attempt in range(4):
         r = s.get(url, timeout=60)
         if r.ok and r.headers.get("content-type", "").startswith("image"):
             dest.write_bytes(r.content)
             return dest
-        time.sleep(min(60, 5 * 2 ** attempt))
+        if attempt < 3:
+            log.warning("image download answered HTTP %s; retrying", r.status_code)
+            time.sleep(min(60, 5 * 2 ** attempt))
     raise RuntimeError(f"could not download {url}: HTTP {r.status_code}")
 
 
@@ -72,20 +74,28 @@ def make_one(cfg: ChannelConfig, event: ev.Event, day: date, work: Path, out_dir
     from romanfeed.audio.composer import compose_piece
     from romanfeed.render.ffmpeg import probe_duration
 
+    def step(what: str) -> None:   # progress in the run log
+        log.info("history %s: %s", event.year, what)
+
+    step("reading the articles")
     try:
         ev.enrich(event)
     except Exception as exc:   # the summaries are still a fine source
         log.warning("history: no full article text for %s (%s)", event.key, exc)
+    step("writing the script")
     script = sc.write(event, day, client=writer)
     stem = f"{day.isoformat()}-{event.year}"
+    step(f"downloading {event.image.file}")
     photo = download(event.image.url, work / f"{stem}.img")
     spoken = script.text
     if tts_key:
+        step("voicing")
         voice = narration.synthesize(spoken, work / f"{stem}.voice.wav", api_key=tts_key, voice=cfg.history.voice)
         talk = probe_duration(str(voice))
     else:
         voice, talk = None, len(spoken.split()) / WORDS_PER_S
     seconds = min(59.0, LEAD_S + talk + TAIL_S)
+    step(f"composing {seconds:.0f} s of music")
     music = compose_piece(work / f"{stem}.music.m4a", seconds=seconds + 2, seed=f"history-{stem}").path
     if voice:
         audio = narration.mix_voice(voice, music, work / f"{stem}.mix.m4a", voice_start=LEAD_S, duration=seconds,
@@ -95,6 +105,7 @@ def make_one(cfg: ChannelConfig, event: ev.Event, day: date, work: Path, out_dir
     # Captions stop before the sign-off; the handle on screen says it already.
     said = spoken.removesuffix(sc.FOLLOW).strip()
     caps = narration.caption_chunks(said, start=LEAD_S, duration=talk * len(said) / max(len(spoken), 1))
+    step("rendering")
     video = rd.render(photo, out_dir / f"{stem}.mp4", audio=audio, seconds=seconds, work=work / stem,
                       date_text=f"{sc.MONTHS[day.month - 1]} {day.day}", year=event.year,
                       headline=script.headline, subtitle=script.subtitle,
@@ -120,6 +131,7 @@ def run(cfg: ChannelConfig, *, day: date | None = None, output_dir: Path = Path(
     work.mkdir(parents=True, exist_ok=True)
     chosen = ev.pick(day, cfg.history.per_day)
     log.info("history %s: %d events: %s", day, len(chosen), ", ".join(str(e.year) for e in chosen))
+    print(f"{day}: {len(chosen)} events: {', '.join(str(e.year) for e in chosen)}", flush=True)
     tts_key = narration.api_key()
     made: list[Made] = []
     for i, event in enumerate(chosen):

@@ -100,14 +100,25 @@ def _session() -> requests.Session:
     return s
 
 
-def _get(session, url: str, *, params=None, tries: int = 5):
-    """GET with backoff: Wikimedia answers 429 when asked too quickly."""
+def _get(session, url: str, *, params=None, tries: int = 4):
+    """GET with backoff: Wikimedia answers 429 when asked too quickly (often
+    on GitHub's shared runners). Honours Retry-After, says so in the log, and
+    gives up after about two minutes rather than stalling the run."""
     for attempt in range(tries):
         r = session.get(url, params=params, timeout=30)
         if r.status_code != 429 and r.status_code < 500:
             r.raise_for_status()
             return r
-        time.sleep(min(60, 5 * 2 ** attempt))
+        if attempt == tries - 1:
+            break
+        wait = 5 * 2 ** attempt
+        try:
+            wait = max(wait, int(r.headers.get("retry-after", "0")))
+        except (TypeError, ValueError, AttributeError):
+            pass
+        wait = min(wait, 60)
+        log.warning("Wikimedia answered HTTP %s for %s; retrying in %d s", r.status_code, url.split("?")[0], wait)
+        time.sleep(wait)
     r.raise_for_status()
     return r
 
