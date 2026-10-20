@@ -81,13 +81,15 @@ def smooth_loop(src: Path, dst: Path, *, fade: int = FADE) -> tuple[Path, int]:
 
     def part(i: int, trim: str, label: str) -> str:
         return (f"[{i}:v]fps={FPS},scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
-                f"trim={trim},setpts=PTS-STARTPTS[{label}]")
+                f"trim={trim},setpts=PTS-STARTPTS,fps={FPS}[{label}]")   # ffmpeg 7's xfade wants a declared rate
 
     # Two inputs, not a split: a split stalls behind the later trim.
     graph = ";".join([
         part(0, f"start_frame={a + fade}:end_frame={a + fade + length}", "body"),
         part(1, f"start_frame={a}:end_frame={a + fade}", "start"),
-        f"[body][start]xfade=transition=fade:duration={fade / FPS:.6f}:offset={(length - fade) / FPS:.6f},"
+        # The dissolve ends 2 frames early: xfade never quite reaches 100%, and
+        # the leftover sliver of the old frame would vanish in one step at the seam.
+        f"[body][start]xfade=transition=fade:duration={(fade - 2) / FPS:.6f}:offset={(length - fade) / FPS:.6f},"
         "format=yuv420p[v]",
     ])
     tmp = dst.with_suffix(".part.mp4")
