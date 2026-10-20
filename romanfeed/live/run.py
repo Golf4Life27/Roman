@@ -166,6 +166,41 @@ def print_scene(night: scene_mod.SceneNight | None) -> None:
     print(f"music:    {night.music}")
 
 
+def _themes_fn(lib: Path):
+    from romanfeed.cozy.calendar import fetch_launches, themes_for
+
+    launches = fetch_launches(cache=lib / "launches.json")
+    return lambda d: themes_for(d, launches=launches)
+
+
+def prepare_lanes(cfg: ChannelConfig, lib: Path, now: datetime) -> None:
+    """Encode the next day's lane loops ahead of time (cached per scene), so a
+    lane's start only composes its music. Never fails the sync."""
+    from datetime import timedelta
+
+    from romanfeed.cozy import scenes as sc
+    from romanfeed.live import lanes
+
+    if not cfg.live.lanes:
+        return
+    try:
+        folder = lib / "scenes"
+        library = lanes.library_for(cfg, folder)
+        themes_fn = _themes_fn(lib)
+        for s in lanes.sessions(cfg, now, now + timedelta(hours=24)):
+            scene, _ = lanes.pick(cfg, library, s, themes_fn=themes_fn)
+            src = sc.fetch_scene(cfg.cozy.repo, cfg.cozy.release_tag, scene, folder)
+            scene_mod.prepare_loop(src, folder / "ready", channel_line=channel_line(cfg))
+            print(f"lane {s.lane} {s.start:%a %H:%M}: {scene.title}")
+    except Exception:
+        log.exception("could not prepare the lanes' loops; each lane will at its start")
+
+
+def channel_line(cfg: ChannelConfig) -> str:
+    sub = cfg.video.subscribe_line
+    return f"{cfg.channel.name}  ·  {sub}" if sub else cfg.channel.name
+
+
 def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     live = cfg.live
     added = sync(lib, repo=live.artifact_repo, keep=live.keep_files, min_free_gb=live.min_free_gb)
@@ -175,6 +210,7 @@ def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     # Tonight's scene, if it is a scene night: download, encode, compose now,
     # so 21:00 finds it ready.
     print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
+    prepare_lanes(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
     return 0
 
 
@@ -197,7 +233,8 @@ def night_body(cfg: ChannelConfig, plan: NightPlan, scene) -> dict:
     """Tonight's broadcast body: the space-video one, or the cozy room's."""
     if scene is None:
         return plan.body
-    return bc.scene_body(scene=scene.scene.title, theme=scene.theme.label, hours=round(plan.duration_s / 3600, 1),
+    return bc.scene_body(scene=scene.scene.title, theme=scene.theme.label, theme_key=scene.theme.key,
+                         hours=round(plan.duration_s / 3600, 1),
                          start=plan.start, tagline=cfg.channel.tagline, tags=cfg.publish.tags)
 
 
@@ -325,4 +362,59 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         except Exception:  # auto-stop is still there; say so loudly and move on
             log.exception("could not complete broadcast %s; relying on YouTube auto-stop", broadcast_id)
             rc = rc or 1
+    return 0 if rc == 0 else 1
+
+
+def cmd_lane(cfg: ChannelConfig, lib: Path, lane_id: str, *, dry_run: bool = False,
+             now: datetime | None = None) -> int:
+    """One session of a live lane (romanfeed/live/lanes.py): the scene the
+    rotation gives it, under freshly composed music, to the lane's own key.
+
+    The broadcast was made ahead of time by the GitHub job (auto-start,
+    auto-stop), so this makes no YouTube call at all. Same caps as the night:
+    ffmpeg -t (the session's planned end, never over 11.5 h), the watchdog,
+    and systemd's RuntimeMaxSec."""
+    import os
+
+    from romanfeed.cozy import scenes as sc
+    from romanfeed.live import lanes
+
+    if not cfg.live.enabled and not dry_run:
+        print("refusing to start: live.enabled is false in the channel config")
+        return 2
+    x = lanes.lane(cfg, lane_id)
+    key = os.environ.get(x.key_env, "").strip()
+    if not key and not dry_run:
+        print(f"refusing to start: no {x.key_env} in the environment (deploy/live/setup.sh lanes)")
+        return 2
+    now = (now or datetime.now(ZoneInfo(cfg.live.timezone))).astimezone(ZoneInfo(cfg.live.timezone))
+    s = lanes.current(cfg, lane_id, now)
+    if s is None:
+        print(f"lane {lane_id}: no session starts near {now:%H:%M} (starts: {', '.join(x.starts)})")
+        return 2
+    duration = int(min(MAX_SECONDS, (s.end - now).total_seconds()))
+    if duration < 600:
+        print(f"lane {lane_id}: the {s.start:%H:%M} session is all but over; not starting")
+        return 2
+    folder = lib / "scenes"
+    library = lanes.library_for(cfg, folder)
+    scene, theme = lanes.pick(cfg, library, s, themes_fn=_themes_fn(lib))
+    src = sc.fetch_scene(cfg.cozy.repo, cfg.cozy.release_tag, scene, folder)
+    loop = scene_mod.prepare_loop(src, folder / "ready", channel_line=channel_line(cfg))
+    music = scene_mod.prepare_music(folder / "music", s.start.date(), cfg.live.music_minutes, tag=f"lane-{lane_id}",
+                                    seed=f"live-{lane_id}-{s.start.isoformat()}")
+    night = scene_mod.SceneNight(s.start.date(), scene, theme, loop, music)
+    url = f"{INGEST}/{key or '<stream-key>'}"
+    cmd = scene_mod.stream_command(night, duration, url)
+    timeout = duration + WATCHDOG_GRACE_S
+    print(f"lane {lane_id}: {s.start:%Y-%m-%d %H:%M} session, {duration / 3600:.2f} h, "
+          f"{scene.title} ({scene.id}) for {theme.label}")
+    print(f"title:  {lanes.title(scene, theme, s)}")
+    if dry_run:
+        print("ffmpeg: " + bc.mask(" ".join(cmd), key or None))
+        return 0
+    signal.signal(signal.SIGTERM, _sigterm)
+    log.info("lane %s: streaming %d s (watchdog %d s)", lane_id, duration, timeout)
+    rc = run_stream(cmd, timeout_s=timeout, secret=key)
+    log.info("lane %s: ffmpeg exited %d", lane_id, rc)
     return 0 if rc == 0 else 1

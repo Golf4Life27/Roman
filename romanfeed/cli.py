@@ -14,6 +14,7 @@
   romanfeed stats [--email] [--dry-run]                             # weekly subscriber / watch-hour report
   romanfeed compose piece.m4a --seconds 120 --seed foo              # compose one original ambient piece
   romanfeed live sync|plan|start [--dry-run]                        # nightly 10 h live stream (server only)
+  romanfeed live lane ID [--dry-run]                                # one ~11.5 h session of a live lane (server)
 """
 from __future__ import annotations
 
@@ -250,8 +251,11 @@ def _cmd_live(args) -> int:
         if not key:
             print("ERROR: YOUTUBE_STREAM_KEY is not set (the repo secret holding Studio's stream key)")
             return 2
-        print(schedule.run(cfg, youtube.client(), key=key, dry_run=args.dry_run))
+        lane_keys = {x.id: os.environ.get(x.key_env, "").strip() for x in cfg.live.lanes}
+        print(schedule.run(cfg, youtube.client(), key=key, dry_run=args.dry_run, lane_keys=lane_keys))
         return 0
+    if args.live_cmd == "lane":
+        return live.cmd_lane(cfg, lib, args.lane, dry_run=args.dry_run)
     try:
         if args.live_cmd == "plan":
             return live.cmd_plan(cfg, lib)
@@ -475,7 +479,8 @@ def main(argv: list[str] | None = None) -> int:
                        ("plan", "print tonight's playlist; nothing is sent"),
                        ("start", "run tonight's broadcast (refuses unless live.enabled is true)"),
                        ("doctor", "check every library file shares one format (a regular night joins them)"),
-                       ("schedule", "create tonight's broadcast on Studio's stream (GitHub runs this each morning)")]:
+                       ("schedule", "create tonight's and the lanes' broadcasts (GitHub runs this each morning)"),
+                       ("lane", "run one session of a live lane, ~11.5 h (the server's lane timers run this)")]:
         lp = lsub.add_parser(name, help=text)
         lp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
         lp.add_argument("--library-dir", help="override live.library_dir (the server uses /var/lib/romanfeed/live)")
@@ -484,6 +489,10 @@ def main(argv: list[str] | None = None) -> int:
                             help="print the plan, broadcast body and ffmpeg command (key masked); send nothing")
         if name == "schedule":
             lp.add_argument("--dry-run", action="store_true", help="print what would be created; change nothing")
+        if name == "lane":
+            lp.add_argument("lane", help="the lane id from live.lanes in the channel config")
+            lp.add_argument("--dry-run", action="store_true",
+                            help="print the session, scene, title and ffmpeg command (key masked); send nothing")
     lv.set_defaults(fn=_cmd_live)
 
     cz = sub.add_parser("cozy", help="cozy animated scenes: calendar, monthly generator, weekly video")

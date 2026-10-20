@@ -153,7 +153,6 @@ def ensure_stream(yt, state_path: Path) -> StreamInfo:
     return info
 
 
-SCENE_TITLE = "Cozy {scene} · {hours} Hours of Relaxing Space Music for Sleep · Live"
 
 SCENE_DESCRIPTION = """{tagline}
 
@@ -168,10 +167,14 @@ AI-animated scene, original music.
 """
 
 
-def scene_body(*, scene: str, theme: str, hours: float, start: datetime, tagline: str, tags: list[str]) -> dict:
-    """The broadcast body for a cozy scene night: the title names the room on
-    screen, and the description says the scene is AI-animated."""
-    title = SCENE_TITLE.format(scene=scene, hours=_hours_label(hours))
+def scene_body(*, scene: str, theme: str, hours: float, start: datetime, tagline: str, tags: list[str],
+               theme_key: str = "") -> dict:
+    """The broadcast body for a cozy scene night: a seasonal title naming the
+    room on screen, and the description says the scene is AI-animated."""
+    from romanfeed.cozy import titles
+
+    title = titles.seasonal(scene, when=start, theme_key=theme_key, hours_label=_hours_label(hours), part="Night",
+                            live=True)
     desc = SCENE_DESCRIPTION.format(tagline=tagline, hours=_hours_label(hours), scene=scene, theme=theme.lower(),
                                     subscribe=SUBSCRIBE_URL, keywords=" · ".join(tags)).strip() + "\n"
     return broadcast_body(title=title, description=desc, start=start)

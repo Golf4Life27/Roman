@@ -218,8 +218,8 @@ def test_runway_client_polls_and_reports_failure_codes():
 def test_weekly_video_metadata_and_pick():
     cfg = load_config(CFG)
     scene = sc.Scene("halloween-observatory", "x.mp4", "Halloween Observatory", ["halloween"])
-    md = cv.metadata(cfg, scene, cal.Theme("halloween", "Halloween", cal.HOLIDAY), 3)
-    assert md.title == "Cozy Halloween Observatory · 3 Hours Relaxing Space Music for Sleep · Halloween Ambience"
+    md = cv.metadata(cfg, scene, cal.Theme("halloween", "Halloween", cal.HOLIDAY), 3, day=date(2026, 10, 10))
+    assert md.title == "Cozy Halloween Observatory on an October Night 🎃 3 Hours of Calm Space Music for Sleep"
     assert len(md.title) <= 100 and md.synthetic and "AI-generated" in md.description
     assert request_body(md)["status"]["containsSyntheticMedia"] is True
     lib = _lib(("obs", ["halloween"]), ("cabin", ["halloween"]))

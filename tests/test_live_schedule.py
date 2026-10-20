@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from romanfeed.config import load_config
+from romanfeed.cozy import calendar as cal
+from romanfeed.cozy import scenes as sc
 from romanfeed.live import schedule
 
 KEY = "abcd-1234-efgh"
@@ -58,8 +60,13 @@ def _b(bid, title, when):
 def cfg(monkeypatch):
     c = load_config("config/channels/deep-space-ambient.yaml")
     c.live.enabled = True
-    monkeypatch.setattr(schedule, "tonight_theme", lambda cfg, night, work: "Halloween")
+    monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: OBSERVATORY)
     return c
+
+
+OBSERVATORY = (sc.Scene("halloween-observatory", "x.mp4", "Halloween Observatory", ["halloween"]),
+               cal.Theme("halloween", "Halloween", cal.HOLIDAY))
+TONIGHT = "Cozy Halloween Observatory on an October Night 🎃 10 Hours of Calm Space Music for Sleep · Live"
 
 
 NOON = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
@@ -68,9 +75,9 @@ NOON = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
 def test_creates_tonights_broadcast_on_studios_stream(cfg):
     yt = FakeYT()
     out = schedule.run(cfg, yt, key=KEY, now=NOON)
-    assert yt.names() == ["list", "streams.list", "insert", "bind"]
+    assert yt.names() == ["streams.list", "list", "insert", "bind"]
     body = yt.calls[2][1]["body"]
-    assert body["snippet"]["title"] == "Cozy Halloween Night · 10 Hours of Relaxing Space Music for Sleep · Live"
+    assert body["snippet"]["title"] == TONIGHT
     assert body["snippet"]["scheduledStartTime"] == "2026-10-14T02:00:00Z"        # 21:00 CDT
     assert body["contentDetails"]["enableAutoStart"] and body["contentDetails"]["enableAutoStop"]
     assert body["status"]["privacyStatus"] == "public"
@@ -80,7 +87,7 @@ def test_creates_tonights_broadcast_on_studios_stream(cfg):
 
 def test_does_nothing_once_tonights_exists_and_clears_stale_ones(cfg):
     yt = FakeYT(upcoming=[
-        _b("tonight", "Cozy Halloween Night · 10 Hours of Relaxing Space Music for Sleep · Live", "2026-10-14T02:00:00Z"),
+        _b("tonight", TONIGHT, "2026-10-14T02:00:00Z"),
         _b("stale", "Space Screens Live · 10 Hours of Real Telescope Views & Calm Music for Sleep",
            "2026-10-12T02:00:00Z"),
         _b("someone-elses", "Q&A with the channel", "2026-10-12T02:00:00Z"),
@@ -91,7 +98,7 @@ def test_does_nothing_once_tonights_exists_and_clears_stale_ones(cfg):
 
 
 def test_a_regular_night_gets_the_space_title(cfg, monkeypatch):
-    monkeypatch.setattr(schedule, "tonight_theme", lambda cfg, night, work: None)
+    monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: None)
     yt = FakeYT()
     schedule.run(cfg, yt, key=KEY, now=NOON)
     assert yt.calls[2][1]["body"]["snippet"]["title"].startswith("Space Screens Live · 10 Hours")
@@ -119,13 +126,14 @@ def test_titles_are_recognised_as_ours():
     assert not schedule.ours("Cozy Halloween Cabin · 3 Hours Relaxing Space Music for Sleep · Halloween Ambience")
 
 
-def test_a_long_event_name_still_fits_and_is_recognised(cfg, monkeypatch):
-    monkeypatch.setattr(schedule, "tonight_theme", lambda cfg, night, work: "Martian Moons eXploration (MMX) Launch")
+def test_a_long_scene_name_still_fits_and_is_recognised(cfg, monkeypatch):
+    long = sc.Scene("x", "x.mp4", "Martian Moons eXploration Launch Night Observation Deck Cabin", ["launch"])
+    monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: (long, cal.Theme("launch", "Launch", "event")))
     yt = FakeYT()
     schedule.run(cfg, yt, key=KEY, now=NOON)
     title = next(kw for n, kw in yt.calls if n == "insert")["body"]["snippet"]["title"]
     assert len(title) <= 100 and title.endswith("· Live") and schedule.ours(title)
-    assert title.startswith("Cozy Martian Moons eXploration Launch Night")
+    assert title.startswith("Cozy Martian") and "Cabin on an October Night 🚀" in title
     # A title YouTube already cut is still ours, by the description line.
     cut = "Cozy Martian Moons eXploration (MMX) Launch Night · 10 Hours of Relaxing Space Music for Sleep · Liv"
     assert schedule.ours(cut, f"...\n{schedule.MARK}\n") and not schedule.ours(cut)
