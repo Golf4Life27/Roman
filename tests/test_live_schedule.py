@@ -117,3 +117,32 @@ def test_titles_are_recognised_as_ours():
     assert schedule.ours("Cozy Space Night · 10 Hours of Relaxing Space Music for Sleep · Live")
     assert schedule.ours("Space Screens Live · 10 Hours of Real Telescope Views & Calm Music for Sleep")
     assert not schedule.ours("Cozy Halloween Cabin · 3 Hours Relaxing Space Music for Sleep · Halloween Ambience")
+
+
+def test_a_long_event_name_still_fits_and_is_recognised(cfg, monkeypatch):
+    monkeypatch.setattr(schedule, "tonight_theme", lambda cfg, night, work: "Martian Moons eXploration (MMX) Launch")
+    yt = FakeYT()
+    schedule.run(cfg, yt, key=KEY, now=NOON)
+    title = next(kw for n, kw in yt.calls if n == "insert")["body"]["snippet"]["title"]
+    assert len(title) <= 100 and title.endswith("· Live") and schedule.ours(title)
+    assert title.startswith("Cozy Martian Moons eXploration Launch Night")
+    # A title YouTube already cut is still ours, by the description line.
+    cut = "Cozy Martian Moons eXploration (MMX) Launch Night · 10 Hours of Relaxing Space Music for Sleep · Liv"
+    assert schedule.ours(cut, f"...\n{schedule.MARK}\n") and not schedule.ours(cut)
+
+
+def test_duplicates_for_tonight_are_removed_keeping_the_newest(cfg):
+    cut = "Cozy Martian Moons eXploration (MMX) Launch Night · 10 Hours of Relaxing Space Music for Sleep · Liv"
+    def b(bid, title, published, when="2026-10-14T02:00:00Z"):
+        return {"id": bid, "snippet": {"title": title, "description": schedule.MARK, "scheduledStartTime": when,
+                                       "publishedAt": published}}
+    yt = FakeYT(upcoming=[
+        b("dup1", cut, "2026-10-13T14:18:00Z"),
+        b("keep", "Cozy Orionid Meteor Shower Night · 10 Hours of Relaxing Space Music for Sleep · Live",
+          "2026-10-13T15:38:00Z"),
+        b("dup2", cut, "2026-10-13T11:20:00Z"),
+        b("old", cut, "2026-10-12T14:00:00Z", when="2026-10-13T02:00:00Z"),
+    ])
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "already exists" in out and "keep" in out and "insert" not in yt.names()
+    assert sorted(kw["id"] for n, kw in yt.calls if n == "delete") == ["dup1", "dup2", "old"]
