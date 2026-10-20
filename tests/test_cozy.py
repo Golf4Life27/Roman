@@ -6,6 +6,7 @@ import io
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -81,15 +82,27 @@ def test_scene_night_switch():
     assert not live_scene.wants_scene("off", even, peak) and live_scene.wants_scene("always", odd, plain)
 
 
-def test_loop_length_counts_frames_not_duration(tmp_path):
+def test_cut_skips_the_start_up_and_the_rush_back():
+    # 241 frames like a Runway clip: a 1 s start-up from the still, a steady
+    # middle that repeats every 72 frames (steam), and a last-half-second rush
+    # back to the still. The cut must come from the middle, where end matches start.
+    rng = np.random.default_rng(1)
+    still, cycle = rng.uniform(0, 255, (54, 96)), rng.uniform(0, 255, (72, 54, 96))
+    frames = np.array([still if i < 24 or i >= 228 else cycle[i % 72] for i in range(241)], np.float32)
+    a, length = seam.choose_cut(frames)
+    assert length in seam.LENGTHS and length % seam.GOP == 0
+    assert a >= 24 and a + seam.FADE + length <= 228
+    assert length % 72 == 0                    # the dissolve joins matching moments of the steam
+
+
+def test_smooth_loop_counts_frames_not_duration(tmp_path):
     # A Runway-style clip: 241 frames at 24 fps, which ffmpeg reports as 10.0 s.
-    # Rounding from that duration made 192-frame loops that jumped back 2 s.
     clip_file = tmp_path / "scene.mp4"
     ffmpeg.run(["-f", "lavfi", "-i", "testsrc=size=64x36:rate=24", "-frames:v", "241",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip_file)])
     assert seam.count_frames(clip_file) == 241
-    assert seam.loop_frames(clip_file) == 240        # the duplicate closing frame dropped
-    assert seam.loop_length(241) == 240 and seam.loop_length(200) == 192 and seam.loop_length(10) == 48
+    out, n = seam.smooth_loop(clip_file, tmp_path / "smooth.mp4")
+    assert n in seam.LENGTHS and seam.count_frames(out) == n
 
 
 def test_loop_trim_and_stream_command(tmp_path):

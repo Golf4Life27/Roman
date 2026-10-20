@@ -2,7 +2,8 @@
 
 Built without rendering hours of video: two short encodes and a stream copy.
 
-  head   the first 60 s (six passes of the loop) with the intro card (what
+  loop   the scene's steady middle with a dissolved seam (cozy/seam.py)
+  head   about the first 60 s (passes of the loop) with the intro card (what
          this is) and the subscribe card, inside the first minute like every
          other video on the channel
   body   one clean pass of the loop, encoded with the head's exact settings
@@ -38,7 +39,7 @@ log = logging.getLogger(__name__)
 
 FPS = 24
 GOP = 48
-HEAD_PASSES = 6          # 6 x 10 s = the first minute
+HEAD_SECONDS = 60        # the head (intro and subscribe cards) is about the first minute
 REUSE_AFTER_DAYS = 56    # a scene can headline a weekly video again after 8 weeks
 
 EXTRA = {"halloween": "Halloween Ambience", "christmas": "Christmas Ambience", "new_year": "New Year's Eve Ambience",
@@ -74,7 +75,12 @@ def _x264(cfg: ChannelConfig) -> list[str]:
 
 
 def _frames(src: Path) -> int:
-    return seam.loop_frames(src)   # by decoding: the duration rounds 241 frames to 10.0 s
+    """One pass of a smooth loop (seam.smooth_loop): already whole GOPs."""
+    return seam.count_frames(src)
+
+
+def head_passes(n: int) -> int:
+    return max(1, math.ceil(HEAD_SECONDS * FPS / n))
 
 
 def render_body(src: Path, out: Path, cfg: ChannelConfig) -> Path:
@@ -86,19 +92,20 @@ def render_body(src: Path, out: Path, cfg: ChannelConfig) -> Path:
 
 
 def render_head(src: Path, out: Path, cfg: ChannelConfig, *, title: str, work: Path) -> Path:
-    """Six passes of the loop with the intro card, then the subscribe card."""
+    """About a minute of the loop with the intro card, then the subscribe card."""
     n = _frames(src)
+    passes = head_passes(n)
     v = cfg.video
     intro = work / "intro.png"
     intro_card(ImageAsset(asset_id="cozy:x", title=title, url="", source=""), 1920, 1080,
                channel_name=cfg.channel.name).save(intro)
     sub = work / "subscribe.png"
     subscribe_card(1920, 1080, channel_name=cfg.channel.name, line=v.subscribe_line).save(sub)
-    head_s = HEAD_PASSES * n / FPS
+    head_s = passes * n / FPS
     s0, s1 = v.subscribe_from, min(v.subscribe_until, head_s - 2)
     graph = (
         f"[0:v]fps={FPS},scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
-        f"trim=end_frame={n},setpts=PTS-STARTPTS,loop=loop={HEAD_PASSES - 1}:size={n}:start=0,setpts=N/{FPS}/TB[b];"
+        f"trim=end_frame={n},setpts=PTS-STARTPTS,loop=loop={passes - 1}:size={n}:start=0,setpts=N/{FPS}/TB[b];"
         f"[1:v]format=rgba,fade=in:st=0.6:d=1.2:alpha=1,fade=out:st={v.intro_seconds - 1.2}:d=1.2:alpha=1[i];"
         f"[2:v]format=rgba,fade=in:st={s0}:d=1.0:alpha=1,fade=out:st={s1 - 1.0}:d=1.0:alpha=1[s];"
         f"[b][i]overlay=0:0:enable='lt(t,{v.intro_seconds})'[bi];"
@@ -107,7 +114,7 @@ def render_head(src: Path, out: Path, cfg: ChannelConfig, *, title: str, work: P
     ffmpeg.run(["-i", str(src),
                 "-loop", "1", "-framerate", str(FPS), "-t", f"{head_s:.3f}", "-i", str(intro),
                 "-loop", "1", "-framerate", str(FPS), "-t", f"{head_s:.3f}", "-i", str(sub),
-                "-filter_complex", graph, "-map", "[out]", "-frames:v", str(HEAD_PASSES * n)]
+                "-filter_complex", graph, "-map", "[out]", "-frames:v", str(passes * n)]
                + _x264(cfg) + [str(out)])
     return out
 
@@ -119,6 +126,7 @@ def build_video(src: Path, cfg: ChannelConfig, *, title: str, hours: float, work
     from romanfeed.render.compose import concat_clips, mux_audio
 
     work.mkdir(parents=True, exist_ok=True)
+    src, _ = seam.smooth_loop(src, work / "smooth.mp4")
     head = render_head(src, work / "head.mp4", cfg, title=title, work=work)
     body = render_body(src, work / "body.mp4", cfg)
     head_s = ffmpeg.probe_duration(str(head))

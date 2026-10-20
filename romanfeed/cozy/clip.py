@@ -6,8 +6,8 @@ tight crop would cut the fireplace or the window), the scene's name above,
 and the pointer below: "Cozy nights live on YouTube · @SpaceScreens". That
 pointer is true on every scene: the live stream plays these scenes.
 
-Twenty seconds is two passes of the 10 s loop (each trimmed of its duplicate
-closing frame), so when TikTok replays the clip the picture does not jump.
+The clip is whole passes of the scene's smooth loop (cozy/seam.py), so when
+TikTok replays it the picture does not jump.
 The music is composed for the clip. The scene is AI-made: the caption says
 so, and TikTok's AI label rides on crosspost.made_with_ai.
 
@@ -17,6 +17,7 @@ crosspost.cozy_slots, a slot of its own, never on top of a Short.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from PIL import Image, ImageDraw
 
 from romanfeed.config import ChannelConfig
 from romanfeed.cozy import scenes as sc
+from romanfeed.cozy import seam
 from romanfeed.cozy.calendar import Theme, fetch_launches, themes_for
 from romanfeed.render import ffmpeg
 from romanfeed.render.cards import _centered, _wrap
@@ -32,7 +34,6 @@ from romanfeed.render.captions import _font
 log = logging.getLogger(__name__)
 
 W, H, FPS = 1080, 1920, 24
-LOOP_FRAMES = 240     # one 10 s pass at 24 fps, without the duplicate closing frame
 POINTER = "Cozy nights live on YouTube"
 
 EMOJI = {"halloween": "🎃", "christmas": "🎄", "new_year": "✨", "thanksgiving": "🍂", "autumn": "🍂",
@@ -65,14 +66,15 @@ def render_clip(loop: Path, out: Path, *, title: str, handle: str, seconds: int,
     from romanfeed.audio.composer import compose_piece
 
     work.mkdir(parents=True, exist_ok=True)
-    passes = max(1, round(seconds * FPS / LOOP_FRAMES))
-    frames = passes * LOOP_FRAMES
+    loop, n = seam.smooth_loop(loop, work / "smooth.mp4")
+    passes = max(1, math.ceil(seconds * FPS / n))
+    frames = passes * n
     dur = frames / FPS
     music = compose_piece(work / "clip-music.m4a", seconds=dur + 3, seed=seed).path
     text = overlay_png(work / "clip-text.png", title=title, handle=handle)
     graph = (
-        f"[0:v]fps={FPS},scale=1920:1080,trim=end_frame={LOOP_FRAMES},setpts=PTS-STARTPTS,"
-        f"loop=loop={passes - 1}:size={LOOP_FRAMES}:start=0,setpts=N/{FPS}/TB,split[a][b];"
+        f"[0:v]fps={FPS},scale=1920:1080,trim=end_frame={n},setpts=PTS-STARTPTS,"
+        f"loop=loop={passes - 1}:size={n}:start=0,setpts=N/{FPS}/TB,split[a][b];"
         f"[a]scale=-2:{H},crop={W}:{H},boxblur=28:2,eq=brightness=-0.18:saturation=0.9[bg];"
         f"[b]scale={W}:-2[fg];"
         f"[bg][fg]overlay=0:(H-h)/2[v0];[v0][1:v]overlay=0:0,format=yuv420p[v]"
