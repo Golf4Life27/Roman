@@ -4,10 +4,9 @@ Instead of tonight's playlist of rendered space videos, a scene night loops a
 10-second seamless clip (romanfeed.cozy.scenes) under freshly composed music.
 Everything is prepared offline so the stream itself stays a stream copy:
 
-  loop   the scene re-encoded once: trimmed to a whole number of 2-second
-         GOPs (the clip's first and last frames are the same image, so the
-         last one is dropped -- otherwise it would hold for a frame at every
-         seam), live-ingest settings, a small channel line burned in.
+  loop   the scene's steady middle with a dissolved seam (cozy/seam.py),
+         whole 2-second GOPs, re-encoded once with live-ingest settings and
+         a small channel line burned in.
   music  a composed piece, music_minutes long, seeded by the night.
 
 ffmpeg then loops both inputs with -stream_loop -1 and -c copy until the
@@ -40,7 +39,7 @@ log = logging.getLogger(__name__)
 
 FPS = 24
 GOP = 48             # 2 s at 24 fps, as library.TRANSCODE_ARGS
-LOOP_VERSION = 3     # bump when the loop encode or overlay changes, to rebuild cached loops
+LOOP_VERSION = 4     # bump when the loop encode or overlay changes, to rebuild cached loops
 
 
 @dataclass
@@ -113,9 +112,9 @@ def prepare_loop(scene_file: Path, out_dir: Path, *, channel_line: str) -> Path:
     if dst.exists() and dst.stat().st_size > 0:
         return dst
     overlay = brand_png(out_dir / "brand.png", width=1920, height=1080, text=channel_line)
-    frames = seam.loop_frames(scene_file)
+    smooth, frames = seam.smooth_loop(scene_file, out_dir / f"{scene_file.stem}.smooth.v{LOOP_VERSION}.mp4")
     tmp = dst.with_suffix(".part.mp4")
-    ffmpeg.run(loop_command(scene_file, overlay, tmp, frames=frames))
+    ffmpeg.run(loop_command(smooth, overlay, tmp, frames=frames))
     tmp.replace(dst)
     return dst
 
