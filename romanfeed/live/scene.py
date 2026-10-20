@@ -30,6 +30,7 @@ from PIL import Image, ImageDraw
 
 from romanfeed.config import ChannelConfig
 from romanfeed.cozy import scenes as sc
+from romanfeed.cozy import seam
 from romanfeed.cozy.calendar import Theme, fetch_launches, themes_for
 from romanfeed.live.playlist import MAX_SECONDS
 from romanfeed.render import ffmpeg
@@ -39,7 +40,7 @@ log = logging.getLogger(__name__)
 
 FPS = 24
 GOP = 48             # 2 s at 24 fps, as library.TRANSCODE_ARGS
-LOOP_VERSION = 2     # bump when the loop encode or overlay changes, to rebuild cached loops
+LOOP_VERSION = 3     # bump when the loop encode or overlay changes, to rebuild cached loops
 
 
 @dataclass
@@ -106,19 +107,13 @@ def loop_command(src: Path, overlay: Path, dst: Path, *, frames: int) -> list[st
     ]
 
 
-def loop_frames(seconds: float) -> int:
-    """Whole GOPs that fit, leaving out the duplicated closing frame."""
-    usable = int(round(seconds * FPS)) - 1
-    return max(GOP, usable // GOP * GOP)
-
-
 def prepare_loop(scene_file: Path, out_dir: Path, *, channel_line: str) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     dst = out_dir / f"{scene_file.stem}.v{LOOP_VERSION}.mp4"
     if dst.exists() and dst.stat().st_size > 0:
         return dst
     overlay = brand_png(out_dir / "brand.png", width=1920, height=1080, text=channel_line)
-    frames = loop_frames(ffmpeg.probe_duration(str(scene_file)))
+    frames = seam.loop_frames(scene_file)
     tmp = dst.with_suffix(".part.mp4")
     ffmpeg.run(loop_command(scene_file, overlay, tmp, frames=frames))
     tmp.replace(dst)

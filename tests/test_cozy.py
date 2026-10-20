@@ -14,9 +14,11 @@ from romanfeed.cozy import calendar as cal
 from romanfeed.cozy import generate as gen
 from romanfeed.cozy import runway
 from romanfeed.cozy import scenes as sc
+from romanfeed.cozy import seam
 from romanfeed.cozy import video as cv
 from romanfeed.live import scene as live_scene
 from romanfeed.publish.youtube import request_body
+from romanfeed.render import ffmpeg
 
 CFG = "config/channels/deep-space-ambient.yaml"
 
@@ -79,8 +81,18 @@ def test_scene_night_switch():
     assert not live_scene.wants_scene("off", even, peak) and live_scene.wants_scene("always", odd, plain)
 
 
+def test_loop_length_counts_frames_not_duration(tmp_path):
+    # A Runway-style clip: 241 frames at 24 fps, which ffmpeg reports as 10.0 s.
+    # Rounding from that duration made 192-frame loops that jumped back 2 s.
+    clip_file = tmp_path / "scene.mp4"
+    ffmpeg.run(["-f", "lavfi", "-i", "testsrc=size=64x36:rate=24", "-frames:v", "241",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(clip_file)])
+    assert seam.count_frames(clip_file) == 241
+    assert seam.loop_frames(clip_file) == 240        # the duplicate closing frame dropped
+    assert seam.loop_length(241) == 240 and seam.loop_length(200) == 192 and seam.loop_length(10) == 48
+
+
 def test_loop_trim_and_stream_command(tmp_path):
-    assert live_scene.loop_frames(10.04) == 240     # 241 frames, the duplicate closing one dropped
     night = live_scene.SceneNight(date(2026, 10, 8), sc.Scene("a", "a.mp4", "A", []),
                                   cal.Theme("a", "A", cal.SEASON), tmp_path / "loop.mp4", tmp_path / "m.m4a")
     cmd = live_scene.stream_command(night, 36000, "rtmp://x/live2/KEY")

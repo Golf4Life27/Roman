@@ -11,11 +11,17 @@ video arrives at 9 PM, YouTube goes live on its own, and auto-stop ends it.
 The job runs several times a morning (GitHub starts scheduled runs late or
 drops them) and does nothing once tonight's broadcast exists. Each run also
 deletes our upcoming broadcasts from earlier nights that never went live, so
-a dark night leaves nothing stale on the channel.
+a dark night leaves nothing stale on the channel, and any extra broadcast
+for tonight (the newest one is kept), so a night never splits its viewers.
+
+Titles must fit YouTube's 100 characters: a long event name ("Martian Moons
+eXploration (MMX) Launch") once cut the title to "... · Liv", the job no
+longer recognised its own broadcast, and every run made another one.
 """
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 from datetime import date, datetime, time
 from pathlib import Path
@@ -53,9 +59,29 @@ AI-animated scene, original music.
 """
 
 
-def ours(title: str) -> bool:
+TITLE_MAX = 100
+# A line both descriptions carry: recognises our broadcasts even if a title was cut.
+MARK = "The stream ends on its own and stays on the channel to replay any night."
+
+
+def ours(title: str, description: str = "") -> bool:
     """A broadcast this job made (the only ones it may delete)."""
-    return title.startswith("Space Screens Live ·") or (title.startswith("Cozy ") and title.endswith("· Live"))
+    if title.startswith("Space Screens Live ·"):
+        return True
+    return title.startswith("Cozy ") and (title.endswith("· Live") or MARK in description)
+
+
+def cozy_title(theme: str, hours: str) -> str:
+    """COZY_TITLE within 100 characters: drop "(...)" asides, then words
+    before the theme's last one ("Launch", "Meteor Shower" keeps its end)."""
+    def fill(name: str) -> str:
+        return COZY_TITLE.format(theme=name, hours=hours)
+
+    name = re.sub(r"\s*\([^)]*\)", "", theme).strip() if len(fill(theme)) > TITLE_MAX else theme
+    words = name.split()
+    while len(fill(" ".join(words))) > TITLE_MAX and len(words) > 1:
+        del words[-2]
+    return fill(" ".join(words))[:TITLE_MAX]
 
 
 def start_time(cfg: ChannelConfig, night: date) -> datetime:
@@ -83,7 +109,7 @@ def body_for(cfg: ChannelConfig, night: date, theme: str | None) -> dict:
               "keywords": " · ".join(cfg.publish.tags)}
     if theme:
         name = "Space" if theme == "Cozy" else theme   # the evergreen theme is labelled "Cozy"
-        title = COZY_TITLE.format(theme=name, hours=hours)
+        title = cozy_title(name, hours)
         desc = COZY_DESCRIPTION.format(theme=name.lower(), **common)
     else:
         title = REGULAR_TITLE.format(hours=hours)
@@ -112,23 +138,26 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
     if not cfg.live.enabled:
         return "live.enabled is false: no broadcast"
 
-    stale, tonight_id = [], None
+    stale, tonight = [], []
     for b in upcoming(yt):
-        title = b.get("snippet", {}).get("title", "")
-        when = b.get("snippet", {}).get("scheduledStartTime", "")
-        if not ours(title) or not when:
+        snip = b.get("snippet", {})
+        when = snip.get("scheduledStartTime", "")
+        if not ours(snip.get("title", ""), snip.get("description", "")) or not when:
             continue
         day = datetime.fromisoformat(when.replace("Z", "+00:00")).astimezone(tz).date()
         if day < night:
-            stale.append(b["id"])
+            stale.append((b["id"], "an earlier night that never went live"))
         elif day == night:
-            tonight_id = b["id"]
-    for bid in stale:
+            tonight.append(b)
+    tonight.sort(key=lambda b: b.get("snippet", {}).get("publishedAt", ""))
+    stale += [(b["id"], "a duplicate of tonight's") for b in tonight[:-1]]
+    tonight_id = tonight[-1]["id"] if tonight else None
+    for bid, why in stale:
         if dry_run:
-            log.info("would delete stale broadcast %s", bid)
+            log.info("would delete broadcast %s (%s)", bid, why)
         else:
             yt.liveBroadcasts().delete(id=bid).execute()
-            log.info("deleted stale broadcast %s (an earlier night that never went live)", bid)
+            log.info("deleted broadcast %s (%s)", bid, why)
     if tonight_id:
         return f"tonight's broadcast already exists: https://youtu.be/{tonight_id}"
 

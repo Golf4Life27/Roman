@@ -27,6 +27,7 @@ from pathlib import Path
 
 from romanfeed.config import ChannelConfig
 from romanfeed.cozy import scenes as sc
+from romanfeed.cozy import seam
 from romanfeed.cozy.calendar import Theme, fetch_launches, themes_for
 from romanfeed.publish.metadata import HASHTAGS, VideoMetadata, length_text
 from romanfeed.render import ffmpeg
@@ -73,8 +74,7 @@ def _x264(cfg: ChannelConfig) -> list[str]:
 
 
 def _frames(src: Path) -> int:
-    usable = int(round(ffmpeg.probe_duration(str(src)) * FPS)) - 1  # last frame == first: drop it
-    return max(GOP, usable // GOP * GOP)
+    return seam.loop_frames(src)   # by decoding: the duration rounds 241 frames to 10.0 s
 
 
 def render_body(src: Path, out: Path, cfg: ChannelConfig) -> Path:
