@@ -99,3 +99,16 @@ def test_an_earth_photo_can_be_a_short(monkeypatch, tmp_path):
     monkeypatch.setattr(shorts, "flat_black_fraction", lambda a: 0.0)
     monkeypatch.setattr(shorts, "image_score", lambda p: 0.5)
     assert [a.asset_id for a in shorts.ranked_candidates([earth(1), nebula(2)], tmp_path)] == ["nasa:e1", "nasa:n2"]
+
+
+def test_earth_short_titles_name_the_place_not_half_the_station():
+    import types
+
+    from romanfeed import shorts
+
+    cfg = load_config(CFG)
+    parent = types.SimpleNamespace(link_id="X", link_seconds=3600)
+    a = earth(3, title="The Grand Canyon in Arizona pictured from the International Space Station")
+    assert shorts.short_metadata(cfg, a, parent, []).title == \
+        "The Grand Canyon in Arizona from the Space Station | Calm Space for Sleep"
+    assert shorts.short_metadata(cfg, nebula(4), parent, []).title.endswith("| Calm Space for Sleep")
