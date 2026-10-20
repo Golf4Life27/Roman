@@ -88,3 +88,14 @@ def test_earth_runs_on_its_weekdays_and_falls_back_when_photos_run_low():
     assert todays_subject(cfg, pool, _Ledger(), 80, day=thu) == "space"
     used = {f"nasa:e{i}" for i in range(100)}          # 100 left, under 1.5 videos' worth
     assert todays_subject(cfg, pool, _Ledger(used), 80, day=fri) == "space"
+
+
+def test_an_earth_photo_can_be_a_short(monkeypatch, tmp_path):
+    # Earth photos were judged by the deep-space test and always rejected, so
+    # the first Earth video never gave a Short and, first in line, stalled them all.
+    from romanfeed import shorts
+
+    monkeypatch.setattr(ImageAsset, "download", lambda self, cache: None)
+    monkeypatch.setattr(shorts, "flat_black_fraction", lambda a: 0.0)
+    monkeypatch.setattr(shorts, "image_score", lambda p: 0.5)
+    assert [a.asset_id for a in shorts.ranked_candidates([earth(1), nebula(2)], tmp_path)] == ["nasa:e1", "nasa:n2"]

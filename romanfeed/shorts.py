@@ -33,7 +33,7 @@ from PIL import Image, ImageFilter, ImageOps, ImageStat
 from romanfeed.audio import MusicLibrary, build_soundtrack
 from romanfeed.audio.composer import ComposedLibrary
 from romanfeed.config import ChannelConfig
-from romanfeed.curation.selector import flat_black_fraction, looks_unsuitable
+from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
@@ -141,6 +141,9 @@ def parents(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is_
     return sorted(out, key=lambda p: p.rendered_at, reverse=True)
 
 
+SPARE_PICKS = 3   # extra parents tried when one gives no usable image
+
+
 def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
          public: Callable[[str], bool] = is_public) -> list[tuple[Parent, list[str]]]:
     """Which parent each of the next `count` Shorts comes from, and the
@@ -233,7 +236,10 @@ def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[Ima
     """Usable candidates, strongest frame first."""
     scored = []
     for a in candidates:
-        if looks_unsuitable(a):
+        # An Earth-from-orbit photo is judged as one (it was failing the
+        # deep-space test, so an Earth video never gave a Short and, first
+        # in line every run, stalled the Shorts for days).
+        if looks_unsuitable(a, "earth" if is_earth(a) else "space"):
             continue
         try:
             a.download(cache_dir)
@@ -292,7 +298,6 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     narrated = bool(captions)
     layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
     base = work_dir / "short_overlay.png"
-    from romanfeed.curation.selector import is_earth
 
     call, sub = pointer if pointer else (narration.subscribe_call(asset.asset_id, earth=is_earth(asset))[1], None)
     short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call,
@@ -479,7 +484,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         if want <= 0:
             log.info("shorts: daily cap of %d already reached", cfg.shorts.per_day)
             return results
-        picks = plan(ledger, cfg.channel.slug, want, per_short=cfg.shorts.candidates, public=public)
+        # Spare picks: a video whose candidates are all unusable hands its
+        # turn to the next one instead of costing the run its Short.
+        picks = plan(ledger, cfg.channel.slug, want + SPARE_PICKS, per_short=cfg.shorts.candidates, public=public)
         if not picks:
             log.warning("shorts: no published video with unused images to cut from")
             return results
@@ -494,6 +501,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
+            if len(results) >= want:
+                break
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
             if not ranked:

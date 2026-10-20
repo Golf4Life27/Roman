@@ -175,3 +175,20 @@ def test_no_by_when_the_name_already_names_a_telescope():
     a = _asset(1, title="Spitzer Space Telescope View of Galaxy Messier 101", credit="NASA/JPL-Caltech", keywords=["hubble"])
     md = shorts.short_metadata(_cfg(), a, shorts.Parent("p", "V", 3600, ""), [])
     assert " by " not in md.title
+
+
+def test_a_video_with_nothing_usable_hands_its_turn_on(ledger, monkeypatch, tmp_path):
+    led_path = ledger.db_path
+    ledger.close()
+    sent = []
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: sent.append(md.title) or "YT")
+    monkeypatch.setattr(shorts, "is_public", lambda vid: True)
+    # The newest video's images are all unusable (as an Earth video's were).
+    monkeypatch.setattr(shorts, "ranked_candidates",
+                        lambda cands, cache: [a for a in cands if int(a.asset_id.split("A")[1]) < 10])
+    monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
+    monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
+    monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(res) == 1 and res[0].parent_slug == "chan-2026-09-28" and len(sent) == 1
