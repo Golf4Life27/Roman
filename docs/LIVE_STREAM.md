@@ -144,6 +144,45 @@ Central before pulling new renders. The stream starts only when
 `live: {enabled: true}` is in the channel config -- a repo change, not a
 server change.
 
+## The live network (lanes)
+
+Big cozy channels run many streams at once, each a different scene. Ours
+(owner approved 2026-10-20): two **lanes** beside the 9 PM night stream, in
+`live.lanes` of the channel config (romanfeed/live/lanes.py).
+
+| Stream | Sessions (Central) | Key | Titles |
+|---|---|---|---|
+| night | 21:00, ~10 h | `YOUTUBE_STREAM_KEY` | for Sleep |
+| lane two | 07:30 and 19:30, 11.5 h each | `YOUTUBE_STREAM_KEY_2` | Work & Study by day, Sleep by evening |
+| lane three | 01:30 and 13:30, 11.5 h each | `YOUTUBE_STREAM_KEY_3` | same |
+
+- Every session ends before 12 hours, so each is saved as a replay.
+- Scenes: each lane session steps through the season's scenes in start
+  order, skipping the night stream's scene and the session already running,
+  so two streams never show the same room (zero overlaps in a simulated year
+  of today's 9 scenes). It is a pure function of the date, so the GitHub job
+  that titles the broadcast and the server that streams it always agree.
+- Broadcasts: the `Live broadcast` workflow creates each lane session's
+  broadcast up to 24 hours ahead (auto-start, auto-stop, seasonal title
+  naming the scene) for every lane whose secret is set.
+- Server: `romanfeed-lane-two.timer` / `romanfeed-lane-three.timer` start
+  `romanfeed-lane@<id>.service` 10 minutes before each session; it builds the
+  loop and composes the music, then stream-copies to the lane's key. The 15:00
+  sync pre-builds the next day's lane loops. No YouTube login on the server.
+- Cost: none beyond the server. Each 24/7 lane is ~1.5 TB a month of the
+  CX23's 20 TB; scene streams barely use the CPU.
+
+**Turning a lane on (owner, once):**
+1. Studio -> Create -> Go live -> Stream -> the stream key list -> **Create
+   new stream key** (default settings). Make two: name them "Lane 2" and "Lane 3".
+2. GitHub repo -> Settings -> Secrets and variables -> Actions -> new
+   secrets `YOUTUBE_STREAM_KEY_2` and `YOUTUBE_STREAM_KEY_3` with those keys.
+3. Hetzner console (no Shift keys needed): `sudo bash /opt/romanfeed/app/deploy/live/setup.sh lanes`
+   and type each key when asked (the last 4 characters are shown to check).
+
+**Turning a lane off:** on the server `systemctl disable --now romanfeed-lane-two.timer`
+(or three), and delete its GitHub secret so no broadcasts are made for it.
+
 ## Settings
 
 All in the channel config under `live:` (defaults shown; the channel file has
@@ -168,6 +207,8 @@ romanfeed live sync               # pull new render artifacts, transcode, prune
 romanfeed live plan               # print tonight's playlist; sends nothing
 romanfeed live start --dry-run    # plan + broadcast body + ffmpeg command, key masked; sends nothing
 romanfeed live start              # tonight's broadcast; refuses unless live.enabled is true
+romanfeed live lane two --dry-run # a lane's current session: scene, title, ffmpeg (key masked); sends nothing
+romanfeed live lane two           # one lane session (the server's lane timers run this)
 ```
 
 The stream key is created once (a reusable YouTube live stream), stored in

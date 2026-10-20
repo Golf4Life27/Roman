@@ -1,0 +1,21 @@
+[Unit]
+Description=Space Screens live lane %i: one ~11.5 h cozy session (always ends < 12 h)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=romanfeed
+Group=romanfeed
+WorkingDirectory=/opt/romanfeed/app
+EnvironmentFile=/etc/romanfeed/env
+# The lane's key is YOUTUBE_STREAM_KEY_<n> in the env file (setup.sh lanes).
+# The code is kept current by the nightly and sync services' git pull.
+ExecStart=/opt/romanfeed/venv/bin/romanfeed live lane %i --library-dir /var/lib/romanfeed/live
+# One session, then stop; never restarted (a crash ends the session).
+Restart=no
+# Outermost cap, outside Python: ffmpeg -t stops at the session's end (at
+# most 11.5 h) and the Python watchdog 15 min after that.
+RuntimeMaxSec=12h
+KillMode=mixed
+TimeoutStopSec=120

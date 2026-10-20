@@ -249,6 +249,24 @@ live:
                             # "Preparing stream" is diagnosed (`romanfeed live doctor`); back
                             # to alternate once a regular night streams again
   music_minutes: 60         # composed on the server before the stream; 60 min starts ~5 min sooner
+  # The live network (romanfeed/live/lanes.py, owner approved 2026-10-20): two
+  # more cozy streams beside the 21:00 one, each nearly round the clock as two
+  # 11.5 h sessions a day (each ends < 12 h and is saved as a replay), each on
+  # its own Studio stream key and always a different scene from the others.
+  # Daytime sessions are titled for work & study, evening ones for sleep. A
+  # lane does nothing until its key is set: the GitHub secret of the same
+  # name (broadcasts) and the server's env (`sudo bash deploy/live/setup.sh
+  # lanes`). The server timers fire 10 min before each start: keep
+  # deploy/live/romanfeed-lane-*.timer in step with `starts`.
+  lanes:
+    - id: two
+      key_env: YOUTUBE_STREAM_KEY_2
+      starts: ["07:30", "19:30"]
+      hours: 11.5
+    - id: three
+      key_env: YOUTUBE_STREAM_KEY_3
+      starts: ["01:30", "13:30"]
+      hours: 11.5
 
 # Cozy animated scenes (docs/COZY_SCENES.md).
 cozy:

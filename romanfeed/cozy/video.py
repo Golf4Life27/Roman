@@ -28,7 +28,7 @@ from pathlib import Path
 
 from romanfeed.config import ChannelConfig
 from romanfeed.cozy import scenes as sc
-from romanfeed.cozy import seam
+from romanfeed.cozy import seam, titles
 from romanfeed.cozy.calendar import Theme, fetch_launches, themes_for
 from romanfeed.publish.metadata import HASHTAGS, VideoMetadata, length_text
 from romanfeed.render import ffmpeg
@@ -41,12 +41,6 @@ FPS = 24
 GOP = 48
 HEAD_SECONDS = 60        # the head (intro and subscribe cards) is about the first minute
 REUSE_AFTER_DAYS = 56    # a scene can headline a weekly video again after 8 weeks
-
-EXTRA = {"halloween": "Halloween Ambience", "christmas": "Christmas Ambience", "new_year": "New Year's Eve Ambience",
-         "thanksgiving": "Autumn Ambience", "autumn": "Autumn Ambience", "winter": "Snowy Night Ambience",
-         "meteors": "Meteor Shower Night", "launch": "Launch Night", "eclipse": "Eclipse Night",
-         "valentines": "Candlelight Ambience", "independence_day": "Summer Night Ambience",
-         "summer": "Summer Night Ambience", "spring": "Spring Night Ambience", "easter": "Spring Night Ambience"}
 
 
 def ledger_channel(cfg: ChannelConfig) -> str:
@@ -143,13 +137,13 @@ def build_video(src: Path, cfg: ChannelConfig, *, title: str, hours: float, work
     return out
 
 
-def metadata(cfg: ChannelConfig, scene: sc.Scene, theme: Theme, hours: float) -> VideoMetadata:
+def metadata(cfg: ChannelConfig, scene: sc.Scene, theme: Theme, hours: float, *,
+             day: date | None = None) -> VideoMetadata:
+    """Seasonal title (cozy/titles.py): 'Cozy Halloween Observatory on an
+    October Night 🎃 3 Hours of Calm Space Music for Sleep'."""
     c = cfg.cozy
     length = length_text(hours * 3600)
-    extra = EXTRA.get(theme.key, "Fireplace & Stars")
-    title = c.title_template.format(scene=scene.title, length=length, extra=extra)
-    if len(title) > 100:
-        title = title.rsplit(" · ", 1)[0]
+    title = titles.seasonal(scene.title, when=day or date.today(), theme_key=theme.key, hours_label=f"{hours:g}")
     handle = cfg.channel.handle.strip()
     lines = [
         f"{length} of cozy ambience for sleep, study and calm: a warm {scene.title.lower()} on a quiet night, "
@@ -213,7 +207,7 @@ def run(cfg: ChannelConfig, *, today: date, data_dir: Path, output_dir: Path, dr
     ffmpeg.run(["-i", str(src), "-frames:v", "1", str(still)])
     thumb = make_thumbnail(still, out.with_suffix(".jpg"), length_label=length_text(meta_hours * 3600),
                            subject=f"Cozy {theme.label}" if theme.key != "evergreen" else "Cozy Space Night")
-    meta = metadata(cfg, scene, theme, meta_hours)
+    meta = metadata(cfg, scene, theme, meta_hours, day=today)
     mode = "upload" if uploading else "dry-run"
     if mode == "dry-run" and not cfg.cozy.enabled:
         print("cozy.enabled is false: rendered, not uploaded (the switch is the owner's call)")

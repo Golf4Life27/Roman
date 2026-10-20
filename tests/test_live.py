@@ -562,8 +562,9 @@ def test_scene_nights_get_a_cozy_title():
     cfg = _cfg(enabled=True)
     plan = types.SimpleNamespace(body={"x": 1}, duration_s=36000, start=datetime(2026, 10, 12, 21, 0))
     scene = types.SimpleNamespace(scene=types.SimpleNamespace(title="Halloween Observatory"),
-                                  theme=types.SimpleNamespace(label="Halloween"))
+                                  theme=types.SimpleNamespace(label="Halloween", key="halloween"))
     body = run.night_body(cfg, plan, scene)
-    assert body["snippet"]["title"] == "Cozy Halloween Observatory · 10 Hours of Relaxing Space Music for Sleep · Live"
+    assert body["snippet"]["title"] == ("Cozy Halloween Observatory on an October Night 🎃 "
+                                        "10 Hours of Calm Space Music for Sleep · Live")
     assert "AI-animated scene" in body["snippet"]["description"]
     assert run.night_body(cfg, plan, None) == {"x": 1}

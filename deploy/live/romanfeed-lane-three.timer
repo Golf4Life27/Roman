@@ -1,0 +1,14 @@
+[Unit]
+Description=Live lane "three": sessions at 01:30 and 13:30 Chicago (fires 10 min early to prepare)
+
+[Timer]
+# Keep in step with live.lanes "three" starts in the channel config.
+OnCalendar=*-*-* 01:20:00 America/Chicago
+OnCalendar=*-*-* 13:20:00 America/Chicago
+# A missed session is skipped, never run late into the next one.
+Persistent=false
+AccuracySec=1min
+Unit=romanfeed-lane@three.service
+
+[Install]
+WantedBy=timers.target

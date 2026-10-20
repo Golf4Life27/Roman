@@ -10,9 +10,13 @@
 # once tonight's broadcast exists the rest do nothing. Each run also deletes
 # our upcoming broadcasts from earlier nights that never went live.
 #
+# It also makes the broadcast of every live-network lane session starting in
+# the next 24 hours (romanfeed/live/lanes.py), for each lane whose key is set.
+#
 # Needs: secret YOUTUBE_TOKEN_JSON minted with `romanfeed auth --scope manage`
-# (an upload-only token gets 403 "insufficient authentication scopes") and
-# secret YOUTUBE_STREAM_KEY (Studio's stream key).
+# (an upload-only token gets 403 "insufficient authentication scopes"),
+# secret YOUTUBE_STREAM_KEY (Studio's stream key), and for the lanes
+# YOUTUBE_STREAM_KEY_2 / YOUTUBE_STREAM_KEY_3 (their own Studio stream keys).
 name: Live broadcast
 on:
   schedule:
@@ -53,6 +57,9 @@ jobs:
         env:
           YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          # The live network's lanes (live.lanes); a lane without its secret is skipped.
+          YOUTUBE_STREAM_KEY_2: ${{ secrets.YOUTUBE_STREAM_KEY_2 }}
+          YOUTUBE_STREAM_KEY_3: ${{ secrets.YOUTUBE_STREAM_KEY_3 }}
           DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |

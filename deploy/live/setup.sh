@@ -4,6 +4,12 @@
 # Run as root from a checkout of the repo on the server:
 #   sudo bash deploy/live/setup.sh [--youtube-token path/to/youtube.token.json] [--env path/to/env]
 #
+# The live network (two more streams, live.lanes in the channel config):
+#   sudo bash /opt/romanfeed/app/deploy/live/setup.sh lanes
+# asks for each lane's Studio stream key (Enter keeps the one already set),
+# writes it to /etc/romanfeed/env, installs the lane units and turns on the
+# timer of every lane that has a key. Typed keys are not echoed back.
+#
 # It installs ffmpeg + Python, creates the `romanfeed` service user, puts the
 # code in /opt/romanfeed/app with its own venv, places the secrets 0600 under
 # /etc/romanfeed, and installs the systemd units -- DISABLED. Nothing streams
@@ -13,8 +19,10 @@ set -euo pipefail
 
 YT_TOKEN=""
 ENV_SRC=""
+LANES=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    lanes) LANES=1; shift ;;
     --youtube-token) YT_TOKEN="$2"; shift 2 ;;
     --env) ENV_SRC="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -28,6 +36,39 @@ APP=/opt/romanfeed/app
 VENV=/opt/romanfeed/venv
 ETC=/etc/romanfeed
 LIB=/var/lib/romanfeed/live
+LANE_UNITS="romanfeed-lane@.service romanfeed-lane-two.timer romanfeed-lane-three.timer"
+
+if [ "$LANES" -eq 1 ]; then
+  [ -f "$ETC/env" ] || { echo "no $ETC/env: run the full setup first" >&2; exit 1; }
+  echo "== live lanes: stream keys (Studio -> Go live -> Stream -> stream key list -> Create new stream key)"
+  for pair in "two:YOUTUBE_STREAM_KEY_2" "three:YOUTUBE_STREAM_KEY_3"; do
+    lane="${pair%%:*}"; var="${pair#*:}"
+    if grep -q "^$var=." "$ETC/env"; then have="set"; else have="not set"; fi
+    read -r -s -p "   lane $lane key ($var, $have; Enter keeps it): " key; echo
+    key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    if [ -n "$key" ]; then
+      sed -i "/^$var=/d" "$ETC/env"
+      printf '%s=%s\n' "$var" "$key" >> "$ETC/env"
+      echo "   lane $lane: key saved (ends in ...${key: -4}; check it against Studio)"
+    fi
+  done
+  chown romanfeed:romanfeed "$ETC/env"; chmod 0600 "$ETC/env"
+  for u in $LANE_UNITS; do
+    install -m 0644 "$APP/deploy/live/$u" "/etc/systemd/system/$u"
+  done
+  systemctl daemon-reload
+  for pair in "two:YOUTUBE_STREAM_KEY_2" "three:YOUTUBE_STREAM_KEY_3"; do
+    lane="${pair%%:*}"; var="${pair#*:}"
+    if grep -q "^$var=." "$ETC/env"; then
+      systemctl enable --now "romanfeed-lane-$lane.timer" >/dev/null
+      echo "   lane $lane: timer on, next start $(systemctl show -p NextElapseUSecRealtime --value "romanfeed-lane-$lane.timer")"
+    else
+      echo "   lane $lane: no key, timer left off"
+    fi
+  done
+  echo "Done. The GitHub secrets YOUTUBE_STREAM_KEY_2 and YOUTUBE_STREAM_KEY_3 must hold the same keys."
+  exit 0
+fi
 
 echo "== packages"
 apt-get update -q
@@ -65,7 +106,7 @@ echo "== library -> $LIB"
 install -d -m 0750 -o romanfeed -g romanfeed "$LIB"
 
 echo "== systemd units (installed, NOT enabled)"
-for u in romanfeed-sync.service romanfeed-sync.timer romanfeed-live.service romanfeed-live.timer; do
+for u in romanfeed-sync.service romanfeed-sync.timer romanfeed-live.service romanfeed-live.timer $LANE_UNITS; do
   install -m 0644 "$APP/deploy/live/$u" "/etc/systemd/system/$u"
 done
 systemctl daemon-reload

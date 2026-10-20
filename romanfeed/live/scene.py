@@ -68,8 +68,10 @@ def choose(cfg: ChannelConfig, lib_dir: Path, night: date) -> tuple[sc.Scene, Th
     if not library.scenes:
         return None
     themes = themes_for(night, launches=fetch_launches(cache=lib_dir / "launches.json"))
-    last = _read_state(lib_dir).get("scene")
-    picked = sc.pick(library, night, themes, avoid=last)
+    # No server state in the choice: the GitHub job that titles tonight's
+    # broadcast, and the live lanes that must show other scenes, work it out
+    # the same way. The date rotation already changes the scene nightly.
+    picked = sc.pick(library, night, themes)
     if picked is None or not wants_scene(mode, night, picked[1]):
         return None
     return picked
@@ -119,16 +121,21 @@ def prepare_loop(scene_file: Path, out_dir: Path, *, channel_line: str) -> Path:
     return dst
 
 
-def prepare_music(out_dir: Path, night: date, minutes: int) -> Path:
+def prepare_music(out_dir: Path, night: date, minutes: int, *, tag: str = "night", seed: str = "") -> Path:
+    """A composed piece for one stream. Each stream (the night, each lane) has
+    its own file name, and only that stream's older files are removed, so a
+    lane never deletes the music another stream is playing."""
     from romanfeed.audio.composer import compose_piece
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    dst = out_dir / f"music-{night.isoformat()}.m4a"
+    dst = out_dir / f"music-{tag}-{night.isoformat()}.m4a"
     if not (dst.exists() and dst.stat().st_size > 0):
-        compose_piece(dst, seconds=minutes * 60, seed=f"live-{night.isoformat()}")
-    for old in out_dir.glob("music-*.m4a"):  # one night's music on disk at a time
+        compose_piece(dst, seconds=minutes * 60, seed=seed or f"live-{night.isoformat()}")
+    for old in out_dir.glob(f"music-{tag}-*.m4a"):
         if old != dst:
             old.unlink(missing_ok=True)
+    for old in out_dir.glob("music-[0-9]*.m4a"):   # names from before the lanes
+        old.unlink(missing_ok=True)
     return dst
 
 

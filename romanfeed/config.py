@@ -100,6 +100,22 @@ LIVE_MAX_HOURS = 11.5
 
 
 @dataclass
+class LaneSettings:
+    """One extra live stream beside the nightly one (romanfeed/live/lanes.py).
+
+    Each session runs `hours` (under 12, so it is saved as a replay) from each
+    time in `starts` (local to live.timezone), to its own Studio stream key,
+    read from the environment variable `key_env` (the server's env file, and
+    a GitHub secret of the same name for the broadcast job). A lane without
+    its key does nothing. The server's timers (deploy/live/romanfeed-lane-*.timer)
+    fire 10 minutes before each start: keep them in step with `starts`."""
+    id: str
+    key_env: str
+    starts: list[str] = field(default_factory=list)
+    hours: float = 11.5
+
+
+@dataclass
 class LiveSettings:
     """The nightly live stream (romanfeed.live). Off unless the owner turns it on.
 
@@ -127,6 +143,8 @@ class LiveSettings:
     scenes: str = "off"
     # Length of the composed piece a scene night loops under the scene.
     music_minutes: int = 120
+    # The live network: extra streams beside the nightly one (LaneSettings).
+    lanes: list = field(default_factory=list)
 
 
 @dataclass
@@ -195,7 +213,6 @@ class CozySettings:
     enabled: bool = False
     privacy: str = "public"
     hours: float = 3.0
-    title_template: str = "Cozy {scene} · {length} Relaxing Space Music for Sleep · {extra}"
     monthly_credits: int = 0
     # Scenes to keep per theme for the weeks ahead; the generator tops up
     # the soonest themes below this first.
@@ -274,6 +291,14 @@ def _build(cls, data: dict[str, Any] | None):
     return cls(**data)
 
 
+def _build_live(data: dict[str, Any] | None) -> LiveSettings:
+    data = dict(data or {})
+    lanes = [_build(LaneSettings, x) for x in data.pop("lanes", None) or []]
+    live = _build(LiveSettings, data)
+    live.lanes = lanes
+    return live
+
+
 def load_config(path: str | Path) -> ChannelConfig:
     path = Path(path)
     raw = yaml.safe_load(path.read_text()) or {}
@@ -284,7 +309,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         sources=sources,
         audio=_build(AudioSettings, raw.get("audio")),
         publish=_build(PublishSettings, raw.get("publish")),
-        live=_build(LiveSettings, raw.get("live")),
+        live=_build_live(raw.get("live")),
         path=path,
         shorts=_build(ShortsSettings, raw.get("shorts")),
         cozy=_build(CozySettings, raw.get("cozy")),
@@ -343,3 +368,15 @@ def _check_live(live: LiveSettings) -> None:
         raise ValueError(f"live.timezone {live.timezone!r} is not an IANA time zone") from None
     if live.keep_files < 1:
         raise ValueError("live.keep_files must be at least 1")
+    ids = [lane.id for lane in live.lanes]
+    if len(set(ids)) != len(ids) or "night" in ids:
+        raise ValueError("live.lanes: ids must be unique and not 'night'")
+    for lane in live.lanes:
+        if not 0 < lane.hours <= LIVE_MAX_HOURS:
+            raise ValueError(f"live.lanes {lane.id}: hours must be > 0 and <= {LIVE_MAX_HOURS}")
+        if not lane.key_env or lane.key_env == "YOUTUBE_STREAM_KEY":
+            raise ValueError(f"live.lanes {lane.id}: key_env must name its own stream key")
+        for t in lane.starts:
+            hh, _, mm = t.partition(":")
+            if not (hh.isdigit() and mm.isdigit() and int(hh) < 24 and int(mm) < 60):
+                raise ValueError(f"live.lanes {lane.id}: start {t!r} is not HH:MM")
