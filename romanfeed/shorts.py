@@ -356,14 +356,23 @@ def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Pat
     return None
 
 
+# "... pictured from the International Space Station": the place is the
+# subject, and the clause cut to fit 60 characters read "...from the International".
+_FROM_ORBIT = re.compile(r"[\s,]*(?:as\s+)?(?:pictured|seen|photographed|viewed|captured|imaged)\s+(?:from|by|aboard)\s+"
+                         r"(?:the\s+)?(?:international\s+space\s+station|space\s+station|iss|orbit)\b.*$", re.I)
+
+
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None) -> VideoMetadata:
-    lead = lead_name(asset.title, limit=60) or asset.title
+    name = (_FROM_ORBIT.sub("", asset.title).strip(" ,.") or asset.title) if is_earth(asset) else asset.title
+    lead = lead_name(name, limit=60) or name
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
     title_lead = lead
     if "{lead_by}" in template:
         template = template.replace("{lead_by}", "{lead}")
         title_lead = f"{lead} by {tele}" if tele and not any(t.lower() in lead.lower() for t in tele.split(" & ")) else lead
+        if is_earth(asset):
+            title_lead = f"{lead} from the Space Station"
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     link = f"https://youtu.be/{parent.link_id}"
