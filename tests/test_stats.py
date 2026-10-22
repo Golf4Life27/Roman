@@ -58,6 +58,13 @@ class FakeYTA:
             start = date.fromisoformat(kw["startDate"])
             rows = [[(start + timedelta(days=i)).isoformat(), self.last7_minutes / 7] for i in range(7)]
             return _Exec({"columnHeaders": [{"name": "day"}, {"name": "estimatedMinutesWatched"}], "rows": rows})
+        if dims == "creatorContentType":
+            return _Exec({"columnHeaders": [{"name": "creatorContentType"}, {"name": "subscribersGained"},
+                                            {"name": "views"}],
+                          "rows": [["VIDEO_ON_DEMAND", 1, 30], ["SHORTS", 4, 400]]})
+        if dims == "video" and kw.get("sort") == "-subscribersGained":
+            return _Exec({"columnHeaders": [{"name": "video"}, {"name": "subscribersGained"}, {"name": "views"}],
+                          "rows": [["vidS", 3, 250], ["vidA", 1, 20], ["vidZ", 0, 5]]})
         if dims == "video":
             return _Exec({"columnHeaders": [{"name": "video"}, {"name": "estimatedMinutesWatched"}, {"name": "views"}],
                           "rows": [["vidA", 300, 20], ["vidB", 120, 9]]})
@@ -345,3 +352,29 @@ def test_short_history_compares_with_the_oldest_snapshot(tmp_path):
         data = st.fetch_public_stats(date(2026, 10, 5), yt_public=Pub(), ledger=led, handle="@SpaceScreens")
     _, text, _ = st.report(data, date(2026, 10, 5))
     assert "Since 2026-10-01: +25 (6.2/day)" in text
+
+
+def test_fetch_stats_says_where_new_subscribers_came_from():
+    stats = st.fetch_stats(TODAY, yt=FakeYT(), yta=FakeYTA())
+    assert stats.subs_by_format == [("Shorts", 4, 400), ("Long videos", 1, 30)]
+    # Videos that earned no subscriber are left off the list.
+    assert stats.top_sub_videos == [("Title vidS", 3, 250), ("Title vidA", 1, 20)]
+    _, text, html = st.report(stats, TODAY)
+    assert "WHERE NEW SUBSCRIBERS CAME FROM" in text
+    assert "Shorts: 4 gained from 400 views (10.0 per 1,000 views)" in text
+    assert "1. Title vidS: 3 gained, 250 views" in text
+    assert "Top 5 videos by new subscribers" in html
+
+
+def test_subscriber_sources_failure_keeps_the_report_going():
+    class Refusing(FakeYTA):
+        def query(self, **kw):
+            if kw.get("dimensions") == "creatorContentType" or kw.get("sort") == "-subscribersGained":
+                raise RuntimeError("dimension not supported")
+            return super().query(**kw)
+
+    stats = st.fetch_stats(TODAY, yt=FakeYT(), yta=Refusing())
+    assert stats.subs_by_format == [] and stats.top_sub_videos == []
+    _, text, _ = st.report(stats, TODAY)
+    assert "not available from Analytics this week" in text
+    assert "TOP 5 VIDEOS, LAST 7 DAYS (BY WATCH TIME)" in text

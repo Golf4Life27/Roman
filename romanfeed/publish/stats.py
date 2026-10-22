@@ -109,6 +109,11 @@ class ChannelStats:
     has_analytics: bool = True
     title_test: list[tuple[str, str]] = field(default_factory=list)
     week_ago: tuple[str, int, int, int] | None = None   # (date, subscribers, views, videos)
+    # Where the week's new subscribers came from: (format, gained, views) per
+    # format, and (title, gained, views) for the videos that earned the most.
+    # Empty when Analytics would not answer; the report then says so.
+    subs_by_format: list[tuple[str, int, int]] = field(default_factory=list)
+    top_sub_videos: list[tuple[str, int, int]] = field(default_factory=list)
 
 
 @dataclass
@@ -193,6 +198,53 @@ def _window(yta, start: date, end: date) -> Window:
     )
 
 
+# Analytics' creatorContentType values, in the words the report uses.
+FORMAT_LABELS = {
+    "VIDEO_ON_DEMAND": "Long videos",
+    "SHORTS": "Shorts",
+    "LIVE_STREAM": "Live streams",
+    "STORY": "Stories",
+    "UNSPECIFIED": "Other",
+}
+
+
+def _video_titles(yt, ids: list[str]) -> dict[str, str]:
+    titles: dict[str, str] = {}
+    if ids:
+        for item in yt.videos().list(part="snippet", id=",".join(ids)).execute().get("items") or []:
+            titles[item["id"]] = (item.get("snippet") or {}).get("title", "")
+    return titles
+
+
+def subscriber_sources(yt, yta, start: date, end: date) -> tuple[list[tuple[str, int, int]], list[tuple[str, int, int]]]:
+    """Which formats and which videos earned the window's new subscribers.
+
+    The goal's binding limit is subscribers, so the report has to say what
+    earns them: Shorts, the long videos or the live streams, and which
+    videos. Each half fails on its own (the API can refuse a dimension) and
+    an empty list is reported as "not available", never as zero."""
+    by_format: list[tuple[str, int, int]] = []
+    try:
+        rows = _query(yta, start, end, "subscribersGained,views", dimensions="creatorContentType")
+        by_format = sorted(
+            ((FORMAT_LABELS.get(r.get("creatorContentType", ""), str(r.get("creatorContentType", "Other"))),
+              int(r.get("subscribersGained", 0) or 0), int(r.get("views", 0) or 0)) for r in rows),
+            key=lambda t: -t[1])
+    except Exception as exc:  # noqa: BLE001 -- the rest of the report still goes out
+        log.warning("subscribers by format unavailable: %s", exc)
+    top: list[tuple[str, int, int]] = []
+    try:
+        rows = _query(yta, start, end, "subscribersGained,views", dimensions="video",
+                      sort="-subscribersGained", maxResults=5)
+        rows = [r for r in rows if int(r.get("subscribersGained", 0) or 0) > 0]
+        titles = _video_titles(yt, [r["video"] for r in rows])
+        top = [(titles.get(r["video"], r["video"]), int(r.get("subscribersGained", 0) or 0),
+                int(r.get("views", 0) or 0)) for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("top videos by subscribers unavailable: %s", exc)
+    return by_format, top
+
+
 def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
     """Pull everything the weekly report needs. Raises the API's own errors."""
     if yt is None:
@@ -218,14 +270,11 @@ def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
 
     top_rows = _query(yta, start7, end, "estimatedMinutesWatched,views",
                       dimensions="video", sort="-estimatedMinutesWatched", maxResults=5)
-    titles: dict[str, str] = {}
-    if top_rows:
-        ids = ",".join(r["video"] for r in top_rows)
-        for item in yt.videos().list(part="snippet", id=ids).execute().get("items") or []:
-            titles[item["id"]] = (item.get("snippet") or {}).get("title", "")
+    titles = _video_titles(yt, [r["video"] for r in top_rows])
     top = [TopVideo(r["video"], titles.get(r["video"], r["video"]),
                     float(r.get("estimatedMinutesWatched", 0) or 0), int(r.get("views", 0) or 0))
            for r in top_rows]
+    by_format, top_subs = subscriber_sources(yt, yta, start7, end)
 
     return ChannelStats(
         subscribers=int(st.get("subscriberCount", 0) or 0),
@@ -233,6 +282,7 @@ def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
         view_count=int(st.get("viewCount", 0) or 0),
         last7=last7, prev7=prev7, watch_hours_12m=hours_12m,
         daily_hours=daily, top_videos=top,
+        subs_by_format=by_format, top_sub_videos=top_subs,
     )
 
 
@@ -387,6 +437,20 @@ def _sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[st
     return _analytics_sections(stats, today) + tail
 
 
+def _per_1000(subs: int, views: int) -> str:
+    return f"{subs / views * 1000:,.1f} per 1,000 views" if views else "no views"
+
+
+def _sources_sections(stats: ChannelStats) -> list[tuple[str, list[tuple[str, str]]]]:
+    l7 = stats.last7
+    head = f"Where new subscribers came from ({l7.start:%b %d}-{l7.end:%b %d})"
+    fmt_rows = [(label, f"{gained:,} gained from {views:,} views ({_per_1000(gained, views)})")
+                for label, gained, views in stats.subs_by_format] or [("", "not available from Analytics this week")]
+    vid_rows = [(f"{i}. {title}", f"{gained:,} gained, {views:,} views")
+                for i, (title, gained, views) in enumerate(stats.top_sub_videos, 1)] or [("", "none this week")]
+    return [(head, fmt_rows), ("Top 5 videos by new subscribers", vid_rows)]
+
+
 def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     left = days_left(today)
     l7, p7 = stats.last7, stats.prev7
@@ -429,7 +493,7 @@ def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, lis
             (f"{i}. {v.title}", f"{v.watch_hours:,.1f} h, {v.views:,} views")
             for i, v in enumerate(stats.top_videos, 1)
         ] or [("", "no watch time recorded")]),
-    ]
+    ] + _sources_sections(stats)
 
 
 def report(stats: ChannelStats, today: date) -> tuple[str, str, str]:
