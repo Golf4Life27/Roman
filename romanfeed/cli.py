@@ -3,6 +3,7 @@
   romanfeed run config/channels/deep-space-ambient.yaml            # full daily run
   romanfeed run config/... --images 6 --seconds 8 --dry-run        # quick local proof
   romanfeed fetch config/...                                        # list candidate images
+  romanfeed supply config/...                                       # days of long videos the unused images cover
   romanfeed ledger                                                  # what has been rendered/published
   romanfeed auth                                                    # mint the YouTube OAuth token (one time, local)
   romanfeed music add track.m4a --licence generated --genre ambient # register a track (licence required)
@@ -53,6 +54,33 @@ def _cmd_fetch(args) -> int:
         print(f"== {src.name}: {len(assets)} candidates")
         for a in assets[: args.limit]:
             print(f"  {a.asset_id:28} {a.date:10} {a.title[:70]}")
+    return 0
+
+
+def _cmd_supply(args) -> int:
+    from datetime import date, timedelta
+
+    from romanfeed.sources import build_source
+    from romanfeed.state import Ledger
+    from romanfeed.supply import measure, report_lines
+
+    cfg = load_config(args.config)
+    candidates, per_source = [], []
+    for s in cfg.enabled_sources:
+        src = build_source(s)
+        got = src.fetch()
+        candidates.extend(got)
+        per_source.append(f"{src.name} ({s.options.get('label') or s.options.get('subject') or s.type}): {len(got):,}")
+    with Ledger(Path(args.data_dir) / "state.db") as ledger:
+        supply = measure(cfg, candidates, ledger)
+    for line in report_lines(cfg, supply, date.today() + timedelta(days=1)):
+        print(line)
+    print("Fetched per source: " + "; ".join(per_source))
+    if args.why:
+        from romanfeed.supply import earth_rejections
+
+        for line in earth_rejections(candidates):
+            print(line)
     return 0
 
 
@@ -420,6 +448,11 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("config")
     f.add_argument("--limit", type=int, default=20)
     f.set_defaults(fn=_cmd_fetch)
+
+    su = sub.add_parser("supply", help="how many days of long videos the unused images still cover")
+    su.add_argument("config")
+    su.add_argument("--why", action="store_true", help="also say why Earth photos were turned away, with examples")
+    su.set_defaults(fn=_cmd_supply)
 
     l = sub.add_parser("ledger", help="show rendered/published videos")
     l.set_defaults(fn=_cmd_ledger)

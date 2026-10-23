@@ -40,6 +40,12 @@ GOAL_WATCH_HOURS = 4_000
 LIVE_TRIGGER_SUBSCRIBERS = 100
 LIVE_TRIGGER_WATCH_HOURS_PER_DAY = 15
 
+# Long videos went from Mon/Wed/Fri to every day on this date (owner's call,
+# 2026-10-23: "try that for a while and see if it improves"). The report
+# compares new subscribers per day since then with the four weeks before.
+DAILY_LONG_SINCE = date(2026, 10, 24)
+CADENCE_BEFORE_DAYS = 28
+
 # Analytics trails real time by 2-3 days; ending the window earlier than that
 # would report the last days as zero and make every week look like a collapse.
 ANALYTICS_LAG_DAYS = 2
@@ -114,6 +120,8 @@ class ChannelStats:
     # Empty when Analytics would not answer; the report then says so.
     subs_by_format: list[tuple[str, int, int]] = field(default_factory=list)
     top_sub_videos: list[tuple[str, int, int]] = field(default_factory=list)
+    # (days, net subscribers) before and since DAILY_LONG_SINCE; None = not measured
+    cadence: tuple[tuple[int, int], tuple[int, int]] | None = None
 
 
 @dataclass
@@ -205,6 +213,12 @@ FORMAT_LABELS = {
     "LIVE_STREAM": "Live streams",
     "STORY": "Stories",
     "UNSPECIFIED": "Other",
+    # What the API actually returns (camelCase)
+    "videoOnDemand": "Long videos",
+    "shorts": "Shorts",
+    "liveStream": "Live streams",
+    "story": "Stories",
+    "creatorContentTypeUnspecified": "Other",
 }
 
 
@@ -245,6 +259,23 @@ def subscriber_sources(yt, yta, start: date, end: date) -> tuple[list[tuple[str,
     return by_format, top
 
 
+def cadence_compare(yta, end: date, since: date = DAILY_LONG_SINCE,
+                    before_days: int = CADENCE_BEFORE_DAYS) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """Net new subscribers in the weeks before the switch to daily long
+    videos and since it, as (days, net) pairs. None if Analytics refuses."""
+    start = since - timedelta(days=before_days)
+    try:
+        rows = _query(yta, start, max(end, start), "subscribersGained,subscribersLost", dimensions="day", sort="day")
+    except Exception as exc:  # noqa: BLE001 -- the rest of the report still goes out
+        log.warning("before/after subscriber comparison unavailable: %s", exc)
+        return None
+    net = {r["day"]: int(r.get("subscribersGained", 0) or 0) - int(r.get("subscribersLost", 0) or 0) for r in rows}
+    before = sum(v for d, v in net.items() if d < since.isoformat())
+    after = sum(v for d, v in net.items() if since.isoformat() <= d <= end.isoformat())
+    after_days = max(0, (end - since).days + 1)
+    return (before_days, before), (after_days, after)
+
+
 def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
     """Pull everything the weekly report needs. Raises the API's own errors."""
     if yt is None:
@@ -283,6 +314,7 @@ def fetch_stats(today: date, *, yt=None, yta=None) -> ChannelStats:
         last7=last7, prev7=prev7, watch_hours_12m=hours_12m,
         daily_hours=daily, top_videos=top,
         subs_by_format=by_format, top_sub_videos=top_subs,
+        cadence=cadence_compare(yta, end),
     )
 
 
@@ -448,7 +480,18 @@ def _sources_sections(stats: ChannelStats) -> list[tuple[str, list[tuple[str, st
                 for label, gained, views in stats.subs_by_format] or [("", "not available from Analytics this week")]
     vid_rows = [(f"{i}. {title}", f"{gained:,} gained, {views:,} views")
                 for i, (title, gained, views) in enumerate(stats.top_sub_videos, 1)] or [("", "none this week")]
-    return [(head, fmt_rows), ("Top 5 videos by new subscribers", vid_rows)]
+    return [(head, fmt_rows), ("Top 5 videos by new subscribers", vid_rows)] + _cadence_sections(stats)
+
+
+def _cadence_sections(stats: ChannelStats) -> list[tuple[str, list[tuple[str, str]]]]:
+    head = f"Daily long videos test (since {DAILY_LONG_SINCE:%b %d})"
+    if stats.cadence is None:
+        return [(head, [("", "not available from Analytics this week")])]
+    (bd, bnet), (ad, anet) = stats.cadence
+    before = ("Before (Mon/Wed/Fri)", f"{bnet / bd:,.1f} net subscribers/day over the {bd} days before")
+    if ad == 0:
+        return [(head, [before, ("Since", "no complete days yet")])]
+    return [(head, [before, ("Since (daily)", f"{anet / ad:,.1f} net subscribers/day over {ad} days")])]
 
 
 def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
