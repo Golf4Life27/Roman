@@ -36,6 +36,19 @@ class Runway:
     earth_last: date | None = None
 
 
+def measure(cfg: ChannelConfig, candidates, ledger) -> Supply:
+    from romanfeed.curation.selector import looks_unsuitable
+
+    used = ledger.used_asset_ids(cfg.channel.slug)
+    space = [a for a in candidates if not looks_unsuitable(a, "space")]
+    earth = [a for a in candidates if not looks_unsuitable(a, "earth")]
+    return Supply(
+        space_fresh=sum(a.asset_id not in used for a in space),
+        earth_fresh=sum(a.asset_id not in used for a in earth),
+        space_suitable=len(space), earth_suitable=len(earth),
+    )
+
+
 def runway(supply: Supply, *, per_video: int, earth_weekdays: list[str], start: date,
            render_weekdays: list[str] | None = None, horizon_days: int = 730) -> Runway:
     """Walk the render calendar. A deep-space day with too few fresh images

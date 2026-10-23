@@ -51,3 +51,24 @@ def test_earth_rejections_name_the_reason():
                               e("Astronaut portrait")])
     assert lines[0] == "Earth turned away, frame number as title: 2"
     assert any("hardware or people in title: 1" in l for l in lines)
+
+
+def test_measure_and_report_from_real_shaped_records():
+    from romanfeed.config import load_config
+    from romanfeed.sources.base import ImageAsset
+    from romanfeed.sources.nasa_images import EARTH_TAG, earth_caption
+    from romanfeed.supply import measure, report_lines
+
+    class Ledger:
+        def used_asset_ids(self, channel):
+            return {"e0"}
+
+    cfg = load_config("config/channels/deep-space-ambient.yaml")
+    d = ("iss070e105102 (March 1, 2024) --- The city lights of Detroit, Michigan, are pictured from the "
+         "International Space Station.")
+    pool = [ImageAsset(asset_id=f"e{i}", title=earth_caption("iss070e105102", d), url="u", source="s",
+                       credit="NASA", description=d, keywords=[EARTH_TAG]) for i in range(300)]
+    s = measure(cfg, pool, Ledger())
+    assert (s.earth_suitable, s.earth_fresh, s.space_suitable) == (300, 299, 0)
+    lines = report_lines(cfg, s, SAT)
+    assert lines[1].startswith("Space station Earth photos never shown: 299 of 300")
