@@ -81,11 +81,11 @@ class _Ledger:
 
 def test_earth_runs_on_its_weekdays_and_falls_back_when_photos_run_low():
     cfg = load_config(CFG)
-    assert cfg.earth.weekdays == ["fri"]
+    assert cfg.earth.weekdays == ["tue", "thu", "fri", "sun"]
     pool = [earth(i, title=f"The city lights of Town {i}") for i in range(200)] + [nebula(i) for i in range(300)]
-    fri, thu = date(2026, 10, 16), date(2026, 10, 15)
+    fri, wed = date(2026, 10, 16), date(2026, 10, 14)
     assert todays_subject(cfg, pool, _Ledger(), 80, day=fri) == "earth"
-    assert todays_subject(cfg, pool, _Ledger(), 80, day=thu) == "space"
+    assert todays_subject(cfg, pool, _Ledger(), 80, day=wed) == "space"
     used = {f"nasa:e{i}" for i in range(100)}          # 100 left, under 1.5 videos' worth
     assert todays_subject(cfg, pool, _Ledger(used), 80, day=fri) == "space"
 
@@ -122,3 +122,34 @@ def test_earth_uses_only_clearly_nasa_frames():
     assert not looks_unsuitable(earth(), "earth")
     # "mesa" and "Odessa" are not ESA.
     assert not looks_unsuitable(earth(title="The city lights of Odessa beside a mesa"), "earth")
+
+
+def test_frame_numbered_station_photos_take_their_title_from_the_caption():
+    from romanfeed.sources.nasa_images import earth_caption
+
+    cases = {
+        ("iss069e032977 (July 18, 2023) --- The city lights of the oasis city of Al Ain in the United Arab "
+         "Emirates are pictured from the International Space Station as it orbited 261 miles above."):
+            "The city lights of the oasis city of Al Ain in the United Arab Emirates",
+        ("iss066e128292 (Jan. 26, 2022) --- The city lights of Tabuk, a Saudi Arabian city near the border with "
+         "Jordan, are pictured during an orbital nightime pass from the station."):
+            "The city lights of Tabuk",
+        ("iss070e105102 (March 1, 2024) --- The city lights of Detroit, Michigan, separated from the city of "
+         "Windsor in Ontario, Canada, by the Detroit River, are pictured from the space station."):
+            "The city lights of Detroit, Michigan",
+        "iss071e000001 (May 2, 2024) --- An aurora streams above the Indian Ocean. The station was orbiting.":
+            "An aurora streams above the Indian Ocean",
+    }
+    for desc, want in cases.items():
+        assert earth_caption(desc.split(" ")[0], desc) == want
+    # A real title is left alone, and so is a frame number with no caption.
+    assert earth_caption("The aurora australis", cases and "x") is None
+    assert earth_caption("iss070e091714", "Earth observation taken by the Expedition 70 crew.") is None
+
+
+def test_a_captioned_frame_passes_the_earth_filter():
+    from romanfeed.sources.nasa_images import earth_caption
+
+    desc = ("iss070e105102 (March 1, 2024) --- The city lights of Detroit, Michigan, are pictured from the "
+            "International Space Station as it orbited 262 miles above.")
+    assert not looks_unsuitable(earth(title=earth_caption("iss070e105102", desc), desc=desc), "earth")

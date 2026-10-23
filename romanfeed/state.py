@@ -117,9 +117,15 @@ class Ledger:
         )
         self.conn.commit()
 
-    def reset_assets(self, channel: str) -> int:
-        """Forget usage for a channel so the pool can cycle again."""
-        cur = self.conn.execute("DELETE FROM assets_used WHERE channel = ?", (channel,))
+    def reset_assets(self, channel: str, asset_ids=None) -> int:
+        """Forget usage for a channel so the pool can cycle again. With
+        `asset_ids`, forget only those: a spent deep-space pool must not also
+        wipe the record of which Earth photos have been shown."""
+        if asset_ids is None:
+            cur = self.conn.execute("DELETE FROM assets_used WHERE channel = ?", (channel,))
+        else:
+            cur = self.conn.executemany("DELETE FROM assets_used WHERE channel = ? AND asset_id = ?",
+                                        [(channel, a) for a in asset_ids])
         self.conn.commit()
         return cur.rowcount
 

@@ -23,6 +23,15 @@ def test_earth_days_stretch_the_space_pool():
     assert r.earth_days == 4 and r.space_days == 5 and r.days == 9
 
 
+def test_earth_keeps_counting_after_deep_space_repeats():
+    s = Supply(space_fresh=80, earth_fresh=800, space_suitable=80, earth_suitable=800)
+    r = runway(s, per_video=80, earth_weekdays=["tue", "thu", "fri", "sun"], start=SAT)
+    # Sat: the one fresh deep-space video. Sun: Earth. Mon: deep space is spent.
+    assert (r.days, r.space_days, r.earth_days) == (2, 1, 1)
+    assert r.last_day == date(2026, 10, 25)
+    assert r.earth_total == 9      # 800 photos, 1.5 videos needed in hand
+
+
 def test_render_weekdays_skip_days():
     s = Supply(space_fresh=240, earth_fresh=0, space_suitable=240, earth_suitable=0)
     r = runway(s, per_video=80, earth_weekdays=[], start=SAT, render_weekdays=["mon", "wed", "fri"])

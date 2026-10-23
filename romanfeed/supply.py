@@ -28,31 +28,25 @@ class Supply:
 
 @dataclass
 class Runway:
-    days: int
+    days: int                 # days before the first video that reuses images
     space_days: int
     earth_days: int
-    last_day: date | None
-
-
-def measure(cfg: ChannelConfig, candidates, ledger) -> Supply:
-    from romanfeed.curation.selector import looks_unsuitable
-
-    used = ledger.used_asset_ids(cfg.channel.slug)
-    space = [a for a in candidates if not looks_unsuitable(a, "space")]
-    earth = [a for a in candidates if not looks_unsuitable(a, "earth")]
-    return Supply(
-        space_fresh=sum(a.asset_id not in used for a in space),
-        earth_fresh=sum(a.asset_id not in used for a in earth),
-        space_suitable=len(space), earth_suitable=len(earth),
-    )
+    last_day: date | None     # the last of those days
+    earth_total: int = 0      # Earth days with fresh photos, counting past a deep-space repeat
+    earth_last: date | None = None
 
 
 def runway(supply: Supply, *, per_video: int, earth_weekdays: list[str], start: date,
-           render_weekdays: list[str] | None = None, horizon_days: int = 3650) -> Runway:
+           render_weekdays: list[str] | None = None, horizon_days: int = 730) -> Runway:
+    """Walk the render calendar. A deep-space day with too few fresh images
+    reuses old ones (the selector recycles only the deep-space pool), so the
+    walk goes on to count how long the Earth photos last on their own."""
     render_weekdays = render_weekdays or list(WEEKDAYS)
     space, earth = supply.space_fresh, supply.earth_fresh
-    days = space_days = earth_days = 0
+    days = space_days = earth_days = earth_total = 0
     last: date | None = None
+    earth_last: date | None = None
+    repeating = False
     for i in range(horizon_days):
         day = start + timedelta(days=i)
         name = WEEKDAYS[day.weekday()]
@@ -60,28 +54,41 @@ def runway(supply: Supply, *, per_video: int, earth_weekdays: list[str], start: 
             continue
         if name in earth_weekdays and earth >= per_video * 1.5:
             earth -= per_video
-            earth_days += 1
+            earth_total += 1
+            earth_last = day
+            if not repeating:
+                earth_days += 1
         elif space >= per_video:
             space -= per_video
-            space_days += 1
+            if not repeating:
+                space_days += 1
         else:
-            break
-        days += 1
-        last = day
-    return Runway(days=days, space_days=space_days, earth_days=earth_days, last_day=last)
+            repeating = True
+            if earth < per_video * 1.5:
+                break
+            continue
+        if not repeating:
+            days += 1
+            last = day
+    return Runway(days=days, space_days=space_days, earth_days=earth_days, last_day=last,
+                  earth_total=earth_total, earth_last=earth_last)
 
 
 def report_lines(cfg: ChannelConfig, supply: Supply, start: date) -> list[str]:
     n = cfg.video.images_per_video
-    now = runway(supply, per_video=n, earth_weekdays=cfg.earth.weekdays, start=start)
+    r = runway(supply, per_video=n, earth_weekdays=cfg.earth.weekdays, start=start)
+    days = ", ".join(cfg.earth.weekdays) or "none"
     lines = [
         f"Deep-space images never shown: {supply.space_fresh:,} of {supply.space_suitable:,} "
         f"(about {supply.space_fresh // n} videos at {n} each)",
         f"Space station Earth photos never shown: {supply.earth_fresh:,} of {supply.earth_suitable:,} "
         f"(about {supply.earth_fresh // n} videos)",
-        f"Daily long videos lined up from {start:%b %d}: {now.days} days "
-        f"({now.space_days} deep space, {now.earth_days} Earth; Earth days {', '.join(cfg.earth.weekdays) or 'none'})"
-        + (f", through {now.last_day:%b %d}" if now.last_day else ""),
+        f"Daily long videos with no repeated image, from {start:%b %d}: {r.days} days "
+        f"({r.space_days} deep space, {r.earth_days} Earth; Earth days {days})"
+        + (f", through {r.last_day:%b %d}" if r.last_day else ""),
+        f"Earth days with fresh photos: {r.earth_total}"
+        + (f", through {r.earth_last:%b %d}" if r.earth_last else "")
+        + " (deep-space days after the fresh ones run out reuse earlier images in new mixes)",
     ]
     return lines
 

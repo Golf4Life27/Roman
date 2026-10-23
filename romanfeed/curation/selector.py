@@ -225,7 +225,7 @@ def select_assets(
         )
     if len(pool) < count and used:
         log.warning("pool exhausted (%d fresh of %d); resetting ledger for %s", len(pool), len(candidates), channel)
-        ledger.reset_assets(channel)
+        ledger.reset_assets(channel, [a.asset_id for a in suitable])
         pool, recycled = suitable, True
 
     rng = random.Random(seed or date.today().isoformat())
@@ -286,7 +286,7 @@ def select_assets(
     # no video at all.
     if len(chosen) < count and used and not recycled:
         log.warning("only %d/%d after download checks; recycling used assets for %s", len(chosen), count, channel)
-        ledger.reset_assets(channel)
+        ledger.reset_assets(channel, [a.asset_id for a in suitable])
         seen = {a.asset_id for a in chosen} | rejected
         take([a for a in suitable if a.asset_id not in seen])
 

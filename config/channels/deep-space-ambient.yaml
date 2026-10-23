@@ -326,5 +326,10 @@ crosspost:
 # with Earth titles and narration; every other day stays deep space. If
 # fewer than 1.5 videos' worth of fresh Earth photos remain, that day falls
 # back to deep space (and the log says so).
+# Four days a week from 2026-10-24 (was Friday only): daily long videos need
+# more material, and the owner asked for the station's Earth views to carry
+# the channel until Roman's images arrive. The deep-space library had about
+# 3 videos of never-shown images left on Oct 23; the Earth library holds
+# thousands (`romanfeed supply` for today's numbers).
 earth:
-  weekdays: [fri]
+  weekdays: [tue, thu, fri, sun]

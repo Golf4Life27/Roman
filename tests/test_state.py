@@ -13,3 +13,12 @@ def test_ledger_roundtrip(tmp_path):
         assert v.youtube_id == "yt123" and v.published_at and v.title == "Title"
         assert l.reset_assets("c") == 2
         assert l.used_asset_ids("c") == set()
+
+
+def test_reset_can_forget_only_some_assets(tmp_path):
+    from romanfeed.state import Ledger
+
+    with Ledger(tmp_path / "s.db") as l:
+        l.mark_assets_used("c", ["space1", "space2", "earth1"], "v1")
+        assert l.reset_assets("c", ["space1", "space2"]) == 2
+        assert l.used_asset_ids("c") == {"earth1"}

@@ -41,6 +41,41 @@ def _extract_credit(text: str, fallback: str, max_len: int = 90) -> str:
 
 EARTH_TAG = "earth from orbit"
 
+# Most space-station photos are titled with their frame number
+# ("iss069e032977") and captioned in the description:
+#   "iss069e032977 (July 18, 2023) --- The city lights of the oasis city of Al
+#    Ain in the United Arab Emirates are pictured from the International ..."
+# Measured Oct 2026: about 3,000 of 5,247 Earth records looked like this, and
+# all were turned away for lack of a usable title. The caption names the scene.
+_FRAME_TITLE_RE = re.compile(r"^(?:iss|sts)\d{2,3}[a-z]?-?e?\d+$", re.I)
+_CAPTION_RE = re.compile(r"^\S+\s*\([^)]*\)\s*-{2,3}\s*(.+)", re.S)
+_CAPTION_CUT_RE = re.compile(
+    r"\s+(?:is|are|was|were)\s+(?:pictured|seen|photographed|shown)\b|\s+pictured\b|\s+seen\s+from\b|"
+    r"\s+from\s+the\s+(?:International\s+)?space\s+station\b|\s+as\s+the\s+(?:International\s+)?space\s+station\b|"
+    r"\s+during\s+an?\s+orbital\b|\.\s", re.I)
+
+
+def earth_caption(title: str, description: str, max_len: int = 80) -> str | None:
+    """A scene title for a frame-numbered station photo, from its caption."""
+    if not _FRAME_TITLE_RE.match((title or "").strip()):
+        return None
+    m = _CAPTION_RE.match(_TAG_RE.sub("", description or "").strip())
+    if not m:
+        return None
+    head = _CAPTION_CUT_RE.split(" ".join(m.group(1).split()), maxsplit=1)[0]
+    # Keep a place's region ("Detroit, Michigan"), drop an aside ("a Saudi city near...").
+    parts = head.split(", ")
+    out = parts[0]
+    for part in parts[1:]:
+        words = part.split()
+        if not words or not words[0][:1].isupper() or len(words) > 3 or words[0].lower() in ("the", "a", "an"):
+            break
+        out += ", " + part
+    out = out.strip(" ,.;:")
+    if len(out) > max_len:
+        out = out[:max_len].rsplit(" ", 1)[0].rstrip(",;")
+    return out if len(out) >= 4 else None
+
 
 class NasaImageLibrary(ImageSource):
     name = "NASA Image Library"
@@ -107,9 +142,12 @@ class NasaImageLibrary(ImageSource):
                     continue
                 url = preview.replace("http://", "https://")
                 desc = data.get("description", "") or ""
+                title = data.get("title", nasa_id)
+                if self.subject == "earth":
+                    title = earth_caption(title, desc) or title
                 out[f"nasa:{nasa_id}"] = ImageAsset(
                     asset_id=f"nasa:{nasa_id}",
-                    title=data.get("title", nasa_id),
+                    title=title,
                     url=url,
                     source=self.name,
                     credit=_extract_credit(desc, data.get("center", "NASA")),
