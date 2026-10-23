@@ -153,3 +153,25 @@ def test_a_captioned_frame_passes_the_earth_filter():
     desc = ("iss070e105102 (March 1, 2024) --- The city lights of Detroit, Michigan, are pictured from the "
             "International Space Station as it orbited 262 miles above.")
     assert not looks_unsuitable(earth(title=earth_caption("iss070e105102", desc), desc=desc), "earth")
+
+
+def test_caption_titles_drop_dash_asides_and_photo_descriptions():
+    from romanfeed.sources.nasa_images import earth_caption
+
+    d = ("iss073e1047210 (Nov. 2, 2025) --- Thessaloniki, Greece—a 2,300-year-old port city on the Thermaic "
+         "Gulf—is pictured from the International Space Station.")
+    assert earth_caption("iss073e1047210", d) == "Thessaloniki, Greece"
+    d = ("iss050e034428 (01/18/2017) --- This long exposure photo taken from the International Space Station "
+         "provides a spectacular view of city lights.")
+    assert earth_caption("iss050e034428", d) is None
+
+
+def test_a_place_name_caption_passes_when_its_caption_shows_the_scene():
+    from romanfeed.sources.nasa_images import CAPTIONED_TAG
+
+    d = ("iss067e176766 (July 4, 2022) --- São Paulo, the most populous city in Brazil, can be differentiated by "
+         "its bright street lights at night from the International Space Station.")
+    a = earth(title="São Paulo", desc=d)
+    assert looks_unsuitable(a, "earth")                 # a plain title naming no scene stays out
+    a.keywords.append(CAPTIONED_TAG)
+    assert not looks_unsuitable(a, "earth")             # its own caption says night lights from the station

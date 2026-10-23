@@ -144,7 +144,13 @@ def earth_unsuitable(asset: ImageAsset) -> bool:
         return True
     if any(h in low for h in EARTH_BLOCK) or low.startswith(("the international space station", "space station")):
         return True
-    if not any(h in low for h in EARTH_HINTS):
+    # A title taken from a frame's own caption ("New York City and its
+    # suburbs") may name only the place; the scene word is then in the rest
+    # of that caption, which is still about this one photo.
+    scene = low
+    if "captioned frame" in {k.lower() for k in asset.keywords}:
+        scene = f"{low} {asset.description[:300].lower()}"
+    if not any(h in scene for h in EARTH_HINTS):
         return True
     # The record itself must say it was shot from Earth orbit: a search for
     # "the nile river" also finds Cassini's "Titan Nile-Like River Valley".
