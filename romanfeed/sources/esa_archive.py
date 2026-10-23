@@ -166,6 +166,9 @@ class EsaArchive(ImageSource):
         self.timeout = int(opts.get("timeout", 60))
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
+        # category -> (kept, records read), for `romanfeed supply`
+        self.per_category: dict[str, tuple[int, int]] = {}
+        self.too_small = 0
 
     def _get(self, url: str) -> list[dict]:
         resp = self.session.get(url, timeout=self.timeout)
@@ -233,8 +236,10 @@ class EsaArchive(ImageSource):
                     keywords=_keywords(record),
                 )
                 kept += 1
-            log.debug("%s: %s -> %d of %d records", self.name, category, kept, len(records))
+            log.info("%s: %s -> %d of %d records", self.name, category, kept, len(records))
+            self.per_category[category] = (kept, len(records))
 
+        self.too_small = too_small
         log.info(
             "%s: %d candidate assets from %d categories (%d below min_width %d)",
             self.name, len(out), len(self.categories), too_small, self.settings.min_width,

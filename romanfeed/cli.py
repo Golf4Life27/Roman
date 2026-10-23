@@ -71,6 +71,9 @@ def _cmd_supply(args) -> int:
         got = src.fetch()
         candidates.extend(got)
         per_source.append(f"{src.name} ({s.options.get('label') or s.options.get('subject') or s.type}): {len(got):,}")
+        if args.why and getattr(src, "per_category", None):
+            cats = ", ".join(f"{c} {k}/{n}" for c, (k, n) in src.per_category.items())
+            per_source.append(f"  {src.name} kept/read by category: {cats}; {src.too_small} too small")
     with Ledger(Path(args.data_dir) / "state.db") as ledger:
         supply = measure(cfg, candidates, ledger)
     for line in report_lines(cfg, supply, date.today() + timedelta(days=1)):
