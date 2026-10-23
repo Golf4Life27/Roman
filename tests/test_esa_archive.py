@@ -240,16 +240,16 @@ def test_category_reads_every_page(monkeypatch):
     base = "https://esahubble.org/images/archive/category/nebulae"
     src, calls = _paged(monkeypatch, {
         f"{base}/json/": [_record("a"), _record("b")],
-        f"{base}/page/2/json/": [_record("c")],
+        f"{base}/json/page/2/": [_record("c")],
     })
     assert [r["ID"] for r in src._category("nebulae")] == ["a", "b", "c"]
-    assert calls[-1] == f"{base}/page/3/json/"   # stopped at the missing page
+    assert calls[-1] == f"{base}/json/page/3/"   # stopped at the missing page
 
 
 def test_a_site_that_ignores_the_page_number_is_read_once(monkeypatch):
     base = "https://esahubble.org/images/archive/category/nebulae"
     first = [_record("a"), _record("b")]
-    src, calls = _paged(monkeypatch, {f"{base}/json/": first, f"{base}/page/2/json/": first,
-                                      f"{base}/page/3/json/": first})
+    src, calls = _paged(monkeypatch, {f"{base}/json/": first, f"{base}/json/page/2/": first,
+                                      f"{base}/json/page/3/": first})
     assert [r["ID"] for r in src._category("nebulae")] == ["a", "b"]
     assert len(calls) == 2

@@ -39,7 +39,9 @@ log = logging.getLogger(__name__)
 CATEGORY_JSON = "{base}/images/archive/category/{category}/json/"
 # Later pages of the same listing. Djangoplicity paginates its archive views;
 # reading only the first page reached 590 of the 5,500+ images (Oct 2026).
-CATEGORY_PAGE_JSON = "{base}/images/archive/category/{category}/page/{page}/json/"
+# The page number goes after /json/: "/page/2/json/" is a 404 and "?page=2"
+# quietly serves page 1 again (both measured in CI, Oct 2026).
+CATEGORY_PAGE_JSON = "{base}/images/archive/category/{category}/json/page/{page}/"
 MAX_PAGES = 80
 
 # Sky only. The archives also carry `spacecraft`, `mission`, `illustrations`,
