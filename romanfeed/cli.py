@@ -65,13 +65,17 @@ def _cmd_supply(args) -> int:
     from romanfeed.supply import measure, report_lines
 
     cfg = load_config(args.config)
-    candidates = []
+    candidates, per_source = [], []
     for s in cfg.enabled_sources:
-        candidates.extend(build_source(s).fetch())
+        src = build_source(s)
+        got = src.fetch()
+        candidates.extend(got)
+        per_source.append(f"{src.name} ({s.options.get('label') or s.options.get('subject') or s.type}): {len(got):,}")
     with Ledger(Path(args.data_dir) / "state.db") as ledger:
         supply = measure(cfg, candidates, ledger)
     for line in report_lines(cfg, supply, date.today() + timedelta(days=1)):
         print(line)
+    print("Fetched per source: " + "; ".join(per_source))
     return 0
 
 
