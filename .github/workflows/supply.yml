@@ -15,6 +15,7 @@ on:
       - romanfeed/curation/selector.py
       - romanfeed/sources/**
       - .github/workflows/supply.yml
+      - scripts/probe_esa.py
 permissions:
   contents: read
 jobs:
@@ -33,6 +34,11 @@ jobs:
           path: data/state.db
           key: ledger-supply-${{ github.run_id }}
           restore-keys: ledger-
+      - name: Probe ESA paging (temporary)
+        continue-on-error: true
+        run: |
+          python scripts/probe_esa.py | tee probe.txt
+          while IFS= read -r line; do echo "::notice title=ESA probe::$line"; done < probe.txt
       - name: Supply
         run: |
           set -o pipefail
