@@ -32,7 +32,7 @@ permissions:
 jobs:
   stats:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -88,7 +88,7 @@ jobs:
       # limit and can fail without costing the report.
       - name: Image supply
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 30
         run: |
           python -m romanfeed supply config/channels/deep-space-ambient.yaml > supply.txt
           { echo; echo "Image supply (days of daily long videos lined up)"; sed 's/^/  /' supply.txt; } >> report.txt
