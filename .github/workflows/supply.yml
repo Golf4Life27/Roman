@@ -37,7 +37,7 @@ jobs:
       - name: Probe ESA paging (temporary)
         continue-on-error: true
         run: |
-          python scripts/probe_esa.py | tee probe.txt
+          python scripts/probe_esa.py | paste -d"|" - - - | tee probe.txt
           while IFS= read -r line; do echo "::notice title=ESA probe::$line"; done < probe.txt
       - name: Supply
         run: |
