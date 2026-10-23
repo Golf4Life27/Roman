@@ -54,6 +54,11 @@ class FakeYTA:
     def query(self, **kw):
         self.queries.append(kw)
         dims = kw.get("dimensions")
+        if dims == "day" and kw["metrics"].startswith("subscribersGained"):
+            start, end = date.fromisoformat(kw["startDate"]), date.fromisoformat(kw["endDate"])
+            rows = [[(start + timedelta(days=i)).isoformat(), 3, 1] for i in range((end - start).days + 1)]
+            return _Exec({"columnHeaders": [{"name": "day"}, {"name": "subscribersGained"},
+                                            {"name": "subscribersLost"}], "rows": rows})
         if dims == "day":
             start = date.fromisoformat(kw["startDate"])
             rows = [[(start + timedelta(days=i)).isoformat(), self.last7_minutes / 7] for i in range(7)]
@@ -378,3 +383,38 @@ def test_subscriber_sources_failure_keeps_the_report_going():
     _, text, _ = st.report(stats, TODAY)
     assert "not available from Analytics this week" in text
     assert "TOP 5 VIDEOS, LAST 7 DAYS (BY WATCH TIME)" in text
+
+
+# --- daily long videos test ---------------------------------------------------
+
+def test_cadence_compare_splits_days_at_the_switch():
+    since = date(2026, 10, 24)
+    (bd, bnet), (ad, anet) = st.cadence_compare(FakeYTA(), date(2026, 10, 30), since=since, before_days=28)
+    assert (bd, bnet) == (28, 56)          # 2 net a day for the 28 days before
+    assert (ad, anet) == (7, 14)           # Oct 24-30 inclusive
+
+
+def test_cadence_section_before_any_full_day():
+    s = _stats()
+    s.cadence = ((28, 70), (0, 0))
+    rows = dict(st._cadence_sections(s)[0][1])
+    assert rows["Before (Mon/Wed/Fri)"].startswith("2.5 net subscribers/day")
+    assert rows["Since"] == "no complete days yet"
+
+
+def test_cadence_failure_says_so():
+    class Refuses(FakeYTA):
+        def query(self, **kw):
+            if kw.get("dimensions") == "day" and kw["metrics"].startswith("subscribersGained"):
+                raise RuntimeError("no")
+            return super().query(**kw)
+
+    assert st.cadence_compare(Refuses(), date(2026, 10, 30)) is None
+    s = _stats()
+    assert st._cadence_sections(s)[0][1] == [("", "not available from Analytics this week")]
+
+
+def test_format_labels_cover_the_api_spelling():
+    assert st.FORMAT_LABELS["videoOnDemand"] == "Long videos"
+    assert st.FORMAT_LABELS["shorts"] == "Shorts"
+    assert st.FORMAT_LABELS["liveStream"] == "Live streams"

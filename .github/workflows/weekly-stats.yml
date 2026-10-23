@@ -32,7 +32,7 @@ permissions:
 jobs:
   stats:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -83,6 +83,15 @@ jobs:
             cat report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      # How many days of daily long videos the unused images still cover,
+      # added to the report. It fetches every source, so it gets its own time
+      # limit and can fail without costing the report.
+      - name: Image supply
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          python -m romanfeed supply config/channels/deep-space-ambient.yaml > supply.txt
+          { echo; echo "Image supply (days of daily long videos lined up)"; sed 's/^/  /' supply.txt; } >> report.txt
       # Parallel jobs each save the ledger they restored plus their own rows;
       # merge with the newest saved copy first so nobody erases anybody.
       - name: Ledger merge (move ours aside)

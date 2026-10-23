@@ -112,3 +112,13 @@ def test_earth_short_titles_name_the_place_not_half_the_station():
     assert shorts.short_metadata(cfg, a, parent, []).title == \
         "The Grand Canyon in Arizona from the Space Station | Calm Space for Sleep"
     assert shorts.short_metadata(cfg, nebula(4), parent, []).title.endswith("| Calm Space for Sleep")
+
+
+def test_earth_uses_only_clearly_nasa_frames():
+    # A partner agency's or outside photographer's frame carries its own licence.
+    for desc in (ISS_DESC + " Credit: ESA/NASA", ISS_DESC + " ESA astronaut Thomas Pesquet took this photo.",
+                 ISS_DESC + " Image courtesy of JAXA.", ISS_DESC + " © Roscosmos"):
+        assert looks_unsuitable(earth(desc=desc), "earth"), desc
+    assert not looks_unsuitable(earth(), "earth")
+    # "mesa" and "Odessa" are not ESA.
+    assert not looks_unsuitable(earth(title="The city lights of Odessa beside a mesa"), "earth")

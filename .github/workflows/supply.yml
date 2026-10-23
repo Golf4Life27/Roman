@@ -1,0 +1,42 @@
+# Image supply: how many days of daily long videos the unused images cover.
+#
+# Read-only: fetches the source lists and reads the shared ledger; it renders
+# nothing, uploads nothing and never saves the ledger back. Each line of the
+# answer is also written as a notice on the run, so it can be read without
+# opening the log. Runs on any pull request that touches the sources, and on
+# demand. The Monday report runs the same command (weekly-stats.yml).
+name: Image supply
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - config/channels/deep-space-ambient.yaml
+      - romanfeed/supply.py
+      - romanfeed/curation/selector.py
+      - romanfeed/sources/**
+      - .github/workflows/supply.yml
+permissions:
+  contents: read
+jobs:
+  supply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Restore ledger (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-supply-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Supply
+        run: |
+          set -o pipefail
+          [ -f data/state.db ] || echo "::warning::no ledger restored; every image counts as unused"
+          python -m romanfeed supply config/channels/deep-space-ambient.yaml | tee supply.txt
+          while IFS= read -r line; do echo "::notice title=Image supply::$line"; done < supply.txt
+          { echo '## Image supply'; echo '```'; cat supply.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

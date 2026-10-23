@@ -103,6 +103,20 @@ EARTH_BLOCK = (
 )
 
 
+# Rights: NASA's own astronaut photos are public domain, but the library also
+# holds frames credited to partner agencies or outside photographers, which
+# carry their own licence terms. Earth videos use only clearly NASA frames, so
+# any record naming another rights holder is left out.
+_EARTH_RIGHTS_RE = re.compile(
+    r"\b(?:ESA|JAXA|CSA|Roscosmos|Canadian Space Agency|European Space Agency|Japan Aerospace|"
+    r"Getty|Reuters|AP Photo|Maxar|Planet Labs|Airbus|courtesy of|copyright)\b|©", re.IGNORECASE)
+
+
+def earth_rights_unclear(asset: ImageAsset) -> bool:
+    """True when the record names anyone but NASA as a rights holder."""
+    return bool(_EARTH_RIGHTS_RE.search(f"{asset.title} {asset.credit} {asset.description}"))
+
+
 EARTH_PROOF = ("international space station", "expedition", "sts-", "space shuttle", "crew earth observation",
                "earth observation", "from orbit", "iss0", "iss1", "iss crew", "gemini", "skylab", "apollo")
 
@@ -135,7 +149,7 @@ def earth_unsuitable(asset: ImageAsset) -> bool:
     # The record itself must say it was shot from Earth orbit: a search for
     # "the nile river" also finds Cassini's "Titan Nile-Like River Valley".
     record = f"{low} {asset.description.lower()}"
-    return not any(p in record for p in EARTH_PROOF)
+    return not any(p in record for p in EARTH_PROOF) or earth_rights_unclear(asset)
 
 
 def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
