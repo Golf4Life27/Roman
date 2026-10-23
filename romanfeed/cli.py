@@ -76,6 +76,11 @@ def _cmd_supply(args) -> int:
     for line in report_lines(cfg, supply, date.today() + timedelta(days=1)):
         print(line)
     print("Fetched per source: " + "; ".join(per_source))
+    if args.why:
+        from romanfeed.supply import earth_rejections
+
+        for line in earth_rejections(candidates):
+            print(line)
     return 0
 
 
@@ -446,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
 
     su = sub.add_parser("supply", help="how many days of long videos the unused images still cover")
     su.add_argument("config")
+    su.add_argument("--why", action="store_true", help="also say why Earth photos were turned away, with examples")
     su.set_defaults(fn=_cmd_supply)
 
     l = sub.add_parser("ledger", help="show rendered/published videos")

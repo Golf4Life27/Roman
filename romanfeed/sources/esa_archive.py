@@ -37,6 +37,10 @@ log = logging.getLogger(__name__)
 # /images/json/ endpoint ignores pagination and only ever returns the newest
 # 100, which is why categories are used instead.
 CATEGORY_JSON = "{base}/images/archive/category/{category}/json/"
+# Later pages of the same listing. Djangoplicity paginates its archive views;
+# reading only the first page reached 590 of the 5,500+ images (Oct 2026).
+CATEGORY_PAGE_JSON = "{base}/images/archive/category/{category}/page/{page}/json/"
+MAX_PAGES = 80
 
 # Sky only. The archives also carry `spacecraft`, `mission`, `illustrations`,
 # `anniversary` and `misc`, which are hardware, artwork and event graphics --
@@ -163,13 +167,29 @@ class EsaArchive(ImageSource):
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
 
-    def _category(self, category: str) -> list[dict]:
-        resp = self.session.get(
-            CATEGORY_JSON.format(base=self.base, category=category), timeout=self.timeout
-        )
+    def _get(self, url: str) -> list[dict]:
+        resp = self.session.get(url, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         return data if isinstance(data, list) else []
+
+    def _category(self, category: str) -> list[dict]:
+        """Every page of one category. Stops at the first page that errors,
+        is empty, or brings no new image (a site that ignores the page number
+        serves page 1 again), so a missing page costs nothing."""
+        records = self._get(CATEGORY_JSON.format(base=self.base, category=category))
+        seen = {r.get("ID") for r in records}
+        for page in range(2, MAX_PAGES + 1):
+            try:
+                batch = self._get(CATEGORY_PAGE_JSON.format(base=self.base, category=category, page=page))
+            except (requests.RequestException, ValueError):
+                break
+            new = [r for r in batch if r.get("ID") not in seen]
+            if not new:
+                break
+            seen.update(r.get("ID") for r in new)
+            records.extend(new)
+        return records
 
     def fetch(self) -> list[ImageAsset]:
         out: dict[str, ImageAsset] = {}

@@ -220,3 +220,36 @@ def test_credit_separates_a_glued_acknowledgement():
     assert _credit("ESA/Hubble & NASA") == "ESA/Hubble & NASA"
     assert _credit("ESA/Hubble, A. Simon. Acknowledgment: X") == (
         "ESA/Hubble, A. Simon. Acknowledgment: X")
+
+
+def _paged(monkeypatch, pages: dict[str, list[dict]]):
+    src = EsaArchive(_settings())
+    calls = []
+
+    def get(self, url):
+        calls.append(url)
+        if url not in pages:
+            raise requests.HTTPError("404")
+        return pages[url]
+
+    monkeypatch.setattr(EsaArchive, "_get", get)
+    return src, calls
+
+
+def test_category_reads_every_page(monkeypatch):
+    base = "https://esahubble.org/images/archive/category/nebulae"
+    src, calls = _paged(monkeypatch, {
+        f"{base}/json/": [_record("a"), _record("b")],
+        f"{base}/page/2/json/": [_record("c")],
+    })
+    assert [r["ID"] for r in src._category("nebulae")] == ["a", "b", "c"]
+    assert calls[-1] == f"{base}/page/3/json/"   # stopped at the missing page
+
+
+def test_a_site_that_ignores_the_page_number_is_read_once(monkeypatch):
+    base = "https://esahubble.org/images/archive/category/nebulae"
+    first = [_record("a"), _record("b")]
+    src, calls = _paged(monkeypatch, {f"{base}/json/": first, f"{base}/page/2/json/": first,
+                                      f"{base}/page/3/json/": first})
+    assert [r["ID"] for r in src._category("nebulae")] == ["a", "b"]
+    assert len(calls) == 2

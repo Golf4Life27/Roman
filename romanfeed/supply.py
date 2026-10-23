@@ -84,3 +84,40 @@ def report_lines(cfg: ChannelConfig, supply: Supply, start: date) -> list[str]:
         + (f", through {now.last_day:%b %d}" if now.last_day else ""),
     ]
     return lines
+
+
+def earth_rejections(candidates, samples: int = 4) -> list[str]:
+    """Why Earth-source photos were turned away, with a few titles of each
+    kind: the evidence for widening the Earth filter without guessing."""
+    import re
+    from collections import defaultdict
+
+    from romanfeed.curation import selector as sel
+
+    why: dict[str, list] = defaultdict(list)
+    for a in candidates:
+        if not sel.is_earth(a) or not sel.earth_unsuitable(a):
+            continue
+        low = a.title.strip().lower()
+        if sel._PHOTO_ID_RE.match(a.title.strip()) or sel._is_filename_title(a.title.strip()) or re.match(r"^iss\d{3}e\d+", low):
+            reason = "frame number as title"
+        elif low.startswith(("earth observation", "crew earth observations", "earth observations taken")) or \
+                re.sub(r"[^a-z ]", "", low).strip() in {"earth observation", "earth observations", "earth science",
+                                                      "earth", "crew earth observations"}:
+            reason = "generic title"
+        elif any(h in low for h in sel.EARTH_BLOCK) or low.startswith(("the international space station", "space station")):
+            reason = "hardware or people in title"
+        elif not any(h in low for h in sel.EARTH_HINTS):
+            reason = "no scene word in title"
+        elif sel.earth_rights_unclear(a):
+            reason = "rights not clearly NASA"
+        else:
+            reason = "not shown to be from orbit"
+        why[reason].append(a)
+    lines = []
+    for reason, items in sorted(why.items(), key=lambda kv: -len(kv[1])):
+        lines.append(f"Earth turned away, {reason}: {len(items):,}")
+        for a in items[:samples]:
+            desc = " ".join(a.description.split())[:160]
+            lines.append(f"  e.g. {a.title[:70]!r} / {desc!r}")
+    return lines

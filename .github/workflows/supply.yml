@@ -37,6 +37,6 @@ jobs:
         run: |
           set -o pipefail
           [ -f data/state.db ] || echo "::warning::no ledger restored; every image counts as unused"
-          python -m romanfeed supply config/channels/deep-space-ambient.yaml | tee supply.txt
+          python -m romanfeed supply config/channels/deep-space-ambient.yaml --why | tee supply.txt
           while IFS= read -r line; do echo "::notice title=Image supply::$line"; done < supply.txt
           { echo '## Image supply'; echo '```'; cat supply.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
