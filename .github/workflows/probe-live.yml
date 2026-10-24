@@ -1,0 +1,26 @@
+# Temporary, read-only: lists our recent live broadcasts and how they did.
+name: Probe live
+on:
+  pull_request:
+    paths: [.github/workflows/probe-live.yml, scripts/probe_live.py]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[youtube]"
+      - name: Probe
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+        run: |
+          mkdir -p secrets && printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+          python scripts/probe_live.py > probe.txt
+          head -1 probe.txt | sed 's/^/::notice title=Live probe::/'
+          tail -n +2 probe.txt | paste -d'#' - - - - - | while IFS= read -r line; do echo "::notice title=Live probe::$line"; done
