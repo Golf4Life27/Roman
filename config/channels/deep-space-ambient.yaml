@@ -54,7 +54,9 @@ sources:
   - type: nasa_images
     enabled: true
     min_width: 1600
-    max_per_query: 100
+    # 500 from 2026-10-23: daily long videos left about 3 videos of fresh
+    # deep-space images; broad terms like "nebula" have far more than 100 hits.
+    max_per_query: 500
     # Subject-led, not mission-led: mission queries return hardware and people.
     # Each query is capped at max_per_query, so a broad term like "nebula" throws
     # away everything past its first 100 hits. The narrow terms below are how we

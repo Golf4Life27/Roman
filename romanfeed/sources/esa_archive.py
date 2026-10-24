@@ -26,6 +26,8 @@ from __future__ import annotations
 import ast
 import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -39,7 +41,9 @@ log = logging.getLogger(__name__)
 CATEGORY_JSON = "{base}/images/archive/category/{category}/json/"
 # Later pages of the same listing. Djangoplicity paginates its archive views;
 # reading only the first page reached 590 of the 5,500+ images (Oct 2026).
-CATEGORY_PAGE_JSON = "{base}/images/archive/category/{category}/page/{page}/json/"
+# The page number goes after /json/: "/page/2/json/" is a 404 and "?page=2"
+# quietly serves page 1 again (both measured in CI, Oct 2026).
+CATEGORY_PAGE_JSON = "{base}/images/archive/category/{category}/json/page/{page}/"
 MAX_PAGES = 80
 
 # Sky only. The archives also carry `spacecraft`, `mission`, `illustrations`,
@@ -164,8 +168,20 @@ class EsaArchive(ImageSource):
         self.name = str(opts.get("label", "ESA/Hubble"))
         self.categories = list(opts.get("categories") or DEFAULT_CATEGORIES)
         self.timeout = int(opts.get("timeout", 60))
-        self.session = requests.Session()
-        self.session.headers["User-Agent"] = USER_AGENT
+        # One session per worker thread: categories are read side by side,
+        # and a requests.Session is not safe to share across threads.
+        self._local = threading.local()
+        # category -> (kept, records read), for `romanfeed supply`
+        self.per_category: dict[str, tuple[int, int]] = {}
+        self.too_small = 0
+
+    @property
+    def session(self) -> requests.Session:
+        s = getattr(self._local, "session", None)
+        if s is None:
+            s = self._local.session = requests.Session()
+            s.headers["User-Agent"] = USER_AGENT
+        return s
 
     def _get(self, url: str) -> list[dict]:
         resp = self.session.get(url, timeout=self.timeout)
@@ -194,12 +210,23 @@ class EsaArchive(ImageSource):
     def fetch(self) -> list[ImageAsset]:
         out: dict[str, ImageAsset] = {}
         too_small = 0
-        for category in self.categories:
+        # Each page takes about 16 seconds to serve (measured in CI, Oct 2026)
+        # and ESA/Hubble alone is some 55 pages, so reading the categories one
+        # after another overran a 20-minute job. Side by side, the wait is the
+        # longest single category instead of the sum of all of them.
+        def read(category):
             try:
-                records = self._category(category)
+                return self._category(category)
             except (requests.RequestException, ValueError) as e:
                 # One unreachable category must not cost us the other five.
                 log.warning("%s: category %r failed: %s", self.name, category, e)
+                return None
+
+        with ThreadPoolExecutor(max_workers=max(1, len(self.categories))) as pool:
+            listings = list(pool.map(read, self.categories))
+
+        for category, records in zip(self.categories, listings):
+            if records is None:
                 continue
 
             kept = 0
@@ -233,8 +260,10 @@ class EsaArchive(ImageSource):
                     keywords=_keywords(record),
                 )
                 kept += 1
-            log.debug("%s: %s -> %d of %d records", self.name, category, kept, len(records))
+            log.info("%s: %s -> %d of %d records", self.name, category, kept, len(records))
+            self.per_category[category] = (kept, len(records))
 
+        self.too_small = too_small
         log.info(
             "%s: %d candidate assets from %d categories (%d below min_width %d)",
             self.name, len(out), len(self.categories), too_small, self.settings.min_width,
