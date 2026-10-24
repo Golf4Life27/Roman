@@ -10,7 +10,9 @@ import pytest
 from romanfeed.config import load_config
 from romanfeed.cozy import calendar as cal
 from romanfeed.cozy import scenes as sc
+from romanfeed.live import broadcast as bc
 from romanfeed.live import schedule
+from romanfeed.publish import youtube as yt_mod
 
 KEY = "abcd-1234-efgh"
 CT = ZoneInfo("America/Chicago")
@@ -27,8 +29,9 @@ class _Call:
 
 
 class FakeYT:
-    def __init__(self, upcoming=(), bind_fails=False):
+    def __init__(self, upcoming=(), bind_fails=False, update_fails=False):
         self.upcoming, self.bind_fails, self.calls = list(upcoming), bind_fails, []
+        self.update_fails = update_fails
 
     def _rec(self, name, result=None, exc=None):
         def f(**kw):
@@ -48,6 +51,10 @@ class FakeYT:
             delete=self._rec("delete", {}),
         )
 
+    def videos(self):
+        return types.SimpleNamespace(
+            update=self._rec("videos.update", {}, exc=RuntimeError("quota") if self.update_fails else None))
+
     def names(self):
         return [n for n, _ in self.calls]
 
@@ -56,11 +63,20 @@ def _b(bid, title, when):
     return {"id": bid, "snippet": {"title": title, "scheduledStartTime": when}}
 
 
+THUMBS: list = []
+
+
 @pytest.fixture
-def cfg(monkeypatch):
+def cfg(monkeypatch, tmp_path):
     c = load_config("config/channels/deep-space-ambient.yaml")
     c.live.enabled = True
     monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: OBSERVATORY)
+    thumb = tmp_path / "live.jpg"
+    thumb.write_bytes(b"jpg")
+    monkeypatch.setattr(bc, "scene_thumbnail", lambda cfg, scene, **kw: (THUMBS.append((scene.id, kw)), thumb)[1])
+    monkeypatch.setattr(yt_mod, "set_thumbnail", lambda yt, vid, path: yt.calls.append(("thumbnails.set", {
+        "videoId": vid, "path": path})))
+    THUMBS.clear()
     return c
 
 
@@ -75,7 +91,7 @@ NOON = datetime(2026, 10, 13, 12, 0, tzinfo=CT)
 def test_creates_tonights_broadcast_on_studios_stream(cfg):
     yt = FakeYT()
     out = schedule.run(cfg, yt, key=KEY, now=NOON)
-    assert yt.names() == ["streams.list", "list", "insert", "bind"]
+    assert yt.names() == ["streams.list", "list", "insert", "bind", "videos.update", "thumbnails.set"]
     body = yt.calls[2][1]["body"]
     assert body["snippet"]["title"] == TONIGHT
     assert body["snippet"]["scheduledStartTime"] == "2026-10-14T02:00:00Z"        # 21:00 CDT
@@ -154,3 +170,55 @@ def test_duplicates_for_tonight_are_removed_keeping_the_newest(cfg):
     out = schedule.run(cfg, yt, key=KEY, now=NOON)
     assert "already exists" in out and "keep" in out and "insert" not in yt.names()
     assert sorted(kw["id"] for n, kw in yt.calls if n == "delete") == ["dup1", "dup2", "old"]
+
+
+def test_a_new_broadcast_gets_tags_music_category_and_a_scene_thumbnail(cfg):
+    yt = FakeYT()
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    upd = dict(yt.calls)["videos.update"]
+    snip = upd["body"]["snippet"]
+    assert upd["part"] == "snippet" and upd["body"]["id"] == "new-bid"
+    assert snip["categoryId"] == "10" and snip["title"] == TONIGHT
+    assert snip["description"] == yt.calls[2][1]["body"]["snippet"]["description"]   # the insert's, unchanged
+    tags = snip["tags"]
+    assert tags[:2] == ["halloween observatory", "halloween"] and "live sleep music" in tags
+    assert sum(len(t) + (2 if " " in t else 0) for t in tags) + len(tags) - 1 <= 500
+    assert len(tags) == len({t.lower() for t in tags}) >= 20
+    assert THUMBS == [("halloween-observatory", {"hours_label": "10", "subject": "Live · Cozy Halloween",
+                                                 "work": THUMBS[0][1]["work"]})]
+    assert dict(yt.calls)["thumbnails.set"]["videoId"] == "new-bid"
+    assert "custom thumbnail" in out
+
+
+def test_the_description_lists_uses_and_hashtags_and_keeps_the_mark(cfg):
+    yt = FakeYT()
+    schedule.run(cfg, yt, key=KEY, now=NOON)
+    desc = yt.calls[2][1]["body"]["snippet"]["description"]
+    assert bc.USES in desc and desc.rstrip().endswith(bc.LIVE_HASHTAGS) and schedule.MARK in desc
+
+
+def test_a_failed_tag_update_never_stops_the_night(cfg):
+    yt = FakeYT(update_fails=True)
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "created" in out and "tags not set" in out and "delete" not in yt.names()
+
+
+def test_a_regular_night_gets_tags_but_no_scene_thumbnail(cfg, monkeypatch):
+    monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: None)
+    yt = FakeYT()
+    schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "thumbnails.set" not in yt.names() and THUMBS == []
+    assert "space music for sleep" in dict(yt.calls)["videos.update"]["body"]["snippet"]["tags"]
+
+
+def test_dry_run_dresses_nothing(cfg):
+    yt = FakeYT()
+    schedule.run(cfg, yt, key=KEY, now=NOON, dry_run=True)
+    assert "videos.update" not in yt.names() and THUMBS == []
+
+
+def test_fit_tags_drops_repeats_and_stays_under_the_limit():
+    assert bc.fit_tags(["a b", "A B", "c"], ["c", "d"]) == ["a b", "c", "d"]
+    long = [f"tag number {i}" for i in range(100)]
+    tags = bc.fit_tags(long)
+    assert sum(len(t) + 2 for t in tags) + len(tags) - 1 <= bc.TAG_BUDGET < 500

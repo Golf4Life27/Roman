@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -211,6 +212,97 @@ def create_broadcast(yt, body: dict) -> str:
     resp = yt.liveBroadcasts().insert(part="snippet,status,contentDetails", body=body).execute()
     log.info("created broadcast https://youtu.be/%s", resp["id"])
     return resp["id"]
+
+
+# What liveBroadcasts.insert cannot set. A broadcast is also a video, so its
+# tags and category go on with videos.update and its thumbnail with
+# thumbnails.set, right after it is created (50 quota units each, once a
+# stream). The big cozy streams carry 20-30 tags, a "good for" list, hashtags
+# and a custom thumbnail; ours went out with none of these.
+LIVE_CATEGORY = "10"    # Music: what a cozy music stream is browsed and suggested as
+USES = "Good for: sleep, reading, study, work, meditation and stress relief."
+LIVE_HASHTAGS = "#sleepmusic #cozy #ambientmusic #studymusic #relaxingmusic #space"
+TAG_BUDGET = 480        # YouTube allows 500 characters of tags, counting quotes and commas
+
+COZY_TAGS = ["cozy ambience", "live sleep music", "cozy live stream", "sleep music", "space music for sleep",
+             "relaxing music", "calm music", "ambient music", "study music", "music for sleep", "stress relief",
+             "cozy night", "deep sleep music", "relaxing ambience"]
+WORK_TAGS = ["focus music", "work music", "study with me", "background music"]
+SPACE_TAGS = ["live sleep music", "space music for sleep", "relaxing music", "ambient music", "deep sleep music",
+              "calm music", "music for sleep", "stress relief"]
+
+
+def fit_tags(*groups: list[str], budget: int = TAG_BUDGET) -> list[str]:
+    """The tags in order, without repeats, cut to YouTube's tag limit: each
+    tag counts its length, plus 2 for the quotes a tag with a space gets,
+    plus 1 for the comma between tags."""
+    out: list[str] = []
+    used = 0
+    for tag in (t.strip() for g in groups for t in g):
+        if not tag or tag.lower() in (o.lower() for o in out):
+            continue
+        cost = len(tag) + (2 if " " in tag else 0) + (1 if out else 0)
+        if used + cost > budget:
+            continue
+        out.append(tag)
+        used += cost
+    return out
+
+
+@dataclass
+class Extras:
+    tags: list[str]
+    category_id: str = LIVE_CATEGORY
+    thumbnail: Callable[[], Path | None] | None = None   # made only once the broadcast exists
+
+
+def thumbnail_subject(theme_key: str, theme_label: str) -> str:
+    return "Live · Cozy Space Night" if theme_key == "evergreen" else f"Live · Cozy {theme_label}"
+
+
+def scene_thumbnail(cfg, scene, *, hours_label: str, subject: str, work: Path) -> Path | None:
+    """A custom thumbnail from the scene's first frame with the stream's
+    length on it, as the weekly cozy videos get. None if anything fails: the
+    broadcast then keeps YouTube's own frame."""
+    from romanfeed.cozy import scenes as sc
+    from romanfeed.render import ffmpeg
+    from romanfeed.render.thumbnail import make_thumbnail
+
+    try:
+        src = sc.fetch_scene(cfg.cozy.repo, cfg.cozy.release_tag, scene, work / "scenes")
+        still = work / f"{scene.id}-still.png"
+        ffmpeg.run(["-y", "-i", str(src), "-frames:v", "1", str(still)])
+        return make_thumbnail(still, work / f"{scene.id}-live.jpg", length_label=f"{hours_label} Hours",
+                              subject=subject)
+    except Exception as exc:
+        log.warning("no custom thumbnail for %s (%s)", scene.id, exc)
+        return None
+
+
+def dress(yt, broadcast_id: str, snippet: dict, extras: Extras) -> list[str]:
+    """Put the tags, category and thumbnail on a new broadcast. Each step is
+    best effort: a broadcast without them still goes live, so a failure here
+    is reported, never raised."""
+    notes: list[str] = []
+    try:
+        yt.videos().update(part="snippet", body={"id": broadcast_id, "snippet": {
+            "title": snippet["title"], "description": snippet["description"],
+            "tags": extras.tags, "categoryId": extras.category_id}}).execute()
+        notes.append(f"{len(extras.tags)} tags, category {extras.category_id}")
+    except Exception as exc:
+        log.warning("tags and category not set on %s (%s)", broadcast_id, exc)
+        notes.append("tags not set")
+    thumb = extras.thumbnail() if extras.thumbnail else None
+    if thumb:
+        try:
+            from romanfeed.publish.youtube import set_thumbnail
+
+            set_thumbnail(yt, broadcast_id, thumb)
+            notes.append("custom thumbnail")
+        except Exception as exc:
+            log.warning("thumbnail not set on %s (%s)", broadcast_id, exc)
+            notes.append("thumbnail not set")
+    return notes
 
 
 def bind(yt, broadcast_id: str, stream_id: str) -> None:
