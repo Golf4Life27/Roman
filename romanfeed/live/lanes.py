@@ -225,12 +225,16 @@ DESCRIPTION = """{tagline}
 
 Live now: {hours} hours in a cozy {scene} with the stars outside and calm original music, {purpose}. Put it on, settle in, and stay as long as you like. The stream ends on its own and stays on the channel to replay any night.
 
+{uses}
+
 Subscribe for a new space video every few days and cozy live streams around the clock:
 {subscribe}
 
 {keywords}
 
 AI-animated scene, original music.
+
+{hashtags}
 """
 PURPOSE = {titles.SLEEP: "made for falling asleep", titles.WORK: "made for focus, work and study"}
 
@@ -240,7 +244,7 @@ def body(cfg: ChannelConfig, scene: sc.Scene, theme: Theme, s: Session) -> dict:
 
     desc = DESCRIPTION.format(tagline=cfg.channel.tagline, hours=hours_label(s.hours), scene=scene.title.lower(),
                               purpose=PURPOSE[s.use], subscribe=bc.SUBSCRIBE_URL,
-                              keywords=" · ".join(cfg.publish.tags))
+                              keywords=" · ".join(cfg.publish.tags), uses=bc.USES, hashtags=bc.LIVE_HASHTAGS)
     return bc.broadcast_body(title=title(scene, theme, s), description=desc.strip() + "\n", start=s.start)
 
 

@@ -28,6 +28,12 @@ channel — one new long sleep video a night, for free.
   back (DVR). Its title names the lead image and the date; the description
   lists the night's line-up, the channel's sleep keywords, and a one-click
   subscribe link (`https://www.youtube.com/@SpaceScreens?sub_confirmation=1`).
+- Right after the morning job creates a broadcast it adds what the insert
+  cannot carry (`broadcast.dress`): about 20 tags (the scene, the season and
+  cozy sleep and study terms), the Music category, and on scene nights a
+  custom thumbnail from the scene's first frame with the length and
+  "Live · Cozy {season}" on it. Descriptions also carry a "Good for" line and
+  hashtags. About 100 quota units a stream; each step is best effort.
 
 **Cozy scene nights** (`live.scenes: alternate`): every other night, and
 every holiday, meteor-peak and launch night, the stream plays one seasonal
