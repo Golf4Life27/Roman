@@ -29,9 +29,9 @@ class _Call:
 
 
 class FakeYT:
-    def __init__(self, upcoming=(), bind_fails=False, update_fails=False):
+    def __init__(self, upcoming=(), bind_fails=False, update_fails=False, tags=None):
         self.upcoming, self.bind_fails, self.calls = list(upcoming), bind_fails, []
-        self.update_fails = update_fails
+        self.update_fails, self.tags = update_fails, tags
 
     def _rec(self, name, result=None, exc=None):
         def f(**kw):
@@ -52,7 +52,9 @@ class FakeYT:
         )
 
     def videos(self):
+        snippet = {"title": TONIGHT, "description": "old"} | ({"tags": self.tags} if self.tags else {})
         return types.SimpleNamespace(
+            list=self._rec("videos.list", {"items": [{"id": "tonight", "snippet": snippet}]}),
             update=self._rec("videos.update", {}, exc=RuntimeError("quota") if self.update_fails else None))
 
     def names(self):
@@ -222,3 +224,22 @@ def test_fit_tags_drops_repeats_and_stays_under_the_limit():
     long = [f"tag number {i}" for i in range(100)]
     tags = bc.fit_tags(long)
     assert sum(len(t) + 2 for t in tags) + len(tags) - 1 <= bc.TAG_BUDGET < 500
+
+
+def test_an_existing_broadcast_without_tags_is_dressed_once(cfg):
+    yt = FakeYT(upcoming=[_b("tonight", TONIGHT, "2026-10-14T02:00:00Z")])
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "insert" not in yt.names() and "dressed it now" in out
+    upd = dict(yt.calls)["videos.update"]["body"]
+    assert upd["id"] == "tonight" and upd["snippet"]["title"] == TONIGHT and upd["snippet"]["tags"]
+    assert bc.USES in upd["snippet"]["description"] and dict(yt.calls)["thumbnails.set"]["videoId"] == "tonight"
+
+    yt = FakeYT(upcoming=[_b("tonight", TONIGHT, "2026-10-14T02:00:00Z")], tags=["space"])
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "videos.update" not in yt.names() and "thumbnails.set" not in yt.names() and "dressed" not in out
+
+
+def test_dry_run_never_dresses_an_existing_broadcast(cfg):
+    yt = FakeYT(upcoming=[_b("tonight", TONIGHT, "2026-10-14T02:00:00Z")])
+    schedule.run(cfg, yt, key=KEY, now=NOON, dry_run=True)
+    assert "videos.list" not in yt.names() and "videos.update" not in yt.names()

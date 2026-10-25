@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html as _html
 import logging
+import math
 import smtplib
 import ssl
 from dataclasses import dataclass, field
@@ -149,6 +150,15 @@ class Pace:
     @property
     def on_pace(self) -> bool:
         return self.reached or self.actual_per_day >= self.required_per_day
+
+    def reached_on(self, today: date) -> str:
+        """When the goal is reached if the current pace holds."""
+        if self.reached:
+            return "reached"
+        if self.actual_per_day <= 0:
+            return "never at this pace"
+        days = math.ceil(self.remaining / self.actual_per_day)
+        return f"{today + timedelta(days=days):%b %d, %Y} ({days:,} days)"
 
     def verdict(self, unit: str) -> str:
         if self.reached:
@@ -513,12 +523,14 @@ def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, lis
             ("Needed", f"{subs.required_per_day:,.1f}/day"),
             ("Actual (7 days)", f"{subs.actual_per_day:,.1f}/day"),
             ("Pace", subs.verdict("subscribers")),
+            ("Reached at this pace", subs.reached_on(today)),
         ]),
         ("Watch hours (rolling 12 months)", [
             ("Now", f"{stats.watch_hours_12m:,.1f} of {GOAL_WATCH_HOURS:,} ({stats.watch_hours_12m / GOAL_WATCH_HOURS:.1%})"),
             ("Needed", f"{hours.required_per_day:,.1f}/day"),
             ("Actual (7 days)", f"{hours.actual_per_day:,.1f}/day"),
             ("Pace", hours.verdict("hours")),
+            ("Reached at this pace", hours.reached_on(today)),
             ("Note", "All watch time. YPP counts only public long-form hours (not Shorts), "
                      "so Studio's YPP figure may be slightly lower."),
         ]),
