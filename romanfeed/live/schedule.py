@@ -176,6 +176,24 @@ def _when(b: dict) -> datetime | None:
     return datetime.fromisoformat(when.replace("Z", "+00:00")) if when else None
 
 
+def heal(yt, broadcast_id: str, sl: Slot) -> str:
+    """Dress a broadcast that exists but has no tags: one made before
+    broadcasts were dressed, or one whose dressing failed. Its title stays as
+    it is (it is how the job knows the broadcast); the description is
+    tonight's current one. One quota unit to look, nothing more when it is
+    already dressed."""
+    try:
+        items = yt.videos().list(part="snippet", id=broadcast_id).execute().get("items") or []
+        if not items or items[0].get("snippet", {}).get("tags"):
+            return ""
+        body, extras = sl.make()
+        snippet = {"title": items[0]["snippet"]["title"], "description": body["snippet"]["description"]}
+        return f" (had no tags; dressed it now: {', '.join(bc.dress(yt, broadcast_id, snippet, extras))})"
+    except Exception as exc:
+        log.warning("could not check or dress broadcast %s (%s)", broadcast_id, exc)
+        return ""
+
+
 def lane_slots(cfg: ChannelConfig, yt, lane_keys: dict[str, str], now: datetime, work: Path,
                lines: list[str]) -> list[Slot]:
     from romanfeed.cozy.calendar import fetch_launches, themes_for
@@ -255,10 +273,12 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
 
         for sl, group in zip(slots, groups):
             if group:
+                bid = group[-1]["id"]
+                note = "" if dry_run else heal(yt, bid, sl)
                 if sl.name == "tonight":
-                    lines.insert(0, f"tonight's broadcast already exists: https://youtu.be/{group[-1]['id']}")
+                    lines.insert(0, f"tonight's broadcast already exists: https://youtu.be/{bid}{note}")
                 else:
-                    lines.append(f"{sl.name} {sl.start:%a %H:%M}: exists https://youtu.be/{group[-1]['id']}")
+                    lines.append(f"{sl.name} {sl.start:%a %H:%M}: exists https://youtu.be/{bid}{note}")
                 continue
             body, extras = sl.make()
             label = "tonight" if sl.name == "tonight" else f"{sl.name} {sl.start:%a %H:%M}"

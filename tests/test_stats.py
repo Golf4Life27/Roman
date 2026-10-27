@@ -418,3 +418,11 @@ def test_format_labels_cover_the_api_spelling():
     assert st.FORMAT_LABELS["videoOnDemand"] == "Long videos"
     assert st.FORMAT_LABELS["shorts"] == "Shorts"
     assert st.FORMAT_LABELS["liveStream"] == "Live streams"
+
+
+def test_reached_on_gives_the_date_at_the_current_pace():
+    from datetime import date
+    today = date(2026, 10, 25)
+    assert Pace(1800, 4000, 98, 70).reached_on(today) == "Nov 26, 2026 (32 days)"
+    assert Pace(4100, 4000, 98, 70).reached_on(today) == "reached"
+    assert Pace(111, 1000, 98, 0).reached_on(today) == "never at this pace"
