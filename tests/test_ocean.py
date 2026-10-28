@@ -191,3 +191,50 @@ def test_sibling_report_lines(tmp_path):
         lines = sibling_lines(cfg, ledger=ledger, today=date(2026, 11, 2), yt_public=Pub())
     assert lines == ["Deep Blue Screens (@DeepBlueScreens)", "  Subscribers 12 · views 3,400 · videos 7",
                      "  Uploaded in the last 7 days: 1"]
+
+
+def test_code_sign_in_waits_then_returns_the_token(tmp_path, monkeypatch):
+    client = tmp_path / "tv.json"
+    client.write_text(json.dumps({"installed": {"client_id": "tv-id", "client_secret": "tv-secret"}}))
+    replies = iter([{"error": "authorization_pending"}, {"error": "slow_down"},
+                    {"access_token": "a", "refresh_token": "r", "scope": "https://www.googleapis.com/auth/youtube"}])
+    sent = []
+
+    class Resp:
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    def post(url, data, timeout):
+        sent.append((url, data))
+        return Resp(next(replies))
+
+    monkeypatch.setattr(ct.requests, "post", post)
+    waits = []
+    tok = ct.device_finish(client, {"device_code": "dc", "interval": 5, "expires_in": 1800},
+                           sleep=waits.append, clock=lambda: 0)
+    assert tok["refresh_token"] == "r" and tok["client_id"] == "tv-id" and tok["client_secret"] == "tv-secret"
+    assert waits == [5, 5, 10]                               # slowed down when Google asked
+    assert all(d["device_code"] == "dc" for _, d in sent)
+
+
+def test_code_sign_in_refusal_stops(tmp_path, monkeypatch):
+    client = tmp_path / "tv.json"
+    client.write_text(json.dumps({"client_id": "tv-id", "client_secret": "s"}))
+    monkeypatch.setattr(ct.requests, "post", lambda *a, **kw: type("R", (), {"json": lambda self: {"error": "access_denied"}})())
+    with pytest.raises(SystemExit, match="access_denied"):
+        ct.device_finish(client, {"device_code": "dc", "interval": 1}, sleep=lambda s: None, clock=lambda: 0)
+
+
+def test_wrong_channel_name_is_refused(tmp_path):
+    import types
+
+    from romanfeed.cli import _check_and_store
+
+    args = types.SimpleNamespace(expect="", not_channel="UCspace", expect_title="Deep Blue Screens",
+                                 out=str(tmp_path / "t.enc"), channel_out=str(tmp_path / "c"), main_token="x", slug="s")
+    assert _check_and_store(ct, {}, "UCspace", "Space Screens", args) == 2
+    assert _check_and_store(ct, {}, "UCother", "Someone Else", args) == 2
+    assert not (tmp_path / "t.enc").exists()

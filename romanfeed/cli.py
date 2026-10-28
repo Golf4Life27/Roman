@@ -157,6 +157,10 @@ def _cmd_channel_finish(args) -> int:
     except Exception as exc:  # an upload-only token cannot read its channel
         print(f"token cannot read its channel ({exc.__class__.__name__}); checking with a private test upload")
         cid, title = ct.channel_by_test_upload(token, Path(args.work))
+    return _check_and_store(ct, token, cid, title, args)
+
+
+def _check_and_store(ct, token: dict, cid: str, title: str, args) -> int:
     print(f"token uploads to channel {title!r} ({cid})")
     if not cid:
         print("refusing: could not tell which channel the token uploads to")
@@ -165,13 +169,36 @@ def _cmd_channel_finish(args) -> int:
         print(f"refusing: expected channel {args.expect}")
         return 2
     if args.not_channel and cid == args.not_channel:
-        print("refusing: that is the main channel; pick the new channel on the consent screen")
+        print("refusing: that is the main channel; pick the new channel when Google asks which one")
+        return 2
+    if getattr(args, "expect_title", "") and title.strip().lower() != args.expect_title.strip().lower():
+        print(f"refusing: expected a channel named {args.expect_title!r}")
         return 2
     Path(args.out).write_bytes(ct.encrypt(token, Path(args.main_token), args.slug))
     if args.channel_out:
         Path(args.channel_out).write_text(cid + "\n")
     print(f"encrypted token written to {args.out}")
     return 0
+
+
+def _cmd_channel_device_start(args) -> int:
+    from romanfeed.publish import channel_token as ct
+
+    start = ct.device_start(Path(args.client))
+    Path(args.state).write_text(json.dumps(start))
+    # Only the short code and where to type it are printed; the device code stays in the state file.
+    Path(args.code_out).write_text(f"{start['user_code']}\n{start.get('verification_url') or 'https://www.google.com/device'}\n")
+    print(f"code ready, valid {int(start.get('expires_in', 1800)) // 60} minutes")
+    return 0
+
+
+def _cmd_channel_device_finish(args) -> int:
+    from romanfeed.publish import channel_token as ct
+
+    start = json.loads(Path(args.state).read_text())
+    token = ct.device_finish(Path(args.client), start)
+    cid, title = ct.channel_of(token)
+    return _check_and_store(ct, token, cid, title, args)
 
 
 def _cmd_channel_token(args) -> int:
@@ -562,6 +589,23 @@ def main(argv: list[str] | None = None) -> int:
     cf.add_argument("--channel-out", default="", help="write the confirmed channel id here")
     cf.add_argument("--work", default="work/channel-check")
     cf.set_defaults(fn=_cmd_channel_finish)
+    ds = sub.add_parser("channel-device-start", help="short code the owner types at google.com/device")
+    ds.add_argument("slug")
+    ds.add_argument("--client", required=True, help="the TVs-and-limited-input OAuth client JSON")
+    ds.add_argument("--state", required=True, help="where to keep the private device code")
+    ds.add_argument("--code-out", required=True, help="where to write the short code and the address")
+    ds.set_defaults(fn=_cmd_channel_device_start)
+    df = sub.add_parser("channel-device-finish", help="wait for the code to be entered, check the channel, store the token")
+    df.add_argument("slug")
+    df.add_argument("--client", required=True)
+    df.add_argument("--state", required=True)
+    df.add_argument("--main-token", default="secrets/youtube.token.json")
+    df.add_argument("--out", required=True)
+    df.add_argument("--channel-out", default="")
+    df.add_argument("--expect", default="")
+    df.add_argument("--expect-title", default="", help="the channel's name; anything else is refused")
+    df.add_argument("--not-channel", default="")
+    df.set_defaults(fn=_cmd_channel_device_finish)
     ctk = sub.add_parser("channel-token", help="decrypt a sibling channel's stored token")
     ctk.add_argument("slug")
     ctk.add_argument("blob")

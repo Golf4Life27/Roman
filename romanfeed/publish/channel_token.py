@@ -45,6 +45,10 @@ from romanfeed.publish.youtube import MANAGE_SCOPES
 log = logging.getLogger(__name__)
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+DEVICE_URL = "https://oauth2.googleapis.com/device/code"
+# Google's code-on-another-screen sign-in offers only these two YouTube scopes
+# (not youtube.upload); `youtube` covers uploads and reading the channel.
+DEVICE_SCOPES = ["https://www.googleapis.com/auth/youtube"]
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 REDIRECT = "http://localhost:8765/"
 RELEASE_TAG = "channel-tokens"
@@ -111,6 +115,62 @@ def exchange(main_token: Path, slug: str, address: str) -> dict:
         "token": tok.get("access_token"), "refresh_token": tok["refresh_token"], "token_uri": TOKEN_URL,
         "client_id": cid, "client_secret": secret, "scopes": tok.get("scope", "").split(),
     }
+
+
+def device_client(path: Path) -> tuple[str, str]:
+    """(client id, secret) of the "TVs and Limited Input devices" client, from
+    the JSON Google's console downloads ({"installed": {...}}) or a flat one."""
+    data = json.loads(Path(path).read_text())
+    data = data.get("installed") or data.get("web") or data
+    cid, secret = data.get("client_id"), data.get("client_secret")
+    if not cid or not secret:
+        raise SystemExit(f"{path} has no client_id/client_secret")
+    return cid, secret
+
+
+def device_start(client: Path, scopes: list[str] | None = None) -> dict:
+    """Ask Google for a short code the owner types at google.com/device.
+    Returns device_code (kept private), user_code, verification_url,
+    expires_in and interval."""
+    cid, _ = device_client(client)
+    resp = requests.post(DEVICE_URL, data={"client_id": cid, "scope": " ".join(scopes or DEVICE_SCOPES)}, timeout=30)
+    if resp.status_code != 200:
+        raise SystemExit(f"Google refused the device sign-in ({resp.status_code}): {resp.text[:200]}")
+    return resp.json()
+
+
+def device_finish(client: Path, start: dict, *, sleep=None, clock=None) -> dict:
+    """Wait until the owner has entered the code and allowed, then return the
+    token in google-auth's authorized-user shape."""
+    import time
+
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    cid, secret = device_client(client)
+    interval = int(start.get("interval", 5))
+    deadline = clock() + int(start.get("expires_in", 1800))
+    while clock() < deadline:
+        sleep(interval)
+        resp = requests.post(TOKEN_URL, data={
+            "client_id": cid, "client_secret": secret, "device_code": start["device_code"],
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        }, timeout=30)
+        tok = resp.json()
+        err = tok.get("error")
+        if err == "authorization_pending":
+            continue
+        if err == "slow_down":
+            interval += 5
+            continue
+        if err:
+            raise SystemExit(f"sign-in not completed: {err}")
+        if not tok.get("refresh_token"):
+            raise SystemExit("Google sent no refresh token; start again")
+        return {
+            "token": tok.get("access_token"), "refresh_token": tok["refresh_token"], "token_uri": TOKEN_URL,
+            "client_id": cid, "client_secret": secret, "scopes": tok.get("scope", "").split(),
+        }
+    raise SystemExit("the code expired before it was entered; start again")
 
 
 def channel_of(token: dict) -> tuple[str, str]:

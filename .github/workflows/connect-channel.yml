@@ -1,19 +1,20 @@
 # Upload access for a sibling channel (ocean and the lanes after it), with no
-# new repository secret. romanfeed/publish/channel_token.py explains the design.
+# new secret per channel and nothing passed through chat.
+# romanfeed/publish/channel_token.py explains the design.
 #
-# Two runs per channel:
-#   1. no address  -> the job prints a consent link (Google's own page). The
-#      owner opens it, picks the NEW channel, allows, and copies the address
-#      of the page that then fails to load (http://localhost:8765/?code=...).
-#   2. that address -> the job trades it for the channel's token, proves which
-#      channel it uploads to (a 4-second private test upload when the token
-#      cannot simply ask), refuses Space Screens, and stores the token
-#      encrypted on the channel-tokens release with the confirmed channel id.
+# Default: Google's code-on-another-screen sign-in. The job asks Google for a
+# short code (shown as a notice on this run), the owner types it at
+# google.com/device, signs in, picks the NEW channel and allows. The job,
+# waiting meanwhile (the code lives 30 minutes), receives the token, checks
+# the channel by id and by name, refuses Space Screens, and stores it
+# encrypted on the channel-tokens release with the confirmed channel id.
+# Needs the YOUTUBE_DEVICE_CLIENT secret once: the JSON of a "TVs and Limited
+# Input devices" OAuth client in the Space Screens Cloud project.
 #
-# Start it from Actions (workflow_dispatch) or by pushing connect/<slug>.txt
-# holding the address (empty file = print the link). Google's code expires in
-# minutes, so run 2 has to follow the consent closely; a stale one just means
-# opening the link again.
+# Start it from Actions (workflow_dispatch) or by pushing connect/<slug>.txt.
+# File content: empty or "device" = the code sign-in; "link" = print a
+# browser consent link instead (older path); an http://localhost:8765/...
+# address = finish that older path.
 name: Connect channel
 on:
   workflow_dispatch:
@@ -22,7 +23,7 @@ on:
         description: channel slug (config/channels/<slug>.yaml)
         default: ocean-ambient
       address:
-        description: the address the browser landed on after Allow (blank = print the consent link)
+        description: blank = code sign-in (default); "link" = browser consent link; or the localhost address after Allow
         default: ""
   push:
     paths: ["connect/*.txt"]
@@ -34,7 +35,7 @@ concurrency:
 jobs:
   connect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,17 +67,43 @@ jobs:
             slug="$IN_SLUG"; address=$(printf '%s' "$IN_ADDRESS" | tr -d '[:space:]')
           fi
           [ -f "config/channels/$slug.yaml" ] || { echo "::error::no config/channels/$slug.yaml"; exit 1; }
-          [ -n "$address" ] && echo "::add-mask::$address"
+          case "$address" in http*) echo "::add-mask::$address";; esac
           echo "slug=$slug" >> "$GITHUB_OUTPUT"
           { echo "address<<EOF_ADDR"; echo "$address"; echo "EOF_ADDR"; } >> "$GITHUB_OUTPUT"
+      - name: Code sign-in (owner types the code at google.com/device)
+        if: steps.req.outputs.skip != 'true' && (steps.req.outputs.address == '' || steps.req.outputs.address == 'device')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLUG: ${{ steps.req.outputs.slug }}
+          YOUTUBE_DEVICE_CLIENT: ${{ secrets.YOUTUBE_DEVICE_CLIENT }}
+        run: |
+          if [ -z "$YOUTUBE_DEVICE_CLIENT" ]; then
+            echo "::error title=One-time setup missing::Add the YOUTUBE_DEVICE_CLIENT secret (a TVs and Limited Input devices sign-in key from the Space Screens Google Cloud project)"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$YOUTUBE_DEVICE_CLIENT" > secrets/device_client.json
+          python -m romanfeed channel-device-start "$SLUG" --client secrets/device_client.json \
+            --state secrets/device_state.json --code-out code.txt
+          code=$(sed -n 1p code.txt); where=$(sed -n 2p code.txt)
+          echo "::notice title=Enter this code::$code at $where (valid 30 minutes)"
+          name=$(python -c "from romanfeed.config import load_config; print(load_config('config/channels/$SLUG.yaml').channel.name)")
+          python -m romanfeed channel-device-finish "$SLUG" --client secrets/device_client.json \
+            --state secrets/device_state.json --out "$SLUG.token.enc" --channel-out "$SLUG.channel" \
+            --expect-title "$name" --not-channel UCUlw1snmaUDAKL965drudgQ
+          gh release view channel-tokens >/dev/null 2>&1 || gh release create channel-tokens --prerelease \
+            --title "Channel upload access (encrypted)" \
+            --notes "Encrypted per-channel upload tokens for sibling channels. Useless without the repository's OAuth client secret. See romanfeed/publish/channel_token.py."
+          gh release upload channel-tokens "$SLUG.token.enc" "$SLUG.channel" --clobber
+          echo "::notice title=Connected::$SLUG uploads to $name ($(cat "$SLUG.channel"))"
       - name: Consent link
-        if: steps.req.outputs.skip != 'true' && steps.req.outputs.address == ''
+        if: steps.req.outputs.skip != 'true' && steps.req.outputs.address == 'link'
         run: |
           url=$(python -m romanfeed channel-link "${{ steps.req.outputs.slug }}")
           echo "::notice title=Consent link for ${{ steps.req.outputs.slug }}::$url"
           echo "$url"
       - name: Trade the code, check the channel, store the token
-        if: steps.req.outputs.skip != 'true' && steps.req.outputs.address != ''
+        if: steps.req.outputs.skip != 'true' && startsWith(steps.req.outputs.address, 'http')
         env:
           GH_TOKEN: ${{ github.token }}
           ADDRESS: ${{ steps.req.outputs.address }}
