@@ -84,6 +84,15 @@ independent things enforce it:
    the empty broadcast is deleted instead so no stale "upcoming" event sits
    on the channel.
 
+**Reconnects.** If ffmpeg stops early (a network blip to YouTube's ingest
+used to end the night hours short: 9:18, 2:46, 7:24 and 2:21 instead of
+10 hours between Oct 23 and 27), the program waits 10 seconds and starts
+it again for the time that is left, up to 6 times a night, and the lanes do
+the same. The end time is fixed when the night starts, so every reconnect
+gets a smaller `-t` and watchdog and the night still ends on time, under
+11.5 hours. No reconnect after the watchdog fires, with under 10 minutes
+left, or on SIGTERM.
+
 Plus the server itself: the systemd service has `RuntimeMaxSec=12h`, and it
 is never restarted automatically. A night the server misses (down at 9 PM) is
 skipped, not run late.
