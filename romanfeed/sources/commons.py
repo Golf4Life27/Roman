@@ -88,6 +88,10 @@ def title_from_file(name: str) -> str:
         t = t.replace("-", " ")
     t = _NOISE_RE.sub(" ", t).replace(" - ", " · ")
     t = _balance_parens(t)
+    # Archive reference numbers: "(Ifremer 00557-66878 · 20145)".
+    t = re.sub(r"\s*\((?:Ifremer\b[^)]*|[\d\s·._/-]{5,})\)", " ", t, flags=re.I)
+    t = re.sub(r"^\s*(?:episode|ep\.?|part)\s*\d+\s*[-:·]?\s*", "", t, flags=re.I)
+    t = re.sub(r"[\s_-]+(?:hi-?res|high-?res|low-?res|web|final|edit(?:ed)?)\b", "", t, flags=re.I)
     t = re.sub(r"\s*\(\s*\)\s*", " ", t)
     t = " ".join(t.split()).strip(" -.,·")
     # A trailing frame or roll number: "Great Barrier Reef 024" -> "Great Barrier Reef".

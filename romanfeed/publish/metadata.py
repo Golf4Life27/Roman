@@ -108,7 +108,7 @@ OCEAN_SUBSCRIBE = "Subscribe for a new calm ocean video every day: https://www.y
 def pick_ocean_subject(assets: list[ImageAsset]) -> str:
     themes = {
         "Coral Reef": ("reef", "coral"), "Whales": ("whale",), "Sea Turtles": ("turtle",),
-        "Jellyfish": ("jellyfish", "medusa"), "Kelp Forest": ("kelp",), "Sharks & Rays": ("shark", "manta", " ray"),
+        "Jellyfish": ("jelly", "medusa"), "Kelp Forest": ("kelp",), "Sharks & Rays": ("shark", "manta", " ray"),
         "Dolphins": ("dolphin",), "Ocean Waves": ("wave", "surf"), "Deep Sea": ("deep sea", "deep-sea", "abyss"),
     }
     scores = {k: 0 for k in themes}

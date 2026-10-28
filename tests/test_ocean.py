@@ -89,6 +89,7 @@ def test_ocean_title_and_description():
 def test_ocean_subject_tie_goes_to_the_lead():
     assets = [_ocean("Green sea turtle"), _ocean("Humpback whale", "humpback whale")]
     assert pick_ocean_subject(assets) == "Sea Turtles"
+    assert pick_ocean_subject([_ocean("Crystal jelly, Monterey", "comb jelly")]) == "Jellyfish"
 
 
 def test_ocean_music_is_its_own_style():
@@ -247,6 +248,10 @@ def test_wrong_channel_name_is_refused(tmp_path):
     ("File:Humpback whale (Megaptera novaeangliae.jpg", "Humpback whale Megaptera novaeangliae"),
     ("File:Green sea turtle (Chelonia mydas) at Kona.jpg", "Green sea turtle (Chelonia mydas) at Kona"),
     ("File:Apollo 11 launch.jpg", "Apollo 11 launch"),
+    ("File:Phoque gris (Halichoerus grypus) en rade de Brest (Ifremer 00557-66878 - 20145).jpg",
+     "Phoque gris (Halichoerus grypus) en rade de Brest"),
+    ("File:Episode 9- Underwater Conversations in Glacier Bay.jpg", "Underwater Conversations in Glacier Bay"),
+    ("File:Chimney hires.jpg", "Chimney"),
 ])
 def test_titles_lose_numbers_hyphens_and_stray_brackets(name, title):
     assert title_from_file(name) == title
@@ -255,6 +260,8 @@ def test_titles_lose_numbers_hyphens_and_stray_brackets(name, title):
 def test_museum_specimens_are_turned_away():
     assert looks_unsuitable(_ocean("Asteroidea (USNM 1450538)", "sea star"), "ocean")
     assert not looks_unsuitable(_ocean("Sea star on the reef", "sea star"), "ocean")
+    assert looks_unsuitable(_ocean("Catoosa OK Blue Whale", "blue whale"), "ocean")   # a roadside attraction
+    assert looks_unsuitable(_ocean("Dolphin statue at the waterfront", "bottlenose dolphin"), "ocean")
 
 
 class _Resp:

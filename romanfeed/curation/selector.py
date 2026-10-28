@@ -182,6 +182,9 @@ OCEAN_BLOCK = (
     # its crew as often as the sea
     "scientist", "researcher", "crew", "deck", "laboratory", "lab ", "meeting", "workshop", "sampling",
     "recovery of", "deployment", "launch", "instrument", "equipment", "rov ", "remotely operated",
+    # roadside whales and other things shaped like sea life
+    "statue", "sculpture", "roadside", "replica", "mural", "inflatable", "concrete", "attraction",
+    "theme park", "catoosa",
 )
 
 
