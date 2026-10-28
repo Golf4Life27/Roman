@@ -13,6 +13,23 @@ from romanfeed.config import SourceSettings
 USER_AGENT = "RomanFeed/0.1 (+https://github.com/Golf4Life27/Roman)"
 
 
+def check_image(path: Path, content_length: str | None = None) -> None:
+    """Raise if a downloaded image is cut short or will not decode.
+
+    A half-written photo otherwise gets picked, then stops the render hours
+    later ("image file is truncated"). JPEGs decode at 1/8 scale, which still
+    reads the whole file but costs a fraction of a full decode."""
+    size = path.stat().st_size
+    if content_length and content_length.isdigit() and size != int(content_length):
+        raise ValueError(f"download cut short: {size} of {content_length} bytes")
+    from PIL import Image
+
+    with Image.open(path) as im:
+        if im.format == "JPEG":
+            im.draft("RGB", (max(1, im.width // 8), max(1, im.height // 8)))
+        im.load()
+
+
 @dataclass
 class ImageAsset:
     """One still image with everything needed to render and credit it."""
@@ -60,6 +77,11 @@ class ImageAsset:
                 with open(tmp, "wb") as f:
                     for chunk in r.iter_content(1 << 16):
                         f.write(chunk)
+                try:
+                    check_image(tmp, r.headers.get("Content-Length"))
+                except Exception:
+                    tmp.unlink(missing_ok=True)
+                    raise
                 tmp.rename(dest)
         self.local_path = dest
         return dest

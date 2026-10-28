@@ -185,6 +185,9 @@ OCEAN_BLOCK = (
 )
 
 
+_CATALOGUE_RE = re.compile(r"\b(?:USNM|NMNH|MCZ|AMNH|FMNH|ZMB|NHMUK|BMNH|MNHN|SIO|LACM|CAS|YPM)[\s:-]*\d{3,}", re.I)
+
+
 def ocean_unsuitable(asset: ImageAsset) -> bool:
     """True unless this reads as a calm photo of the sea or sea life."""
     title = asset.title.strip()
@@ -192,6 +195,9 @@ def ocean_unsuitable(asset: ImageAsset) -> bool:
     if len(low) < 4 or _is_filename_title(title) or _normalized_title(title) in _GENERIC_TITLES:
         return True
     if any(re.search(rf"\b{re.escape(b.strip())}", low) for b in OCEAN_BLOCK):
+        return True
+    # Museum catalogue numbers ("Asteroidea (USNM 1450538)"): a specimen on a tray.
+    if _CATALOGUE_RE.search(title):
         return True
     # The title, the search term or the file's categories must say "sea" (the
     # subject tag, keywords[0], is on every photo and proves nothing). Many

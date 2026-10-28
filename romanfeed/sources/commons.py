@@ -62,12 +62,37 @@ _EXT_RE = re.compile(r"\.(jpe?g|png|tiff?|webp|gif)$", re.I)
 _NOISE_RE = re.compile(r"\b(?:IMG|DSC|DSCN|DSCF|P\d{6,}|GOPR)[_ -]?\d+\b|\b\d{8,}\b|[_]+", re.I)
 
 
+def _balance_parens(t: str) -> str:
+    out, depth = [], 0
+    for ch in t:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                continue
+            depth -= 1
+        out.append(ch)
+    t = "".join(out)
+    while depth:  # an opening bracket never closed: drop it
+        i = t.rfind("(")
+        t = t[:i] + t[i + 1:]
+        depth -= 1
+    return t
+
+
 def title_from_file(name: str) -> str:
     t = name.split(":", 1)[-1]
     t = _EXT_RE.sub("", t)
+    # "Bottlenose-Dolphins-at-Assateague": words joined by hyphens, no spaces.
+    if " " not in t.replace("_", " ").strip():
+        t = t.replace("-", " ")
     t = _NOISE_RE.sub(" ", t).replace(" - ", " · ")
+    t = _balance_parens(t)
     t = re.sub(r"\s*\(\s*\)\s*", " ", t)
-    return " ".join(t.split()).strip(" -.,·")
+    t = " ".join(t.split()).strip(" -.,·")
+    # A trailing frame or roll number: "Great Barrier Reef 024" -> "Great Barrier Reef".
+    t = re.sub(r"(?:[\s_-]+\(?\d{1,4}\)?)+$", "", t)
+    return t.strip(" -.,·")
 
 
 def credit_line(artist: str, short: str, klass: str) -> str:
@@ -89,6 +114,29 @@ class WikimediaCommons(ImageSource):
         self.pause = float(settings.options.get("pause", 0.3))
         # The archive's 50-a-page search: max_per_query 300 = 6 requests a term.
         self.page_size = 50
+        self.retry_waits = tuple(settings.options.get("retry_waits", (5, 15, 30)))
+
+    def _get(self, params: dict) -> dict:
+        """One API call, waiting out "too busy" and lag replies.
+
+        Commons sheds search load at busy hours; giving up at once cost about
+        a third of the 72 terms in a single run. Three waits (5, 15, 30 s),
+        then whatever came back."""
+        data: dict = {}
+        for wait in (*self.retry_waits, None):
+            resp = self.session.get(API, params=params, timeout=self.timeout)
+            if resp.status_code in (429, 502, 503, 504) and wait is not None:
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            err = data.get("error") or {}
+            busy = err.get("code") == "maxlag" or "too busy" in str(err.get("info", "")).lower()
+            if busy and wait is not None:
+                time.sleep(wait)
+                continue
+            return data
+        return data
 
     def _search(self, query: str) -> list[dict]:
         pages: list[dict] = []
@@ -104,10 +152,8 @@ class WikimediaCommons(ImageSource):
                 "maxlag": 5,
             }
             params.update(cont)
-            resp = self.session.get(API, params=params, timeout=self.timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            if "error" in data:  # maxlag and friends: wait once, then give up on this term
+            data = self._get(params)
+            if "error" in data:
                 log.warning("commons search %r: %s", query, data["error"].get("info", data["error"]))
                 break
             pages.extend((data.get("query") or {}).get("pages") or [])

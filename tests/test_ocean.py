@@ -238,3 +238,65 @@ def test_wrong_channel_name_is_refused(tmp_path):
     assert _check_and_store(ct, {}, "UCspace", "Space Screens", args) == 2
     assert _check_and_store(ct, {}, "UCother", "Someone Else", args) == 2
     assert not (tmp_path / "t.enc").exists()
+
+
+@pytest.mark.parametrize("name,title", [
+    ("File:Great Barrier Reef 024.jpg", "Great Barrier Reef"),
+    ("File:Tamanend's-Bottlenose-Dolphins-Tursiops-erebennus)-Assateague.jpg",
+     "Tamanend's Bottlenose Dolphins Tursiops erebennus Assateague"),
+    ("File:Humpback whale (Megaptera novaeangliae.jpg", "Humpback whale Megaptera novaeangliae"),
+    ("File:Green sea turtle (Chelonia mydas) at Kona.jpg", "Green sea turtle (Chelonia mydas) at Kona"),
+    ("File:Apollo 11 launch.jpg", "Apollo 11 launch"),
+])
+def test_titles_lose_numbers_hyphens_and_stray_brackets(name, title):
+    assert title_from_file(name) == title
+
+
+def test_museum_specimens_are_turned_away():
+    assert looks_unsuitable(_ocean("Asteroidea (USNM 1450538)", "sea star"), "ocean")
+    assert not looks_unsuitable(_ocean("Sea star on the reef", "sea star"), "ocean")
+
+
+class _Resp:
+    def __init__(self, data, status=200):
+        self._data, self.status_code = data, status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+    def json(self):
+        return self._data
+
+
+def test_busy_search_is_retried(monkeypatch):
+    src = _source()
+    src.retry_waits = (0, 0)
+    replies = [_Resp({}, 503), _Resp({"error": {"code": "internal", "info": "Search is currently too busy."}}),
+               _Resp({"query": {"pages": [_page()]}})]
+    monkeypatch.setattr(src.session, "get", lambda *a, **k: replies.pop(0))
+    assert len(src._search("sea turtle")) == 1 and not replies
+
+
+def test_busy_search_gives_up_after_the_waits(monkeypatch):
+    src = _source()
+    src.retry_waits = (0,)
+    busy = {"error": {"code": "maxlag", "info": "Waiting for a database server"}}
+    monkeypatch.setattr(src.session, "get", lambda *a, **k: _Resp(busy))
+    assert src._search("sea turtle") == []
+
+
+def test_cut_short_downloads_are_refused(tmp_path):
+    from PIL import Image
+
+    from romanfeed.sources.base import check_image
+
+    good = tmp_path / "good.jpg"
+    Image.new("RGB", (64, 48), (10, 60, 90)).save(good, quality=90)
+    check_image(good, str(good.stat().st_size))
+    with pytest.raises(ValueError):
+        check_image(good, str(good.stat().st_size + 40))
+    cut = tmp_path / "cut.jpg"
+    cut.write_bytes(good.read_bytes()[:-40])
+    with pytest.raises(OSError):
+        check_image(cut)
