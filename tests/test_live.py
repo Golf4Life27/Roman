@@ -443,6 +443,84 @@ def test_broadcast_that_never_went_live_is_deleted(tmp_path, fake_api, monkeypat
     assert "delete" in yt.names() and "transition" not in yt.names()
 
 
+@pytest.fixture(autouse=True)
+def _one_connect(monkeypatch):
+    """A fake ffmpeg here returns at once, which would look like a dropped
+    stream: tests connect once unless they test the reconnect itself."""
+    monkeypatch.setattr(run, "MAX_RECONNECTS", 0)
+    monkeypatch.setattr(run, "_sleep", lambda s: None)
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_a_dropped_stream_reconnects_for_the_time_that_is_left(monkeypatch):
+    clock = _Clock()
+    monkeypatch.setattr(run, "_clock", clock)
+    monkeypatch.setattr(run, "MAX_RECONNECTS", 6)
+    monkeypatch.setattr(run, "_sleep", lambda s: setattr(clock, "t", clock.t + s))
+    runs = []
+
+    def fake_stream(cmd, *, timeout_s, secret=None):
+        runs.append((cmd, timeout_s))
+        clock.t += {1: 8460, 2: 3600}.get(len(runs), cmd)   # drops at 2:21, then at 3:21; the third runs out
+        return 1 if len(runs) < 3 else 0
+
+    monkeypatch.setattr(run, "run_stream", fake_stream)
+    assert run.stream_to_end(lambda seconds: seconds, 36000, secret="k") == 0
+    assert [c for c, _ in runs] == [36000, 36000 - 8460 - 10, 36000 - 8460 - 10 - 3600 - 10]
+    assert all(t == c + run.WATCHDOG_GRACE_S for c, t in runs)
+    assert clock.t - 1000 == 36000                                # the night still ends on time
+
+
+def test_no_reconnect_when_the_night_ran_out_or_the_watchdog_fired(monkeypatch):
+    clock = _Clock()
+    monkeypatch.setattr(run, "_clock", clock)
+    monkeypatch.setattr(run, "MAX_RECONNECTS", 6)
+    calls = []
+
+    def ends_near_the_end(cmd, *, timeout_s, secret=None):
+        calls.append(cmd)
+        clock.t += cmd - 120                                   # two minutes short: that is the end
+        return 0
+
+    monkeypatch.setattr(run, "run_stream", ends_near_the_end)
+    assert run.stream_to_end(lambda s: s, 36000) == 0 and calls == [36000]
+
+    calls.clear()
+    monkeypatch.setattr(run, "run_stream", lambda cmd, **k: calls.append(cmd) or -9)
+    assert run.stream_to_end(lambda s: s, 36000) == -9 and len(calls) == 1
+
+
+def test_reconnects_are_limited(monkeypatch, caplog):
+    clock = _Clock()
+    monkeypatch.setattr(run, "_clock", clock)
+    monkeypatch.setattr(run, "MAX_RECONNECTS", 6)
+    calls = []
+
+    def drops_at_once(cmd, *, timeout_s, secret=None):
+        calls.append(cmd)
+        clock.t += 30
+        return 1
+
+    monkeypatch.setattr(run, "run_stream", drops_at_once)
+    assert run.stream_to_end(lambda s: s, 36000) == 1
+    assert len(calls) == 7 and "giving up" in caplog.text
+
+
+def test_a_scene_night_reconnects_with_a_shorter_cap(tmp_path, monkeypatch):
+    from romanfeed.live import scene as scene_mod
+
+    night = types.SimpleNamespace(loop=Path("loop.mp4"), music=Path("music.m4a"))
+    cmd = scene_mod.stream_command(night, 27530, "rtmp://x/key")
+    assert cmd[cmd.index("-t") + 1] == "27530"
+
+
 def test_watchdog_kills_an_overrunning_ffmpeg():
     cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
     t0 = datetime.now()
