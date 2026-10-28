@@ -63,9 +63,12 @@ def _old_lead(title: str) -> tuple[str, str | None]:
     if " · " in title:
         parts = title.split(" · ")
         mid = next((p for p in parts[1:] if not re.search(r"(?i)sleep|screen|screensaver|asleep", p)), "")
-        m = re.match(r"(.*?)\s+by\s+((?:Roman|Webb|Hubble|Spitzer|Chandra|Euclid|WISE|GALEX|Herschel)(?: & \w+)?)$", mid)
-        return (m.group(1).strip(), m.group(2)) if m else (mid.strip(), None)
-    return title.split(" | ")[0].strip(), None
+    else:
+        # Name first ("Carina Nebula by Webb | Nebulae | 1 Hour ..."), the
+        # template again since 2026-10-28, and the earliest uploads.
+        mid = title.split(" | ")[0]
+    m = re.match(r"(.*?)\s+by\s+((?:Roman|Webb|Hubble|Spitzer|Chandra|Euclid|WISE|GALEX|Herschel)(?: & \w+)?)$", mid)
+    return (m.group(1).strip(), m.group(2)) if m else (mid.strip(), None)
 
 
 # The earliest uploads led with the subject, not the image ("Galaxies | 8 Hours

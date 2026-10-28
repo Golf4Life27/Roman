@@ -227,13 +227,29 @@ def image_score(path: Path) -> float:
     return round(0.45 * sat + 0.35 * min(edges * 4, 1.0) + 0.20 * exposure, 4)
 
 
+# Star clusters, nebulae and galaxies earn the subscribers. Week of Oct 18-24:
+# the Hercules globular cluster Short brought 7 of the 20 subscribers that came
+# from Shorts, 7.5 per 1,000 views against 2.9 for Shorts overall (measured). So
+# when a long video offers one, its Short shows the deep-sky object rather than
+# a prettier frame of something else; image quality still decides among equals.
+DEEP_SKY = re.compile(r"\b(?:globular|clusters?|nebulae?|galax(?:y|ies)|supernova|remnant)\b", re.I)
+SUBJECT_BONUS = 0.15
+
+
+def subject_bonus(asset: ImageAsset) -> float:
+    if is_earth(asset):
+        return 0.0
+    text = " ".join([asset.title, *asset.keywords])
+    return SUBJECT_BONUS if DEEP_SKY.search(text) else 0.0
+
+
 def pick_best(candidates: list[ImageAsset], cache_dir: Path) -> ImageAsset | None:
     ranked = ranked_candidates(candidates, cache_dir)
     return ranked[0] if ranked else None
 
 
 def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[ImageAsset]:
-    """Usable candidates, strongest frame first."""
+    """Usable candidates, strongest first: frame quality plus the deep-sky bonus."""
     scored = []
     for a in candidates:
         # An Earth-from-orbit photo is judged as one (it was failing the
@@ -245,7 +261,7 @@ def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[Ima
             a.download(cache_dir)
             if flat_black_fraction(a) > 0.02:
                 continue
-            scored.append((image_score(a.local_path), a))
+            scored.append((image_score(a.local_path) + subject_bonus(a), a))
         except Exception as exc:  # gone from the archive, corrupt file
             log.warning("skipping %s: %s", a.asset_id, exc)
     if not scored:

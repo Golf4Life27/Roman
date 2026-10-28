@@ -20,7 +20,7 @@ def test_subject_and_title():
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
     meta = build_metadata(cfg, assets, [Track("t", Path("t.m4a"), "ambient", "owned", title="Drift")], seconds_per_image=45, when=date(2026, 9, 5))
-    assert meta.title == "1 Hour Relaxing Space Music for Sleep · Carina Nebula 0 by Webb · Telescope Screensaver"
+    assert meta.title == "Carina Nebula 0 by Webb | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"
     assert "ABOUT SPACE SCREENS" in meta.description
     assert "Not affiliated" in meta.description
     assert "0:00 Carina Nebula 0" in meta.description
@@ -149,16 +149,17 @@ def test_lead_name_cuts_long_titles_at_a_word_boundary():
 
 
 def test_title_stays_within_100_chars_with_a_very_long_lead():
-    """Overflow comes out of the lead, not off the tail: the search phrases
-    ("space video for sleep", "screensaver") have to survive."""
+    """Overflow comes out of the lead, not off the sleep phrase: the fixed
+    "Telescope Screensaver" tail goes first, then the name is cut."""
     cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
     long_title = "Westerlund Two Bright Young Stars Flare in an Enormous Stellar Nursery"
     assets = [_asset(0, long_title, ["roman"])] + [_asset(i, f"Roman field {i}", ["roman"]) for i in range(1, 80)]
     meta = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 9, 5))
     assert len(meta.title) <= 100
-    assert meta.title.startswith("1 Hour Relaxing Space Music for Sleep · ")
-    assert "roman telescope images" in meta.tags  # the subject moved from the title to the tags
-    lead = meta.title.split(" · ")[1].removesuffix(" by Webb")
+    assert meta.title.endswith(" | 1 Hour Relaxing Space Video for Sleep")
+    assert "roman telescope images" in meta.tags
+    lead = meta.title.split(" | ")[0].removesuffix(" by Webb")
+    assert len(lead) >= 25  # the name keeps several words, not one
     assert lead.split()[-1] not in {"the", "of", "in", "and", "a"}
     assert lead and long_title.startswith(lead)  # shortened at a word boundary, not mid-word
     assert not lead.endswith(" ")
@@ -171,7 +172,7 @@ def test_different_first_assets_give_different_titles():
     first = build_metadata(cfg, [_asset(0, "Ring Nebula (NIRCam Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
     second = build_metadata(cfg, [_asset(0, "Helix Nebula (MIRI Image)", ["nebula"])] + rest, [], seconds_per_image=45, when=date(2026, 9, 5))
     assert first.title != second.title
-    assert "· Ring Nebula" in first.title and "· Helix Nebula" in second.title
+    assert first.title.startswith("Ring Nebula") and second.title.startswith("Helix Nebula")
     # Same subject and length -- only the lead differs.
     assert first.title.replace("Ring", "X") == second.title.replace("Helix", "X")
 
@@ -187,9 +188,9 @@ def test_sleep_cut_title_and_dark_screen_chapter():
                          credit="NASA, ESA, CSA, STScI") for i in range(60)]
     meta = build_metadata(cfg, assets, [], seconds_per_image=45, chapter_limit=80,
                           total_seconds=28800, sleep=True, dark_after=2700)
-    assert meta.title.startswith("8 Hours Deep Sleep Music · Fall Asleep in Space · ")
-    assert meta.title.endswith(" · Dark Screen After 45 Min") and len(meta.title) <= 100
-    assert " the · " not in meta.title  # a shrunk lead ends on a content word
+    assert meta.title.startswith("Cosmic Cliffs") and "| 8 Hours Relaxing Space Video for Sleep" in meta.title
+    assert "Dark Screen" not in meta.title and len(meta.title) <= 100  # the description says it
+    assert " the | " not in meta.title  # a shrunk lead ends on a content word
     assert meta.description.startswith("8 Hours of deep sleep music")
     assert "45:00 Screen fades to black, music continues to 8:00:00" in meta.description
     # long chapter titles give way so the CC BY credits and hashtags survive

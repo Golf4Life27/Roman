@@ -20,7 +20,7 @@ from typing import Callable
 
 log = logging.getLogger(__name__)
 
-SUBSCRIBE = "Subscribe for a new space video every few days and a live sleep stream every night: " \
+SUBSCRIBE = "Subscribe for a new space video every day and a live sleep stream every night: " \
             "https://www.youtube.com/@SpaceScreens?sub_confirmation=1"
 
 
@@ -48,8 +48,24 @@ def _cozy(v: Video) -> bool:
     return v.title.startswith("Cozy ")
 
 
+# Uploads from this date on are titled name first ("Osaka at night | Earth from
+# Space | 1 Hour ..."), and their extra-length sleep cuts no longer say "Dark
+# Screen After" in the title (config/channels/deep-space-ambient.yaml).
+NAME_FIRST_SINCE = "2026-10-28"
+
+
 def _earth(v: Video) -> bool:
-    return v.title.split("·")[0].strip().lower().endswith(("earth from space for sleep", "earth at night for deep sleep"))
+    t = v.title.lower()
+    return (t.split("·")[0].strip().endswith(("earth from space for sleep", "earth at night for deep sleep"))
+            or " | earth from space | " in t)
+
+
+def _goes_dark(v: Video) -> bool:
+    """A sleep cut whose pictures fade to black: the title said so until
+    NAME_FIRST_SINCE; after it, every cut of four hours or more does."""
+    if "dark screen after" in v.title.lower():
+        return True
+    return v.published >= NAME_FIRST_SINCE and v.seconds >= 4 * 3600 and not _cozy(v) and not v.live
 
 
 def _space(v: Video) -> bool:
@@ -69,7 +85,7 @@ PLAYLISTS: list[Playlist] = [
     Playlist("Deep Sleep · Screen Goes Dark",
              "Long sleep cuts: the pictures fade to black partway through so the light won't keep you awake, and the "
              "music plays on.\n\n" + SUBSCRIBE,
-             lambda v: _long(v) and "dark screen after" in v.title.lower()),
+             lambda v: _long(v) and _goes_dark(v)),
     Playlist("Cozy Space Nights",
              "Cozy rooms with the stars outside the window and calm original music, including the seasonal cozy live "
              "streams. AI-animated scenes.\n\n" + SUBSCRIBE,

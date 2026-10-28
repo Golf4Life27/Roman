@@ -55,7 +55,7 @@ Tonight's live stream: {hours} hours of slow, drifting views of real space teles
 
 {uses}
 
-Subscribe for a new space video every few days and a live sleep stream every night:
+Subscribe for a new space video every day and a live sleep stream every night:
 {subscribe}
 
 {keywords}
@@ -71,7 +71,7 @@ Tonight's live stream: {hours} hours in a cozy {scene} with the stars outside th
 
 {uses}
 
-Subscribe for a new space video every few days and a live sleep stream every night:
+Subscribe for a new space video every day and a live sleep stream every night:
 {subscribe}
 
 {keywords}

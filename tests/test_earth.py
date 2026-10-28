@@ -64,7 +64,8 @@ def test_earth_videos_get_earth_titles_descriptions_and_tags():
     cfg = load_config(CFG)
     tracks = [Track(id="t", genre="ambient", path="x", licence="owned", title="Piece")]
     meta = build_metadata(cfg, [earth(i) for i in range(4)], tracks, seconds_per_image=45, when=date(2026, 10, 16))
-    assert "Earth from Space for Sleep" in meta.title and "Osaka" in meta.title and "Telescope" not in meta.title
+    assert meta.title.startswith("The city lights of Osaka") and "| Earth from Space |" in meta.title
+    assert "Telescope" not in meta.title
     assert "International Space Station" in meta.description and "space telescope images" not in meta.description
     assert "earth from space" in meta.tags
     space = build_metadata(cfg, [nebula(i) for i in range(4)], tracks, seconds_per_image=45, when=date(2026, 10, 16))
@@ -98,7 +99,8 @@ def test_an_earth_photo_can_be_a_short(monkeypatch, tmp_path):
     monkeypatch.setattr(ImageAsset, "download", lambda self, cache: None)
     monkeypatch.setattr(shorts, "flat_black_fraction", lambda a: 0.0)
     monkeypatch.setattr(shorts, "image_score", lambda p: 0.5)
-    assert [a.asset_id for a in shorts.ranked_candidates([earth(1), nebula(2)], tmp_path)] == ["nasa:e1", "nasa:n2"]
+    # Both are usable; the nebula ranks first on the deep-sky bonus.
+    assert [a.asset_id for a in shorts.ranked_candidates([earth(1), nebula(2)], tmp_path)] == ["nasa:n2", "nasa:e1"]
 
 
 def test_earth_short_titles_name_the_place_not_half_the_station():
@@ -175,3 +177,18 @@ def test_a_place_name_caption_passes_when_its_caption_shows_the_scene():
     assert looks_unsuitable(a, "earth")                 # a plain title naming no scene stays out
     a.keywords.append(CAPTIONED_TAG)
     assert not looks_unsuitable(a, "earth")             # its own caption says night lights from the station
+
+
+def test_shorts_prefer_a_deep_sky_object_over_a_slightly_sharper_frame(monkeypatch, tmp_path):
+    # The Hercules cluster Short earned 7 of the week's 20 Shorts subscribers.
+    from romanfeed import shorts
+
+    plain = ImageAsset(asset_id="nasa:p1", title="Saturn's rings in infrared", url="u", source="NASA", keywords=["saturn"])
+    monkeypatch.setattr(ImageAsset, "download", lambda self, cache: setattr(self, "local_path", self.asset_id))
+    monkeypatch.setattr(shorts, "flat_black_fraction", lambda a: 0.0)
+    monkeypatch.setattr(shorts, "image_score", lambda p: 0.55 if p == "nasa:p1" else 0.45)
+    assert [a.asset_id for a in shorts.ranked_candidates([plain, nebula(3)], tmp_path)] == ["nasa:n3", "nasa:p1"]
+    # a much stronger frame still wins
+    monkeypatch.setattr(shorts, "image_score", lambda p: 0.70 if p == "nasa:p1" else 0.45)
+    assert [a.asset_id for a in shorts.ranked_candidates([plain, nebula(3)], tmp_path)][0] == "nasa:p1"
+    assert shorts.subject_bonus(earth(4)) == 0.0

@@ -180,9 +180,9 @@ class EarthSettings:
     Earth source's photos (a nasa_images source with options.subject: earth)
     and these titles; every other day stays deep space. Empty = never."""
     weekdays: list[str] = field(default_factory=list)
-    title_template: str = "{length} Earth from Space for Sleep · {lead} · Space Station Screensaver"
-    sleep_title_template: str = ("{length} Earth at Night for Deep Sleep · {lead} · "
-                                 "Dark Screen After {dark_after}")
+    title_template: str = "{lead} | Earth from Space | {length} Relaxing Space Video for Sleep | Space Station Screensaver"
+    # Blank = title_template for the extra-length sleep cuts too.
+    sleep_title_template: str = ""
     tags: list[str] = field(default_factory=lambda: [
         "earth from space", "earth at night", "international space station", "iss", "planet earth",
         "earth from orbit", "aurora"])

@@ -39,7 +39,7 @@ def test_iso_duration():
 def test_long_video_gets_the_sleep_title_without_a_false_dark_screen_claim():
     body = rt.update_body(CFG, _video("A", "Carina Nebula (NIRCam Image) | Nebulae | 8 Hours Relaxing Space Video for Sleep | Telescope Screensaver", "PT8H0M1S"))
     s = body["snippet"]
-    assert s["title"] == "8 Hours Deep Sleep Music · Fall Asleep in Space · Carina Nebula"
+    assert s["title"] == "Carina Nebula by Webb | Deep Space | 8 Hours Relaxing Space Video for Sleep | Telescope Screensaver"
     assert "Dark Screen" not in s["title"]
     assert s["description"].startswith("8 Hours of deep sleep music")
     assert "0:00 Carina Nebula" in s["description"]           # bytes repr repaired
@@ -51,7 +51,7 @@ def test_long_video_gets_the_sleep_title_without_a_false_dark_screen_claim():
 def test_hour_video_names_the_telescope_and_rerun_is_a_no_op():
     v = _video("B", "Ring Nebula (NIRCam Image) | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver", "PT1H0M2S")
     first = rt.update_body(CFG, v)["snippet"]
-    assert first["title"] == "1 Hour Relaxing Space Music for Sleep · Ring Nebula by Webb · Telescope Screensaver"
+    assert first["title"] == "Ring Nebula by Webb | Deep Space | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"
     again = rt.update_body(CFG, _video("B", first["title"], "PT1H0M2S", desc=first["description"], tags=first["tags"]))["snippet"]
     assert again == first
 
@@ -133,7 +133,7 @@ def test_reads_by_handle_with_the_key_and_writes_with_the_token():
 def test_subject_first_titles_take_the_lead_from_the_first_chapter():
     v = _video("G", "Galaxies | 8 Hours Relaxing Space Video for Sleep | Real Telescope Screensaver", "PT8H",
                desc=OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 A glimmer from a dark cosmic era"))
-    assert rt.update_body(CFG, v)["snippet"]["title"] == "8 Hours Deep Sleep Music · Fall Asleep in Space · A glimmer from a dark cosmic era"
+    assert rt.update_body(CFG, v)["snippet"]["title"] == "A glimmer from a dark cosmic era | Deep Space | 8 Hours Relaxing Space Video for Sleep"
 
 
 def test_long_descriptions_shed_chapters_not_the_new_opening():
@@ -148,9 +148,9 @@ def test_long_descriptions_shed_chapters_not_the_new_opening():
 def test_cut_off_leads_use_the_full_chapter_and_skip_a_redundant_by():
     desc = OLD_DESC.replace("0:00 b'Carina Nebula'", "0:00 Webb’s View of the Molecular Cloud Chameleon I (Annotated)")
     t = rt.update_body(CFG, _video("W", "Webb’s View of the | Galaxies | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver", "PT1H", desc=desc))["snippet"]["title"]
-    assert t.startswith("1 Hour Relaxing Space Music for Sleep · Webb’s View of the Molecular Cloud")
+    assert t.startswith("Webb’s View of the Molecular Cloud")
     # the whole name fits once the fixed tail phrase gives way
-    assert t == "1 Hour Relaxing Space Music for Sleep · Webb’s View of the Molecular Cloud Chameleon I"
+    assert t == "Webb’s View of the Molecular Cloud Chameleon I | Deep Space | 1 Hour Relaxing Space Video for Sleep"
 
 
 def test_two_videos_opening_on_the_same_image_get_different_titles():
