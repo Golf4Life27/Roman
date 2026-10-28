@@ -230,10 +230,13 @@ publish:
   # {lead} names the first image in the cut, so every upload gets a unique title -- the same title run
   # after run is what reads as bulk uploads to YouTube.
   # Tokens: {lead} {lead_by} ("Pillars of Creation by Webb") {telescope} {dark_after} {subject} {length}.
-  # Search shows ~60 characters, so the length and the sleep phrase come first; {lead}
-  # keeps every title unique and shrinks to fit 100 characters.
-  title_template: "{length} Relaxing Space Music for Sleep · {lead_by} · Telescope Screensaver"
-  sleep_title_template: "{length} Deep Sleep Music · Fall Asleep in Space · {lead} · Dark Screen After {dark_after}"
+  # Name first, sleep phrase at the tail. The Oct 1 title split test measured the
+  # sleep-first titles ("1 Hour Relaxing Space Music for Sleep · ...") at 0.59x,
+  # 0.58x and 0.62x the views per video per day of these name-first ones over three
+  # weekly readings, so new uploads went back to name-first on 2026-10-28. The
+  # extra-length sleep cuts use the same shape (blank sleep_title_template).
+  title_template: "{lead_by} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
+  sleep_title_template: ""
   tags:
     - space
     - space video
@@ -335,3 +338,6 @@ crosspost:
 # thousands (`romanfeed supply` for today's numbers).
 earth:
   weekdays: [tue, thu, fri, sun]
+  # Name first, like the space titles (see publish.title_template).
+  title_template: "{lead} | Earth from Space | {length} Relaxing Space Video for Sleep | Space Station Screensaver"
+  sleep_title_template: ""

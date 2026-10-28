@@ -227,7 +227,7 @@ Live now: {hours} hours in a cozy {scene} with the stars outside and calm origin
 
 {uses}
 
-Subscribe for a new space video every few days and cozy live streams around the clock:
+Subscribe for a new space video every day and cozy live streams around the clock:
 {subscribe}
 
 {keywords}

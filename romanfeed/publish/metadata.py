@@ -32,7 +32,7 @@ MUSIC
 
 {roman_note}
 
-New space sleep videos every week.
+A new space sleep video every day.
 https://spacescreens.app
 Not affiliated with or endorsed by NASA or ESA.
 
@@ -182,13 +182,16 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     title = template.format(lead=lead, **tokens)
     if len(title) <= limit or not lead:
         return title
-    # A whole name beats a fixed tail phrase: drop a last " · " segment that
-    # carries no token ("· Telescope Screensaver") before cutting the name.
-    parts = re.split(r"(\s+·\s+)", template)
+    # A whole name beats a fixed tail phrase: drop a last " · " or " | " segment
+    # that carries no token ("| Telescope Screensaver") before cutting the name.
+    # If the name is still too long without it, the name is cut in the shorter
+    # title: the sleep phrase stays and the name keeps more of its words.
+    parts = re.split(r"(\s+[·|]\s+)", template)
     if len(parts) >= 3 and "{" not in parts[-1]:
-        shorter = "".join(parts[:-2]).format(lead=lead, **tokens)
-        if len(shorter) <= limit:
-            return shorter
+        template = "".join(parts[:-2])
+        title = template.format(lead=lead, **tokens)
+        if len(title) <= limit:
+            return title
     lead = _shorten(lead, len(lead) - (len(title) - limit))
     # "Cosmic Cliffs in the" reads as a mistake; end on a content word.
     lead = re.sub(r"(?:\s+(?:the|of|in|and|a|an|at|with|from|by|on|&))+$", "", lead, flags=re.IGNORECASE)

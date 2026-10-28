@@ -5,6 +5,9 @@
 # (the 1h and 8h cut of one render) alternated by age, so the groups are
 # balanced. The Monday report compares views per video per day since `start`;
 # decide at the Oct 31 checkpoint whether to retitle the rest or revert.
+# 2026-10-28: new uploads went back to name-first titles after three readings
+# of 0.58x-0.62x for the sleep-first ones; these 13 stay as they are until the
+# Nov 2 decision on the back catalogue.
 start: "2026-10-01"
 groups:
   new:   [Rsq_ObqR7K4, B_gKq9iqD3I, z7YRVeMOnRo, j86fKOM-TX0, LHtuaajv6sg, uXzkMPh10fc]

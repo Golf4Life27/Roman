@@ -106,3 +106,24 @@ def test_refused_position_falls_back_to_append():
     yt = FakeYT(sort_refused=True)
     pl.add(yt, "PL1", "w2", 0)
     assert yt.calls == [("add", "PL1", "w2", None)]
+
+
+def test_name_first_titles_land_in_the_right_playlists():
+    new = [
+        Video("e2", "The city lights of Osaka | Earth from Space | 1 Hour Relaxing Space Video for Sleep",
+              "2026-10-29T03:00:00Z", 3600, False),
+        Video("w2", "Pillars of Creation by Webb | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver",
+              "2026-10-29T03:00:00Z", 3600, False),
+        Video("d2", "Crab Nebula by Hubble | Nebulae | 8 Hours Relaxing Space Video for Sleep",
+              "2026-10-29T04:00:00Z", 8 * 3600, False),
+        # before the switch an 8-hour cut whose title does not say so never went dark
+        Video("d0", "Carina Nebula | Nebulae | 8 Hours Relaxing Space Video for Sleep | Telescope Screensaver",
+              "2026-09-20T04:00:00Z", 8 * 3600, False),
+    ]
+    rule = {p.title: p.rule for p in pl.PLAYLISTS}
+    pick = lambda t: {v.id for v in new if rule[t](v)}
+    assert pick("Earth from Space for Sleep") == {"e2"}
+    assert pick("James Webb Telescope Images for Sleep") == {"w2"}
+    assert pick("Hubble Telescope Images for Sleep") == {"d2"}
+    assert pick("Deep Sleep · Screen Goes Dark") == {"d2"}
+    assert pick("Space Videos for Sleep · Full Length") == {"w2", "d2", "d0"}

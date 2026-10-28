@@ -34,7 +34,7 @@ Tonight's live stream: {hours} hours of slow, drifting views of real space teles
 TONIGHT'S LINE-UP
 {lineup}
 
-Subscribe for a new space video every few days and a live sleep stream every night:
+Subscribe for a new space video every day and a live sleep stream every night:
 {subscribe}
 
 {keywords}
@@ -159,7 +159,7 @@ SCENE_DESCRIPTION = """{tagline}
 
 Tonight's live stream: {hours} hours in the {scene}, a cozy {theme} room with the stars outside the window and calm original music. Put it on, dim the lights, and stay as long as you like. The stream ends on its own and stays on the channel to replay any night.
 
-Subscribe for a new space video every few days and a live sleep stream every night:
+Subscribe for a new space video every day and a live sleep stream every night:
 {subscribe}
 
 {keywords}
