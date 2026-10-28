@@ -150,6 +150,9 @@ class _Plan:
     seed_int: int
     fade_in: float
     fade_out: float
+    # Ocean style only: band-limited noise shaped into slow breaking waves.
+    surf_kernel: np.ndarray | None = None
+    surf_env: Callable[[np.ndarray], np.ndarray] | None = None
 
 
 def _seed_int(seed: str) -> int:
@@ -341,6 +344,186 @@ def _plan(seconds: float, seed: str, sr: int) -> _Plan:
     return _Plan(seconds, sr, n_samples, title, key, mode_name, voices, ir, kern, air_swell,
                  seed_int, fade_in, fade_out)
 
+# --- ocean style -------------------------------------------------------------
+# The ocean channel's own sound, so its videos are not Space Screens with new
+# pictures: brighter modes, slower chords, soft piano-like notes instead of
+# celesta bells, no beating drone, and a bed of synthesized surf -- noise
+# shaped into waves that rise for a few seconds and draw back for longer,
+# each one a different size, never on a fixed beat.
+_OCEAN_MODES: dict[str, dict] = {
+    "major": {
+        "scale": [0, 2, 4, 5, 7, 9, 11], "penta": [0, 2, 4, 7, 9], "label": "major",
+        "moves": {0: [3, 5, 4, 1], 3: [0, 4, 5, 1], 5: [3, 1, 4, 0], 4: [0, 5, 3], 1: [4, 3, 0]},
+    },
+    "mixolydian": {
+        "scale": [0, 2, 4, 5, 7, 9, 10], "penta": [0, 2, 4, 7, 9], "label": "Mixolydian",
+        "moves": {0: [6, 3, 4, 1], 6: [3, 0, 4], 3: [0, 6, 1], 4: [0, 3], 1: [3, 0, 6]},
+    },
+    "lydian": _MODES["lydian"],
+    "dorian": _MODES["dorian"],
+}
+_OCEAN_ADJECTIVES = [
+    "Quiet", "Slow", "Soft", "Still", "Gentle", "Low", "Blue", "Warm", "Calm", "Clear", "Deep", "Drifting",
+    "Sunlit", "Hushed", "Long", "Turning", "Patient", "Silver",
+]
+_OCEAN_NOUNS = [
+    "Tide", "Current", "Reef", "Shoal", "Lagoon", "Swell", "Kelp", "Shallows", "Fathom", "Undertow", "Atoll",
+    "Seagrass", "Breakers", "Cove", "Driftwood", "Harbour", "Lull", "Sandbar", "Sound", "Wake", "Moonwater",
+]
+
+
+def _surf_envelope(rng: np.random.Generator, seconds: float, level: float):
+    """Gain over time for the surf layer: a train of waves, 7-14 s apart, each
+    rising 2.5-4.5 s and falling 4-8 s, with sizes that drift between calm and
+    fuller sets. Precomputed at 50 Hz and interpolated, so long pieces stay cheap."""
+    rate = 50.0
+    n = int(seconds * rate) + 2
+    t = np.arange(n) / rate
+    env = np.zeros(n, dtype=np.float64)
+    start = float(rng.uniform(0.0, 4.0))
+    set_phase = float(rng.uniform(0, 2 * np.pi))
+    set_period = float(rng.uniform(70.0, 140.0))
+    while start < seconds:
+        rise, fall = float(rng.uniform(2.5, 4.5)), float(rng.uniform(4.0, 8.0))
+        size = (0.55 + 0.45 * (0.5 + 0.5 * np.sin(2 * np.pi * start / set_period + set_phase))) * float(rng.uniform(0.7, 1.0))
+        dt = t - start
+        up = np.clip(dt / rise, 0.0, 1.0)
+        down = np.exp(-np.clip(dt - rise, 0.0, None) / (fall / 3.0))
+        shape = np.where(dt < 0, 0.0, np.where(dt < rise, up ** 2 * (3 - 2 * up), down))
+        env = np.maximum(env, size * shape)
+        start += float(rng.uniform(7.0, 14.0))
+    env = level * (0.18 + 0.82 * env)
+
+    def surf(tt: np.ndarray) -> np.ndarray:
+        return np.interp(tt, t, env)
+    return surf
+
+
+def _plan_ocean(seconds: float, seed: str, sr: int) -> _Plan:
+    seed_int = _seed_int("ocean:" + seed)
+    rng = np.random.default_rng(seed_int)
+    n_samples = int(round(seconds * sr))
+
+    mode_name = str(rng.choice(list(_OCEAN_MODES)))
+    mode = _OCEAN_MODES[mode_name]
+    root_pc = int(rng.integers(12))
+    key = _NOTE_NAMES[root_pc]
+    title = f"{rng.choice(_OCEAN_ADJECTIVES)} {rng.choice(_OCEAN_NOUNS)} in {key} {mode['label']}"
+    scale = mode["scale"]
+
+    def pc_of(degree: int) -> int:
+        return (root_pc + scale[degree % 7]) % 12
+
+    # Rounder, warmer pads than the space style (faster rolloff, a touch of the
+    # 2nd harmonic), and a piano-ish voice with a few bright partials.
+    roll = rng.uniform(2.4, 3.0)
+    warm = _wavetable([1.0 / (h ** roll) for h in range(1, 7)])
+    soft = _wavetable([1.0, 0.25, 0.04])
+    sine = _wavetable([1.0])
+    voices: list[_Voice] = []
+    chord_pcs: list[list[int]] = []
+
+    def add(t0: float, t1: float, freq: float, table, pan: float, env, bus: int = 0, amp: float = 1.0):
+        s0, s1 = max(_snap(t0, sr), 0), min(_snap(t1, sr) + _CTRL, n_samples)
+        if s1 <= s0 or freq * 2 >= sr:
+            return
+        gl, gr = _pan(pan)
+        voices.append(_Voice(s0, s1, freq / sr, float(rng.random()), table, gl * amp, gr * amp, env, bus))
+
+    starts, t = [], 0.0
+    while t < seconds:
+        starts.append(t)
+        t += float(rng.uniform(18.0, 30.0))
+    roots = _progression(rng, mode["moves"], len(starts))
+    upper = [60, 64, 67, 71]
+    bass_prev = 48
+    for i, (t0, deg) in enumerate(zip(starts, roots)):
+        t1 = starts[i + 1] if i + 1 < len(starts) else seconds
+        att, rel = rng.uniform(6.0, 10.0), rng.uniform(8.0, 12.0)
+        on = t0 - 4.0 if i else -0.6 * att
+        colour = 8 if rng.random() < 0.6 else 6             # 9ths more than 7ths: open, unresolved
+        pcs = [pc_of(deg + d) for d in (0, 2, 4, colour)]
+        chord_pcs.append(pcs)
+        upper = _voice_lead(upper, pcs, 57, 79)
+        bass = min((m for m in range(40, 55) if m % 12 == pcs[0]), key=lambda m: abs(m - bass_prev))
+        bass_prev = bass
+        for j, m in enumerate([bass] + upper):
+            f = _midi_hz(m)
+            amp = 0.07 if j == 0 else 0.045 * (0.8 if m > 72 else 1.0)
+            env = _pad_env(on, att, t1, rel, rng.uniform(0.02, 0.06), rng.uniform(0, 2 * np.pi), rng.uniform(0.08, 0.18))
+            spread = rng.uniform(0.4, 0.9) * (0.3 if j == 0 else 1.0)
+            cents = rng.uniform(2.0, 5.0)
+            tab = soft if j == 0 else warm
+            for sgn in (-1.0, 1.0):
+                add(on, t1 + rel, f * 2 ** (sgn * cents / 1200), tab, sgn * spread, env, 0, amp)
+
+    # Soft piano-like notes: a few harmonic partials, quick bloom, 3-6 s decay,
+    # sometimes two in a row like a slow arpeggio. Mid register, never shrill.
+    penta = [root_pc + 60 + iv for iv in mode["penta"]] + [root_pc + 72 + iv for iv in mode["penta"]]
+    penta = [m - 12 if m > 84 else m for m in penta]
+    idx = int(rng.integers(len(penta)))
+    t = rng.uniform(8.0, 16.0)
+    while t < seconds - 12.0:
+        pcs = chord_pcs[max(0, int(np.searchsorted(starts, t, side="right")) - 1)]
+        ok = [k for k, m in enumerate(penta) if all((m - pc) % 12 not in (1, 11) for pc in pcs)] or list(range(len(penta)))
+        for _ in range(2 if rng.random() < 0.35 else 1):
+            want = int(np.clip(idx + rng.choice([-2, -1, 1, 1, 2]), 0, len(penta) - 1))
+            idx = min(ok, key=lambda k: (abs(k - want), k))
+            f0 = _midi_hz(penta[idx])
+            decay = rng.uniform(3.0, 6.0)
+            pan = rng.uniform(-0.45, 0.45)
+            vel = rng.uniform(0.5, 1.0) * 0.06
+            for ratio, a, dk in ((1.0, 1.0, 1.0), (2.0, 0.45, 0.6), (3.0, 0.18, 0.4), (4.0, 0.08, 0.3)):
+                dur = min(decay * dk * 7.0, 18.0)
+                add(t, t + dur, f0 * ratio, sine, pan, _bell_env(t, decay * dk), 1, vel * a)
+            t += rng.uniform(0.6, 1.4)
+        gap = rng.uniform(7.0, 18.0)
+        if rng.random() < 0.35:
+            gap += rng.uniform(12.0, 30.0)
+        t += gap
+
+    # A shorter, softer room than the space style: water, not a cathedral.
+    rt60 = float(rng.uniform(3.5, 5.0))
+    L = int(rt60 * sr)
+    tt = np.arange(L, dtype=np.float64) / sr
+    freqs = np.fft.rfftfreq(L, 1.0 / sr)
+    ir = np.empty((2, L), dtype=np.float32)
+    for ch in range(2):
+        spec = np.fft.rfft(rng.standard_normal(L))
+        dark = np.fft.irfft(spec / (1 + (freqs / 2500.0) ** 2), n=L)
+        h = dark * np.exp(-6.91 * tt / rt60)
+        pre = int(0.015 * sr)
+        h = np.concatenate([np.zeros(pre), h[: L - pre]])
+        ir[ch] = (h / np.sqrt(np.sum(h * h))).astype(np.float32)
+
+    taps = 1023
+    n = np.arange(taps) - taps // 2
+
+    def lp(fc: float) -> np.ndarray:
+        return 2 * fc / sr * np.sinc(2 * fc / sr * n)
+    # Air: a faint high shimmer. Surf: the wash itself, ~80 Hz to ~1.5 kHz.
+    air = (lp(rng.uniform(5000.0, 7000.0)) - lp(rng.uniform(1500.0, 2200.0))) * np.hanning(taps)
+    air = (air / np.sqrt(np.sum(air * air))).astype(np.float32)
+    surf = (lp(rng.uniform(1100.0, 1700.0)) - lp(rng.uniform(70.0, 110.0))) * np.hanning(taps)
+    surf = (surf / np.sqrt(np.sum(surf * surf))).astype(np.float32)
+    air_level = rng.uniform(0.004, 0.007)
+    p1, f1 = rng.uniform(40.0, 80.0), rng.uniform(0, 2 * np.pi)
+
+    def air_swell(t: np.ndarray) -> np.ndarray:
+        return air_level * (0.5 + 0.5 * np.sin(2 * np.pi * t / p1 + f1))
+
+    surf_env = _surf_envelope(rng, seconds, float(rng.uniform(0.040, 0.055)))
+    fade_in = min(6.0, seconds / 4)
+    fade_out = min(8.0, seconds / 4)
+    return _Plan(seconds, sr, n_samples, title, key, mode_name, voices, ir, air, air_swell,
+                 seed_int, fade_in, fade_out, surf, surf_env)
+
+
+def _make_plan(seconds: float, seed: str, sr: int, style: str = "space") -> _Plan:
+    if style == "ocean":
+        return _plan_ocean(seconds, seed, sr)
+    return _plan(seconds, seed, sr)
+
 
 class _OLAConvolver:
     """Streaming FFT convolution (overlap-add) of (2, n) blocks with a fixed
@@ -371,7 +554,9 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
     block = (nfft - L + 1) // _CTRL * _CTRL
     reverb = _OLAConvolver(plan.ir, block)
     air_f = _OLAConvolver(plan.air_kernel, block)
+    surf_f = _OLAConvolver(plan.surf_kernel, block) if plan.surf_kernel is not None else None
     noise_rng = np.random.default_rng(plan.seed_int ^ 0x5EED)
+    surf_rng = np.random.default_rng(plan.seed_int ^ 0x5EA)
 
     voices = sorted(plan.voices, key=lambda v: v.start)
     for c0 in range(0, N, block):
@@ -407,8 +592,15 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
         air = air_f.process(noise) * np.repeat(plan.air_swell(kt).astype(np.float32), _CTRL)[:n]
 
         pads, bells = bus[0], bus[1]
-        wet = reverb.process(pads + 1.8 * bells + 0.6 * air)
-        mix = 0.55 * pads + 0.45 * bells + 0.6 * air + 0.75 * wet
+        if surf_f is not None:
+            # Surf sits beside the music, mostly dry, a little in the room.
+            surf = surf_f.process(surf_rng.standard_normal((2, n), dtype=np.float32))
+            surf *= np.repeat(plan.surf_env(kt).astype(np.float32), _CTRL)[:n]
+            wet = reverb.process(pads + 1.4 * bells + 0.4 * air + 0.25 * surf)
+            mix = 0.55 * pads + 0.5 * bells + 0.6 * air + 0.9 * surf + 0.6 * wet
+        else:
+            wet = reverb.process(pads + 1.8 * bells + 0.6 * air)
+            mix = 0.55 * pads + 0.45 * bells + 0.6 * air + 0.75 * wet
 
         fade = _smooth(kt / plan.fade_in) * _smooth((plan.seconds - kt) / plan.fade_out)
         mix *= np.repeat(fade.astype(np.float32), _CTRL)[:n]
@@ -420,18 +612,19 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
         yield mix
 
 
-def render_pcm(seconds: float, seed: str, sample_rate: int = 44100) -> np.ndarray:
+def render_pcm(seconds: float, seed: str, sample_rate: int = 44100, *, style: str = "space") -> np.ndarray:
     """The whole piece as float32 (n, 2). For tests and short previews; long
     pieces should stream through compose_piece instead."""
-    plan = _plan(seconds, seed, sample_rate)
+    plan = _make_plan(seconds, seed, sample_rate, style)
     return np.concatenate(list(_render(plan)), axis=1).T.copy()
 
 
-def compose_piece(out_path: Path, *, seconds: float, seed: str, sample_rate: int = 44100) -> Track:
+def compose_piece(out_path: Path, *, seconds: float, seed: str, sample_rate: int = 44100,
+                  style: str = "space", artist: str = "Space Screens") -> Track:
     """Compose one piece to `out_path` (.m4a, AAC 192k stereo, TARGET_LUFS)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    plan = _plan(seconds, seed, sample_rate)
+    plan = _make_plan(seconds, seed, sample_rate, style)
     wav = out_path.with_name(f".{out_path.stem}.{os.getpid()}.{threading.get_ident()}.wav")
     peak = 0.0
     try:
@@ -447,9 +640,9 @@ def compose_piece(out_path: Path, *, seconds: float, seed: str, sample_rate: int
         wav.unlink(missing_ok=True)
     return Track(
         id=f"composed-{_slug(seed)}", path=out_path, genre="ambient", licence="owned",
-        title=plan.title, artist="Space Screens",
-        notes=f"composed by romanfeed.audio.composer, seed={seed}",
-        tags=["composed", plan.mode, plan.key],
+        title=plan.title, artist=artist,
+        notes=f"composed by romanfeed.audio.composer, style={style}, seed={seed}",
+        tags=["composed", style, plan.mode, plan.key],
     )
 
 
@@ -492,7 +685,9 @@ class ComposedLibrary:
     the GIL on large arrays and the encode is an ffmpeg subprocess."""
 
     def __init__(self, work_dir: str | Path, *, count: int, seconds_each: float, seed: str,
-                 workers: int | None = None):
+                 workers: int | None = None, style: str = "space", artist: str = "Space Screens"):
+        self.style = style
+        self.artist = artist
         self.work_dir = Path(work_dir)
         self.manifest_path = self.work_dir   # build_soundtrack names it in its error message
         self.count = count
@@ -506,7 +701,8 @@ class ComposedLibrary:
         seeds = [f"{self.seed}-{i}" for i in range(self.count)]
 
         def one(s: str) -> Track:
-            return compose_piece(self.work_dir / f"composed-{_slug(s)}.m4a", seconds=self.seconds_each, seed=s)
+            return compose_piece(self.work_dir / f"composed-{_slug(s)}.m4a", seconds=self.seconds_each, seed=s,
+                                 style=self.style, artist=self.artist)
 
         with ThreadPoolExecutor(max_workers=max(1, self.workers)) as pool:
             self.tracks = list(pool.map(one, seeds))
@@ -519,14 +715,15 @@ class ComposedLibrary:
         return [t for t in self.tracks if t.path.exists()]
 
 
-def open_library(audio, *, work_dir: Path, seed: str):
+def open_library(audio, *, work_dir: Path, seed: str, artist: str = "Space Screens"):
     """The soundtrack source a channel's AudioSettings asks for: the licensed
     manifest ("library") or freshly composed pieces ("composed")."""
     from romanfeed.audio.library import MusicLibrary
 
     if audio.source == "composed":
         return ComposedLibrary(Path(work_dir) / "composed", count=audio.composed_pieces,
-                               seconds_each=audio.composed_seconds, seed=seed)
+                               seconds_each=audio.composed_seconds, seed=seed,
+                               style=getattr(audio, "style", "space"), artist=artist)
     return MusicLibrary(audio.library)
 
 

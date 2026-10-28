@@ -1,0 +1,164 @@
+# Second channel (owner's yes 2026-10-28: "Start ocean, then start the next").
+# Same machine as Space Screens, its own look: real ocean photography from
+# Wikimedia Commons (public domain and CC BY only, every photographer credited),
+# its own composed music with a slow surf layer, teal thumbnails, ocean titles.
+# Uploads use this channel's own token (romanfeed/publish/channel_token.py),
+# never the Space Screens one; .github/workflows/ocean-daily.yml stays idle
+# until that token exists.
+channel:
+  slug: ocean-ambient
+  name: Deep Blue Screens
+  handle: "@DeepBlueScreens"
+  channel_id: ""              # filled from the connection check (release channel-tokens/ocean-ambient.channel)
+  tagline: Real ocean photography, slowly, with calm original music for sleep.
+  subject: ocean
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  # 60 x 60 s = one hour. Fewer, slower photos than Space Screens (80 x 45 s):
+  # the free ocean library is shallower, and a slower drift suits the sea.
+  seconds_per_image: 60
+  images_per_video: 60
+  transition_seconds: 3.0
+  captions: true
+  max_zoom: 1.14
+  crf: 20
+  preset: veryfast
+  extra_lengths_hours: [8]
+  intro_seconds: 12
+  subscribe_from: 14
+  subscribe_until: 40
+  subscribe_line: Subscribe for a new ocean every day
+  sleep_dark_after_minutes: 45
+  thumbnail_line: OCEAN FOR SLEEP
+  thumbnail_plate: [4, 38, 58]
+
+sources:
+  - type: commons
+    enabled: true
+    min_width: 1920
+    max_per_query: 300
+    options:
+      subject: ocean
+      download_width: 3840   # a standard Wikimedia thumbnail step; smaller originals come whole
+    queries:
+      # reefs
+      - coral reef
+      - reef fish
+      - coral garden
+      - soft coral
+      - hard coral underwater
+      - great barrier reef underwater
+      - red sea reef
+      - reef wall diving
+      - sea fan gorgonian
+      - anemone clownfish
+      - parrotfish
+      - butterflyfish
+      - angelfish reef
+      - lionfish
+      - moray eel
+      # big animals
+      - humpback whale
+      - humpback whale underwater
+      - blue whale
+      - sperm whale
+      - orca
+      - whale breaching
+      - whale shark
+      - manta ray
+      - eagle ray
+      - stingray underwater
+      - shark underwater
+      - hammerhead shark
+      - reef shark
+      - dolphin underwater
+      - bottlenose dolphin
+      - spinner dolphin
+      - sea lion underwater
+      - seal underwater
+      - manatee
+      - dugong
+      # turtles and small life
+      - sea turtle
+      - green sea turtle
+      - hawksbill turtle
+      - jellyfish
+      - moon jellyfish
+      - comb jelly
+      - octopus
+      - cuttlefish
+      - squid underwater
+      - nudibranch
+      - sea star
+      - sea urchin underwater
+      - seahorse
+      - school of fish
+      - sardine run
+      - barracuda school
+      # kelp, deep and open water
+      - kelp forest
+      - giant kelp
+      - seagrass meadow
+      - deep sea
+      - deep sea creature
+      - hydrothermal vent
+      - bioluminescence
+      - open ocean underwater
+      - underwater sunlight rays
+      - underwater cave cenote
+      # NOAA's own archives (public domain)
+      - NOAA national marine sanctuary
+      - NOAA Okeanos Explorer
+      - Papahanaumokuakea
+      - Flower Garden Banks
+      - Channel Islands kelp
+      # the surface
+      - ocean waves
+      - seascape
+      - ocean sunset
+      - breaking wave
+      - tropical lagoon
+      - coastline aerial
+
+audio:
+  genre: ambient
+  source: composed
+  style: ocean                # warmer modes, softer piano, slow surf layer
+  fade_seconds: 8
+  crossfade_seconds: 8
+  gain_db: -6
+  allow_placeholder: false
+
+publish:
+  mode: upload
+  privacy: public
+  category_id: "10"           # Music: the video is a sleep-music video with pictures
+  title_template: "{lead} | {subject} | {length} Relaxing Ocean Music for Sleep | Underwater Screensaver"
+  sleep_title_template: ""
+  tags:
+    - ocean
+    - ocean video
+    - ocean music for sleep
+    - underwater
+    - underwater screensaver
+    - relaxing ocean
+    - sleep music
+    - coral reef
+    - sea life
+    - whales
+    - sea turtle
+    - ambient
+    - relaxing music
+    - screensaver
+    - calm
+    - study music
+
+# Off for the first week: the long videos come first, Shorts and a live
+# stream follow once the daily upload has run on its own.
+shorts:
+  enabled: false
+live:
+  enabled: false

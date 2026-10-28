@@ -75,7 +75,7 @@ def caption_layer(asset: ImageAsset, width: int, height: int) -> Image.Image:
 
     title = asset.title.strip()[:90]
     body = asset.short_description
-    credit = f"Image: {asset.credit or asset.source}"
+    credit = f"{'Photo' if asset.asset_id.startswith('commons:') else 'Image'}: {asset.credit or asset.source}"
 
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)

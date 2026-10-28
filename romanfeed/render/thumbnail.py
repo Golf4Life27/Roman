@@ -88,7 +88,7 @@ def _encode(im: Image.Image, limit: int = MAX_BYTES) -> bytes:
 
 
 def make_thumbnail(image_path, out_path, *, length_label: str, subject: str | None = None,
-                   size: tuple[int, int] = (1280, 720)) -> Path:
+                   size: tuple[int, int] = (1280, 720), plate_rgb: tuple[int, int, int] | None = None) -> Path:
     """Render a thumbnail JPEG for one video and return its path.
 
     `length_label` is the headline ("8 Hours" -> "8 HOURS"). `subject`, when
@@ -127,7 +127,7 @@ def make_thumbnail(image_path, out_path, *, length_label: str, subject: str | No
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)
     radius = int(h * 0.03)
-    d.rounded_rectangle(plate, radius=radius, fill=(6, 8, 18, 150), outline=(255, 255, 255, 40), width=max(1, h // 360))
+    d.rounded_rectangle(plate, radius=radius, fill=(*(plate_rgb or (6, 8, 18)), 150), outline=(255, 255, 255, 40), width=max(1, h // 360))
 
     tx, ty = plate[0] + pad_x, plate[1] + pad_y
     shadow = max(2, h // 240)

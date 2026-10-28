@@ -1,0 +1,92 @@
+# Upload access for a sibling channel (ocean and the lanes after it), with no
+# new repository secret. romanfeed/publish/channel_token.py explains the design.
+#
+# Two runs per channel:
+#   1. no address  -> the job prints a consent link (Google's own page). The
+#      owner opens it, picks the NEW channel, allows, and copies the address
+#      of the page that then fails to load (http://localhost:8765/?code=...).
+#   2. that address -> the job trades it for the channel's token, proves which
+#      channel it uploads to (a 4-second private test upload when the token
+#      cannot simply ask), refuses Space Screens, and stores the token
+#      encrypted on the channel-tokens release with the confirmed channel id.
+#
+# Start it from Actions (workflow_dispatch) or by pushing connect/<slug>.txt
+# holding the address (empty file = print the link). Google's code expires in
+# minutes, so run 2 has to follow the consent closely; a stale one just means
+# opening the link again.
+name: Connect channel
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: channel slug (config/channels/<slug>.yaml)
+        default: ocean-ambient
+      address:
+        description: the address the browser landed on after Allow (blank = print the consent link)
+        default: ""
+  push:
+    paths: ["connect/*.txt"]
+permissions:
+  contents: write   # the channel-tokens release
+concurrency:
+  group: connect-channel
+  cancel-in-progress: false
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - run: pip install -e ".[youtube]"
+      - name: Write the Space Screens token (its OAuth client signs the link)
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Which channel, which step
+        id: req
+        env:
+          IN_SLUG: ${{ inputs.slug }}
+          IN_ADDRESS: ${{ inputs.address }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            f=$(git diff --name-only HEAD~1 HEAD -- 'connect/*.txt' | head -1)
+            [ -z "$f" ] && { echo "no connect file changed"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+            [ -f "$f" ] || { echo "$f removed"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+            slug=$(basename "$f" .txt)
+            address=$(tr -d '[:space:]' < "$f")
+          else
+            slug="$IN_SLUG"; address=$(printf '%s' "$IN_ADDRESS" | tr -d '[:space:]')
+          fi
+          [ -f "config/channels/$slug.yaml" ] || { echo "::error::no config/channels/$slug.yaml"; exit 1; }
+          [ -n "$address" ] && echo "::add-mask::$address"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          { echo "address<<EOF_ADDR"; echo "$address"; echo "EOF_ADDR"; } >> "$GITHUB_OUTPUT"
+      - name: Consent link
+        if: steps.req.outputs.skip != 'true' && steps.req.outputs.address == ''
+        run: |
+          url=$(python -m romanfeed channel-link "${{ steps.req.outputs.slug }}")
+          echo "::notice title=Consent link for ${{ steps.req.outputs.slug }}::$url"
+          echo "$url"
+      - name: Trade the code, check the channel, store the token
+        if: steps.req.outputs.skip != 'true' && steps.req.outputs.address != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ADDRESS: ${{ steps.req.outputs.address }}
+          SLUG: ${{ steps.req.outputs.slug }}
+        run: |
+          python -m romanfeed channel-finish "$SLUG" "$ADDRESS" \
+            --out "$SLUG.token.enc" --channel-out "$SLUG.channel" \
+            --not-channel UCUlw1snmaUDAKL965drudgQ
+          gh release view channel-tokens >/dev/null 2>&1 || gh release create channel-tokens --prerelease \
+            --title "Channel upload access (encrypted)" \
+            --notes "Encrypted per-channel upload tokens for sibling channels. Useless without the repository's OAuth client secret. See romanfeed/publish/channel_token.py."
+          gh release upload channel-tokens "$SLUG.token.enc" "$SLUG.channel" --clobber
+          echo "::notice title=Connected::$SLUG uploads to channel $(cat "$SLUG.channel")"

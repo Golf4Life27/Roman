@@ -44,7 +44,8 @@ def log_disk_free(path: Path, where: str) -> None:
 SLEEP_THUMB_LINE = "DEEP SLEEP · DARK SCREEN"
 
 
-def build_thumbnail(assets, seconds: float, out_path: Path, *, subject: str | None = None) -> Path | None:
+def build_thumbnail(assets, seconds: float, out_path: Path, *, subject: str | None = None,
+                    plate_rgb: tuple[int, int, int] | None = None) -> Path | None:
     """Thumbnail from the cut's first image -- the one its {lead} title names --
     with the cut's length as the headline. A failure here costs the custom
     thumbnail, not the video, so it is logged and the upload goes ahead."""
@@ -53,9 +54,10 @@ def build_thumbnail(assets, seconds: float, out_path: Path, *, subject: str | No
         log.warning("no lead image on disk for %s; uploading without a custom thumbnail", out_path.name)
         return None
     try:
+        extra = {"plate_rgb": plate_rgb} if plate_rgb else {}
         if subject:
-            return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds), subject=subject)
-        return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds))
+            return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds), subject=subject, **extra)
+        return make_thumbnail(lead.local_path, out_path, length_label=length_text(seconds), **extra)
     except Exception as exc:  # Pillow on a corrupt file, disk full
         log.warning("thumbnail failed for %s: %s", out_path.name, exc)
         return None
@@ -94,6 +96,8 @@ def todays_subject(cfg: ChannelConfig, candidates, ledger, count: int, *, day: d
     from romanfeed.curation.selector import looks_unsuitable
 
     day = day or date.today()
+    if cfg.channel.subject != "space":
+        return cfg.channel.subject
     if WEEKDAYS[day.weekday()] not in cfg.earth.weekdays:
         return "space"
     used = ledger.used_asset_ids(cfg.channel.slug)
@@ -140,19 +144,20 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             candidates, channel=cfg.channel.slug, ledger=ledger, count=n_images,
             min_width=min_width, cache_dir=str(cache), seed=opts.seed or today,
             # Night-side Earth photos have real black sky, not a mosaic hole.
-            max_flat_black=0 if subject == "earth" else cfg.video.max_flat_black,
+            max_flat_black=cfg.video.max_flat_black if subject == "space" else 0,
             subject=subject,
         )
         if not assets:
             raise RuntimeError("no usable images after curation")
         # The lead opens the video with the intro card, which names its telescope.
-        assets = prefer_known_lead(assets)
+        if subject != "ocean":
+            assets = prefer_known_lead(assets)
 
         # 3. soundtrack
         target = spi * len(assets)
         # audio.source picks the licensed manifest or freshly composed,
         # owned pieces (romanfeed.audio.composer); the 8h cut reuses it.
-        library = open_library(cfg.audio, work_dir=work, seed=opts.seed or today)
+        library = open_library(cfg.audio, work_dir=work, seed=opts.seed or today, artist=cfg.channel.name)
         audio_path, tracks = build_soundtrack(
             library, genre=cfg.audio.genre, duration=target, out_path=work / "soundtrack.m4a",
             fade=cfg.audio.fade_seconds, crossfade=cfg.audio.crossfade_seconds, gain_db=cfg.audio.gain_db,
@@ -177,7 +182,9 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             meta.title = ("[TEST] " + meta.title)[:100]
         elif mode == "upload" and any(not t.publishable for t in tracks):
             raise RuntimeError("refusing to upload: soundtrack contains non-publishable tracks")
-        thumb = build_thumbnail(assets, spi * len(assets), out_dir / f"{slug}.thumb.jpg")
+        plate = tuple(cfg.video.thumbnail_plate[:3]) if len(cfg.video.thumbnail_plate) >= 3 else None
+        thumb = build_thumbnail(assets, spi * len(assets), out_dir / f"{slug}.thumb.jpg",
+                                subject=cfg.video.thumbnail_line or None, plate_rgb=plate)
         youtube_id = publish(video_path, meta, mode=mode, thumbnail=thumb)
         log_disk_free(out_dir, "after primary upload")
 
@@ -217,7 +224,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
                                       total_seconds=cut_total, sleep=True,
                                       dark_after=spi * n_shown if n_shown < len(order) else None)
             cut_thumb = build_thumbnail(cut_assets, cut_total, out_dir / f"{cut_slug}.thumb.jpg",
-                                        subject=SLEEP_THUMB_LINE if n_shown < len(order) else None)
+                                        subject=SLEEP_THUMB_LINE if n_shown < len(order) else (cfg.video.thumbnail_line or None),
+                                        plate_rgb=plate)
             cut_id = publish(cut_path, cut_meta, mode=mode, thumbnail=cut_thumb)
             log_disk_free(out_dir, f"after {hours:g}h upload")
             extra_cuts.append((hours, cut_path, cut_id))

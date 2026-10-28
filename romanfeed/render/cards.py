@@ -70,6 +70,14 @@ def _tracked(text: str) -> str:
     return " ".join(text.upper())  # cheap letter-spacing for the small labels
 
 
+def photo_line(asset: ImageAsset) -> str | None:
+    """'Photographed by Jane Diver' for a credited photo, else None."""
+    who = (asset.credit or "").split(",")[0].split(" (public domain)")[0].strip()
+    if not who or who.lower().startswith("unknown"):
+        return None
+    return f"Photographed by {who}"[:70]
+
+
 def intro_card(asset: ImageAsset, width: int, height: int, *, channel_name: str) -> Image.Image:
     """Object name, big and centred; the telescope under it; the channel above."""
     s = height / 1080
@@ -92,7 +100,7 @@ def intro_card(asset: ImageAsset, width: int, height: int, *, channel_name: str)
 
     name = lead_name(asset.title, limit=60) or asset.title.strip()
     lines = _wrap(d, name, name_font, width * 0.78, 2)
-    tele = telescope_line(asset)
+    tele = photo_line(asset) if asset.asset_id.startswith("commons:") else telescope_line(asset)
 
     line_h = int(104 * s)
     block = int(46 * s) + line_h * len(lines) + (int(70 * s) if tele else 0)

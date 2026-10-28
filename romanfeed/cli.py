@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import os
@@ -75,6 +76,13 @@ def _cmd_supply(args) -> int:
             cats = ", ".join(f"{c} {k}/{n}" for c, (k, n) in src.per_category.items())
             per_source.append(f"  {src.name} kept/read by category: {cats}; {src.too_small} too small")
     with Ledger(Path(args.data_dir) / "state.db") as ledger:
+        if cfg.channel.subject != "space":
+            from romanfeed.supply import single_subject_lines
+
+            for line in single_subject_lines(cfg, candidates, ledger, date.today() + timedelta(days=1)):
+                print(line)
+            print("Fetched per source: " + "; ".join(per_source))
+            return 0
         supply = measure(cfg, candidates, ledger)
     for line in report_lines(cfg, supply, date.today() + timedelta(days=1)):
         print(line)
@@ -84,6 +92,26 @@ def _cmd_supply(args) -> int:
 
         for line in earth_rejections(candidates):
             print(line)
+    return 0
+
+
+def _cmd_siblings(args) -> int:
+    """The Monday report's section for every channel beyond Space Screens."""
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.publish.youtube import api_key, public_client
+    from romanfeed.state import Ledger
+
+    key = api_key()
+    yt = public_client(key) if key else None
+    with Ledger(Path(args.data_dir) / "state.db") as ledger:
+        for path in sorted(Path("config/channels").glob("*.yaml")):
+            cfg = load_config(path)
+            if cfg.channel.subject == "space":
+                continue
+            for line in st.sibling_lines(cfg, ledger=ledger, today=date.today(), yt_public=yt):
+                print(line)
     return 0
 
 
@@ -106,6 +134,54 @@ def _cmd_auth(args) -> int:
     path = mint_token(MANAGE_SCOPES if args.scope == "manage" else None)
     print(f"token written to {path}")
     print("Store its contents as the YOUTUBE_TOKEN_JSON GitHub secret to let the daily workflow upload.")
+    return 0
+
+
+def _cmd_channel_link(args) -> int:
+    from romanfeed.publish import channel_token as ct
+    from romanfeed.publish.youtube import MANAGE_SCOPES, SCOPES
+
+    url = ct.consent_url(Path(args.main_token), args.slug, SCOPES if args.scope == "upload" else MANAGE_SCOPES)
+    print(url)
+    return 0
+
+
+def _cmd_channel_finish(args) -> int:
+    from romanfeed.publish import channel_token as ct
+
+    token = ct.exchange(Path(args.main_token), args.slug, args.address)
+    try:
+        cid, title = ct.channel_of(token)
+    except SystemExit:
+        raise
+    except Exception as exc:  # an upload-only token cannot read its channel
+        print(f"token cannot read its channel ({exc.__class__.__name__}); checking with a private test upload")
+        cid, title = ct.channel_by_test_upload(token, Path(args.work))
+    print(f"token uploads to channel {title!r} ({cid})")
+    if not cid:
+        print("refusing: could not tell which channel the token uploads to")
+        return 2
+    if args.expect and cid != args.expect:
+        print(f"refusing: expected channel {args.expect}")
+        return 2
+    if args.not_channel and cid == args.not_channel:
+        print("refusing: that is the main channel; pick the new channel on the consent screen")
+        return 2
+    Path(args.out).write_bytes(ct.encrypt(token, Path(args.main_token), args.slug))
+    if args.channel_out:
+        Path(args.channel_out).write_text(cid + "\n")
+    print(f"encrypted token written to {args.out}")
+    return 0
+
+
+def _cmd_channel_token(args) -> int:
+    from romanfeed.publish import channel_token as ct
+
+    token = ct.decrypt(Path(args.blob).read_bytes(), Path(args.main_token), args.slug)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(token))
+    print(f"token for {args.slug} written to {out}")
     return 0
 
 
@@ -457,6 +533,9 @@ def main(argv: list[str] | None = None) -> int:
     su.add_argument("--why", action="store_true", help="also say why Earth photos were turned away, with examples")
     su.set_defaults(fn=_cmd_supply)
 
+    sb = sub.add_parser("siblings", help="weekly numbers for every channel beyond Space Screens")
+    sb.set_defaults(fn=_cmd_siblings)
+
     l = sub.add_parser("ledger", help="show rendered/published videos")
     l.set_defaults(fn=_cmd_ledger)
 
@@ -465,6 +544,30 @@ def main(argv: list[str] | None = None) -> int:
                    help="manage also grants youtube.force-ssl (read/edit metadata on videos already up) "
                         "and yt-analytics.readonly (the weekly stats email)")
     a.set_defaults(fn=_cmd_auth)
+
+    cl = sub.add_parser("channel-link", help="consent address that gives a sibling channel upload access")
+    cl.add_argument("slug")
+    cl.add_argument("--main-token", default="secrets/youtube.token.json")
+    # upload by default: it is the scope Space Screens itself runs on, and the
+    # wider ones send a production app to Google's review.
+    cl.add_argument("--scope", choices=["upload", "manage"], default="upload")
+    cl.set_defaults(fn=_cmd_channel_link)
+    cf = sub.add_parser("channel-finish", help="trade the consent code for an encrypted sibling-channel token")
+    cf.add_argument("slug")
+    cf.add_argument("address", help="the localhost address the browser landed on, or the bare code")
+    cf.add_argument("--main-token", default="secrets/youtube.token.json")
+    cf.add_argument("--out", required=True)
+    cf.add_argument("--expect", default="", help="channel id it must upload to")
+    cf.add_argument("--not-channel", default="", help="channel id it must NOT upload to (the main one)")
+    cf.add_argument("--channel-out", default="", help="write the confirmed channel id here")
+    cf.add_argument("--work", default="work/channel-check")
+    cf.set_defaults(fn=_cmd_channel_finish)
+    ctk = sub.add_parser("channel-token", help="decrypt a sibling channel's stored token")
+    ctk.add_argument("slug")
+    ctk.add_argument("blob")
+    ctk.add_argument("--main-token", default="secrets/youtube.token.json")
+    ctk.add_argument("--out", required=True)
+    ctk.set_defaults(fn=_cmd_channel_token)
 
     fm = sub.add_parser("fix-metadata", help="re-decode bytes-repr text in the descriptions of videos already uploaded")
     fm.add_argument("--video", action="append", required=True, help="YouTube video id (repeat, or comma-separate)")

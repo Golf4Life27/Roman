@@ -21,6 +21,12 @@ class ChannelInfo:
     tagline: str = ""
     handle: str = ""  # e.g. "@SpaceScreens"; used in on-screen prompts and links
     channel_id: str = ""  # UC...; the public upload feed is read from it
+    # What the channel shows: "space" (telescope imagery; Earth days come from
+    # the `earth:` block) or "ocean" (sea photos). Picks the curation rules,
+    # the music style and the description text.
+    subject: str = "space"
+    # Website line in descriptions; blank leaves it out.
+    website: str = ""
 
 
 @dataclass
@@ -48,6 +54,10 @@ class VideoSettings:
     # Sleep cuts (the extra lengths) fade to black after this many minutes and
     # the music plays on, so the screen does not keep a sleeper awake. 0 = off.
     sleep_dark_after_minutes: float = 0.0
+    # Thumbnail: the small line under the length ("SPACE FOR SLEEP" when
+    # blank) and the plate's colour behind them (dark navy when empty).
+    thumbnail_line: str = ""
+    thumbnail_plate: list[int] = field(default_factory=list)
 
     @property
     def duration_seconds(self) -> float:
@@ -77,6 +87,9 @@ class AudioSettings:
     source: str = "library"
     composed_pieces: int = 8
     composed_seconds: float = 450.0
+    # Composer style: "space" (pads, bells, air) or "ocean" (surf, warmer
+    # harmony, soft piano notes). Each channel sounds like itself.
+    style: str = "space"
 
 
 @dataclass
@@ -325,6 +338,10 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("shorts.privacy must be private, unlisted or public")
     if not 15 <= cfg.shorts.seconds <= 60:
         raise ValueError("shorts.seconds must be between 15 and 60")
+    if cfg.channel.subject not in {"space", "ocean"}:
+        raise ValueError("channel.subject must be space or ocean")
+    if cfg.audio.style not in {"space", "ocean"}:
+        raise ValueError("audio.style must be space or ocean")
     if cfg.audio.source not in {"library", "composed"}:
         raise ValueError("audio.source must be 'library' or 'composed'")
     _check_live(cfg.live)

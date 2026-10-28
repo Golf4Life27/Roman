@@ -64,6 +64,68 @@ EARTH_HOOK_SLEEP = (
 EARTH_HOOK_SLEEP_NO_DARK = ("{length} of deep sleep music with slow views of Earth from the International Space "
                             "Station. Put it on, dim the lights, and let it run.")
 
+# Ocean channel (channel.subject: ocean): real sea photos, credited to their
+# photographers, with the channel's own composed music.
+OCEAN_DESCRIPTION = """{hook}
+
+{subscribe}
+
+{tagline}
+
+IN THIS VIDEO
+{chapters}
+
+PHOTO CREDITS
+{credits}
+Every photo is public domain or Creative Commons Attribution (CC BY); each licence is named beside its photographer.
+
+MUSIC
+{music}
+Original music composed for this channel. Free of copyright claims.
+
+ABOUT {channel_upper}
+Real underwater and ocean photography, shown slowly, with calm original music for sleep, study and rest.
+
+A new ocean video every day.
+{website}
+
+{hashtags}
+"""
+OCEAN_HOOK = (
+    "{length} of calm ocean music for sleep, study and relaxing: slow views across {n_images} real underwater "
+    "and ocean photos, opening on {lead}."
+)
+OCEAN_HOOK_SLEEP = (
+    "{length} of deep sleep ocean music with slow views of reefs, whales and open water. The screen fades to "
+    "black after {dark_after} so the light won't keep you awake; the music and soft waves play on."
+)
+OCEAN_HOOK_SLEEP_NO_DARK = ("{length} of deep sleep ocean music with slow views of reefs, whales and open water. "
+                            "Put it on, dim the lights, and let it run.")
+OCEAN_HASHTAGS = "#oceansounds #sleepmusic #relaxingmusic"
+OCEAN_SUBSCRIBE = "Subscribe for a new calm ocean video every day: https://www.youtube.com/{handle}?sub_confirmation=1"
+
+
+def pick_ocean_subject(assets: list[ImageAsset]) -> str:
+    themes = {
+        "Coral Reef": ("reef", "coral"), "Whales": ("whale",), "Sea Turtles": ("turtle",),
+        "Jellyfish": ("jellyfish", "medusa"), "Kelp Forest": ("kelp",), "Sharks & Rays": ("shark", "manta", " ray"),
+        "Dolphins": ("dolphin",), "Ocean Waves": ("wave", "surf"), "Deep Sea": ("deep sea", "deep-sea", "abyss"),
+    }
+    scores = {k: 0 for k in themes}
+    for a in assets:
+        blob = f" {a.title} {' '.join(a.keywords[:2])}".lower()
+        for theme, hints in themes.items():
+            if any(h in blob for h in hints):
+                scores[theme] += 1
+    if not any(scores.values()):
+        return "Underwater"
+    top = max(scores.values())
+    # On a tie the opening photo's theme wins, so the title's two names agree.
+    lead = f" {assets[0].title} {' '.join(assets[0].keywords[:2])}".lower() if assets else ""
+    tied = [k for k, v in scores.items() if v == top]
+    return next((k for k in tied if any(h in lead for h in themes[k])), tied[0])
+
+
 ROMAN_NOTE = (
     "ABOUT {channel_upper}\n"
     "Real images from Hubble, Webb and other public NASA and ESA archives, shown slowly. "
@@ -239,7 +301,8 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     when = when or date.today()
     total = total_seconds or seconds_per_image * len(assets)
     length = length_text(total)
-    subject = pick_subject(assets)
+    ocean = cfg.channel.subject == "ocean"
+    subject = pick_ocean_subject(assets) if ocean else pick_subject(assets)
 
     chapters = [(i * seconds_per_image, _clip_title(a.title)) for i, a in enumerate(assets)]
     # An 8-hour cut has hundreds of chapters; the description caps at 5000
@@ -261,10 +324,14 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     # The first chapter names the video: the same set of images with a different
     # opener gets a different title, so runs do not stack up identical uploads.
     lead = lead_name(assets[0].title, limit=60) if assets else ""
-    tele = telescope_short(assets[0]) if assets else None
+    if ocean and assets:
+        # Commons file names carry Latin names and photo numbers ("Green sea
+        # turtle (Chelonia mydas) at Kona"); the title keeps the plain name.
+        lead = lead_name(re.sub(r"\s*\([^)]*\)", "", assets[0].title).strip(" ,-"), limit=60)
+    tele = telescope_short(assets[0]) if assets and not ocean else None
     from romanfeed.curation.selector import is_earth
 
-    earth = bool(assets) and all(is_earth(a) for a in assets)
+    earth = not ocean and bool(assets) and all(is_earth(a) for a in assets)
     if earth:
         template = (cfg.earth.sleep_title_template if sleep else "") or cfg.earth.title_template
     else:
@@ -286,7 +353,11 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     )
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     telescopes = telescope_names(assets)
-    if earth:
+    if ocean:
+        dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
+        hook = ((OCEAN_HOOK_SLEEP if dark_after else OCEAN_HOOK_SLEEP_NO_DARK) if sleep else OCEAN_HOOK).format(
+            length=length, n_images=len(assets), lead=lead or "the open ocean", dark_after=dark_words)
+    elif earth:
         dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
         hook = ((EARTH_HOOK_SLEEP if dark_after else EARTH_HOOK_SLEEP_NO_DARK) if sleep else EARTH_HOOK).format(
             length=length, n_images=len(assets), lead=lead or "Earth", dark_after=dark_words)
@@ -296,15 +367,19 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     else:
         hook = HOOK.format(length=length, n_images=len(assets), telescopes=telescopes, lead=lead or "deep space")
     handle = cfg.channel.handle.strip()
-    subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
-                 if handle else "")
-    template = cfg.publish.description_template or DEFAULT_DESCRIPTION
+    if ocean:
+        subscribe = OCEAN_SUBSCRIBE.format(handle=handle) if handle else ""
+    else:
+        subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
+                     if handle else "")
+    template = cfg.publish.description_template or (OCEAN_DESCRIPTION if ocean else DEFAULT_DESCRIPTION)
     def render(n: int) -> str:
         text = template.format(
             tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
             chapters=chapter_block(n), credits=credits, music=music,
             roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
-            hook=hook, subscribe=subscribe, hashtags=HASHTAGS, lead=lead,
+            hook=hook, subscribe=subscribe, hashtags=OCEAN_HASHTAGS if ocean else HASHTAGS, lead=lead,
+            channel_upper=cfg.channel.name.upper(), website=cfg.channel.website,
         )
         return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
@@ -316,9 +391,11 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     while len(description) > 5000 and n > 1:
         n = max(1, n - max(1, (len(description) - 5000) // 60))
         description = render(n)
-    extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else ["space music for sleep"]
+    extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else (
+        ["ocean music for sleep"] if ocean else ["space music for sleep"])
     base_tags = (cfg.earth.tags + cfg.publish.tags) if earth else cfg.publish.tags
-    tags = list(dict.fromkeys(base_tags + extra + [subject.lower(), "space", "sleep screen", "ambient"]))[:30]
+    tail = ["ocean", "underwater", "relaxing music", "ambient"] if ocean else ["space", "sleep screen", "ambient"]
+    tags = list(dict.fromkeys(base_tags + extra + [subject.lower()] + tail))[:30]
     return VideoMetadata(
         title=title[:100], description=description[:5000], tags=tags, category_id=cfg.publish.category_id,
         privacy=cfg.publish.privacy, made_for_kids=cfg.publish.made_for_kids, chapters=chapters,

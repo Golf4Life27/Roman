@@ -141,3 +141,22 @@ def earth_rejections(candidates, samples: int = 4) -> list[str]:
             desc = " ".join(a.description.split())[:160]
             lines.append(f"  e.g. {a.title[:70]!r} / {desc!r}")
     return lines
+
+
+def single_subject_lines(cfg: ChannelConfig, candidates, ledger, start: date) -> list[str]:
+    """Supply for a one-subject channel (ocean and the lanes after it): fresh
+    suitable photos and the days of daily long videos they cover."""
+    from romanfeed.curation.selector import looks_unsuitable
+
+    subject = cfg.channel.subject
+    used = ledger.used_asset_ids(cfg.channel.slug)
+    suitable = [a for a in candidates if not looks_unsuitable(a, subject)]
+    fresh = sum(a.asset_id not in used for a in suitable)
+    n = cfg.video.images_per_video
+    days = fresh // n
+    return [
+        f"{cfg.channel.name}: {fresh:,} {subject} photos never shown, of {len(suitable):,} suitable "
+        f"({len(candidates) - len(suitable):,} turned away as off-subject)",
+        f"Daily long videos covered: {days} (through {start + timedelta(days=max(days - 1, 0)):%b %d}), "
+        f"at {n} photos a video",
+    ]
