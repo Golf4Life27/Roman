@@ -316,5 +316,6 @@ def test_the_server_unit_restarts_for_good_and_has_no_time_cap():
     assert "Restart=always" in unit and "RuntimeMaxSec" not in unit.replace("No RuntimeMaxSec", "")
     assert "StartLimitIntervalSec=0" in unit and "RestartPreventExitStatus=2" in unit
     assert "live always %i" in unit
+    assert "[Install]" in unit and "WantedBy=multi-user.target" in unit     # comes back after a reboot
     setup = Path("deploy/live/setup.sh").read_text()
     assert "always) ALWAYS=1" in setup and "romanfeed-always@cozy.service" in setup

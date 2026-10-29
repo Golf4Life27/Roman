@@ -26,3 +26,7 @@ RestartSec=15
 RestartPreventExitStatus=2
 KillMode=mixed
 TimeoutStopSec=60
+
+[Install]
+# Started again at boot (setup.sh always enables romanfeed-always@cozy).
+WantedBy=multi-user.target
