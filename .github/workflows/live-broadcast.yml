@@ -73,4 +73,6 @@ jobs:
           set -o pipefail
           args=""
           [ "$DRY_RUN" = "true" ] && args="--dry-run"
-          python -m romanfeed live schedule $args | tee -a "$GITHUB_STEP_SUMMARY"
+          python -m romanfeed live schedule $args | tee -a "$GITHUB_STEP_SUMMARY" > schedule.txt
+          # Each line also as a notice, readable on the run without opening the log.
+          while IFS= read -r line; do echo "::notice::$line"; done < schedule.txt

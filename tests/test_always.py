@@ -194,11 +194,18 @@ def test_extra_waiting_broadcasts_go_and_other_streams_are_never_touched(job):
     assert [kw["id"] for n, kw in yt.calls if n == "delete"] == ["spare"]
 
 
-def test_no_247_key_in_studio_yet_is_skipped_quietly(job):
+def test_no_247_key_in_studio_yet_is_skipped_and_names_the_keys_there(job):
     cfg, x, work = job
     yt = FakeYT(streams=[{"id": "studio-sid", "snippet": {"title": "Default stream key"}}])
-    assert "no stream key named '24/7'" in always.ensure_broadcast(cfg, yt, x, NOW, work)
-    assert yt.names() == ["streams.list"]
+    out = always.ensure_broadcast(cfg, yt, x, NOW, work)
+    assert "no stream key named '24/7'" in out and "'Default stream key'" in out
+    assert set(yt.names()) == {"streams.list"}
+
+
+def test_the_key_name_ignores_case_and_spaces(job):
+    cfg, x, work = job
+    yt = FakeYT(streams=[{"id": "sid-247", "snippet": {"title": " 24 / 7 "}, "status": {}}])
+    assert "created" in always.ensure_broadcast(cfg, yt, x, NOW, work)
 
 
 def test_dry_run_changes_nothing(job):
