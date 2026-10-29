@@ -194,11 +194,18 @@ def test_extra_waiting_broadcasts_go_and_other_streams_are_never_touched(job):
     assert [kw["id"] for n, kw in yt.calls if n == "delete"] == ["spare"]
 
 
-def test_no_247_key_in_studio_yet_is_skipped_quietly(job):
+def test_no_247_key_in_studio_yet_is_skipped_and_names_the_keys_there(job):
     cfg, x, work = job
     yt = FakeYT(streams=[{"id": "studio-sid", "snippet": {"title": "Default stream key"}}])
-    assert "no stream key named '24/7'" in always.ensure_broadcast(cfg, yt, x, NOW, work)
-    assert yt.names() == ["streams.list"]
+    out = always.ensure_broadcast(cfg, yt, x, NOW, work)
+    assert "no stream key named '24/7'" in out and "'Default stream key'" in out
+    assert set(yt.names()) == {"streams.list"}
+
+
+def test_the_key_name_ignores_case_and_spaces(job):
+    cfg, x, work = job
+    yt = FakeYT(streams=[{"id": "sid-247", "snippet": {"title": " 24 / 7 "}, "status": {}}])
+    assert "created" in always.ensure_broadcast(cfg, yt, x, NOW, work)
 
 
 def test_dry_run_changes_nothing(job):
@@ -316,5 +323,6 @@ def test_the_server_unit_restarts_for_good_and_has_no_time_cap():
     assert "Restart=always" in unit and "RuntimeMaxSec" not in unit.replace("No RuntimeMaxSec", "")
     assert "StartLimitIntervalSec=0" in unit and "RestartPreventExitStatus=2" in unit
     assert "live always %i" in unit
+    assert "[Install]" in unit and "WantedBy=multi-user.target" in unit     # comes back after a reboot
     setup = Path("deploy/live/setup.sh").read_text()
     assert "always) ALWAYS=1" in setup and "romanfeed-always@cozy.service" in setup

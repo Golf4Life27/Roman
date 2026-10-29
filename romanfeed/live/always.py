@@ -175,15 +175,33 @@ def extras(cfg: ChannelConfig, scene: sc.Scene, theme: Theme, work: Path):
 
 # --- the GitHub side: keep the broadcast -------------------------------------------------------------
 
+def _norm(name: str) -> str:
+    return "".join(name.lower().split())
+
+
+def stream_names(yt) -> list[str]:
+    """Every live stream (Studio stream key) name on the channel. Names are
+    not secrets; the keys themselves are never read here."""
+    out, token = [], None
+    while True:
+        resp = yt.liveStreams().list(part="id,snippet", mine=True, maxResults=50,
+                                     **({"pageToken": token} if token else {})).execute()
+        out += [item.get("snippet", {}).get("title", "") for item in resp.get("items", [])]
+        token = resp.get("nextPageToken")
+        if not token:
+            return out
+
+
 def find_stream(yt, key_name: str) -> dict | None:
     """The channel's live stream (Studio stream key) named key_name: its id
-    and whether video is arriving on it (status.streamStatus "active")."""
+    and whether video is arriving on it (status.streamStatus "active").
+    Case and spaces don't matter: "24/7", "24 / 7" and " 24/7 " all match."""
     token = None
     while True:
         resp = yt.liveStreams().list(part="id,snippet,status", mine=True, maxResults=50,
                                      **({"pageToken": token} if token else {})).execute()
         for item in resp.get("items", []):
-            if item.get("snippet", {}).get("title", "").strip() == key_name.strip():
+            if _norm(item.get("snippet", {}).get("title", "")) == _norm(key_name):
                 return item
         token = resp.get("nextPageToken")
         if not token:
@@ -228,7 +246,8 @@ def ensure_broadcast(cfg: ChannelConfig, yt, x: AlwaysSettings, now: datetime, w
     tz = ZoneInfo(cfg.live.timezone)
     found_stream = find_stream(yt, x.key_name)
     if found_stream is None:
-        return f"24/7 {x.id}: no stream key named {x.key_name!r} in Studio yet; skipped"
+        names = ", ".join(repr(n) for n in stream_names(yt)) or "none"
+        return f"24/7 {x.id}: no stream key named {x.key_name!r} in Studio yet (keys: {names}); skipped"
     library = sc.fetch_manifest(cfg.cozy.repo, cfg.cozy.release_tag, work / "always" / sc.MANIFEST)
     picked = scene_for(library, scene_day(now, tz))
     if picked is None:
