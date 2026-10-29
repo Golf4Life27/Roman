@@ -307,3 +307,10 @@ def test_cut_short_downloads_are_refused(tmp_path):
     cut.write_bytes(good.read_bytes()[:-40])
     with pytest.raises(OSError):
         check_image(cut)
+
+
+def test_title_drops_flickr_site_and_uploader():
+    from romanfeed.sources.commons import title_from_file
+    assert title_from_file("File:Spinner Dolphins - Flickr - benmacaskill.jpg") == "Spinner Dolphins"
+    assert title_from_file("File:Humpback whale (Flickr).jpg") == "Humpback whale"
+    assert title_from_file("File:Sea turtle - Flickr - NOAA Photo Library (1).jpg") == "Sea turtle"

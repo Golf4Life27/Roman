@@ -88,6 +88,8 @@ def title_from_file(name: str) -> str:
         t = t.replace("-", " ")
     t = _NOISE_RE.sub(" ", t).replace(" - ", " · ")
     t = _balance_parens(t)
+    # Flickr mirrors carry the site and uploader: "Spinner Dolphins - Flickr - benmacaskill".
+    t = re.sub(r"\s*(?:·\s*)?\(?\bFlickr\b\)?(?:\s*·.*)?$", "", t, flags=re.I)
     # Archive reference numbers: "(Ifremer 00557-66878 · 20145)".
     t = re.sub(r"\s*\((?:Ifremer\b[^)]*|[\d\s·._/-]{5,})\)", " ", t, flags=re.I)
     t = re.sub(r"^\s*(?:episode|ep\.?|part)\s*\d+\s*[-:·]?\s*", "", t, flags=re.I)

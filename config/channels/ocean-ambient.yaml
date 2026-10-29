@@ -9,7 +9,7 @@ channel:
   slug: ocean-ambient
   name: Deep Blue Screens
   handle: "@DeepBlueScreens"
-  channel_id: ""              # filled from the connection check (release channel-tokens/ocean-ambient.channel)
+  channel_id: "UCUh3n-A6a9nd5LimxB44OZw"   # Deep Blue Screens (@DeepBlueScreens)
   tagline: Real ocean photography, slowly, with calm original music for sleep.
   subject: ocean
 
