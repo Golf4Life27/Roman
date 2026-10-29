@@ -254,6 +254,8 @@ def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     # so 21:00 finds it ready.
     print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
     prepare_lanes(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
+    from romanfeed.live import always
+    always.prepare_ahead(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
     return 0
 
 

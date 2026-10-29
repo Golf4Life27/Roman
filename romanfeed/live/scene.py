@@ -161,10 +161,11 @@ def prepare(cfg: ChannelConfig, lib_dir: Path, night: date) -> SceneNight | None
         return None
 
 
-def stream_command(night: SceneNight, duration_s: int, rtmp_url: str) -> list[str]:
-    """Both inputs looped forever and paced in real time; -t ends the night."""
-    if not 0 < duration_s <= MAX_SECONDS:
-        raise ValueError(f"refusing a {duration_s} s stream: the cap is {MAX_SECONDS} s")
+def stream_command(night: SceneNight, duration_s: int, rtmp_url: str, *, cap: int = MAX_SECONDS) -> list[str]:
+    """Both inputs looped forever and paced in real time; -t ends the night.
+    Only the never-ending stream (live/always.py) passes its own cap."""
+    if not 0 < duration_s <= cap:
+        raise ValueError(f"refusing a {duration_s} s stream: the cap is {cap} s")
     return [
         ffmpeg.ffmpeg_path(), "-hide_banner", "-nostdin", "-loglevel", "warning",
         "-re", "-stream_loop", "-1", "-i", str(night.loop),

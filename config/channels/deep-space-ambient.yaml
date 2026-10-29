@@ -299,6 +299,14 @@ live:
       key_env: YOUTUBE_STREAM_KEY_3
       starts: ["01:30", "13:30"]
       hours: 11.5
+  # The stream that never ends (romanfeed/live/always.py): one cozy room,
+  # around the clock, the season's look. Studio stream key named "24/7";
+  # the key goes on the server only (deploy/live/setup.sh always).
+  always:
+    - id: cozy
+      key_name: "24/7"
+      key_env: YOUTUBE_STREAM_KEY_247
+      music_minutes: 180
 
 # Cozy animated scenes (docs/COZY_SCENES.md).
 cozy:
