@@ -67,6 +67,10 @@ streams, each under 12 hours (e.g. a weather channel's two 11.5-hour streams
 a day). Space Screens runs one ~10-hour night: one broadcast, then the program
 exits.
 
+**One exception (owner, 2026-10-29: "Run it unbroken"): the 24/7 stream** (see
+"The stream that never ends" below) runs without end and leaves no replay.
+The rule still holds for the nightly stream and the lanes.
+
 ## How it is guaranteed to stop (three layers, plus one)
 
 YouTube does not archive a live stream that runs past 12 hours. So the
@@ -198,6 +202,44 @@ Big cozy channels run many streams at once, each a different scene. Ours
 **Turning a lane off:** on the server `systemctl disable --now romanfeed-lane-two.timer`
 (or three), and delete its GitHub secret so no broadcasts are made for it.
 
+## The stream that never ends (24/7)
+
+One cozy room around the clock, the way the big cozy channels keep a jazz
+café live for months: a warm room with a window onto space, calm composed
+music, a title that names the uses ("for Sleep, Study & Focus · 24/7 Live").
+Code: `romanfeed/live/always.py`; config `live.always`.
+
+- **The room follows the season.** The day's most specific theme that has a
+  scene, first by id: Halloween Cabin to Oct 31, Harvest Library in November,
+  Christmas Cabin in December, a winter room in January (a meteor shower's
+  peak days borrow the stargazing deck). The room changes at 11:00 Central.
+- **One broadcast for good.** The live-broadcast job finds the Studio key
+  named `24/7` and keeps one broadcast on it: auto-start on, **auto-stop off**,
+  so YouTube holds it live through a reconnect. When the room changes the
+  job re-dresses the same broadcast (title, tags, "24/7 LIVE" thumbnail):
+  same viewers, same chat. If YouTube ever ends it, the next run (seven a
+  day, two of them at night) makes a new one.
+- **The server never stops it.** `romanfeed-always@cozy.service` runs
+  `romanfeed live always cozy`, which streams until the room changes (at most
+  a week), then exits for systemd to start it on the new room and the latest
+  code. ffmpeg drop-outs are restarted inside Python with no limit, waiting
+  longer (up to 2 minutes) while they keep failing at once.
+- **Music** is composed once per room (`music_minutes`, 180) and looped; the
+  daily sync prepares today's and tomorrow's room so a change is a restart of
+  seconds.
+
+**One-time setup:**
+
+1. Studio → Go live → Stream → stream key list → **Create new stream key**,
+   named exactly `24/7` (default settings). Copy the key.
+2. Hetzner console (no Shift keys needed): `sudo bash /opt/romanfeed/app/deploy/live/setup.sh always`
+   and paste the key when asked (the last 4 characters are shown to check).
+3. Run the Live broadcast workflow once (or wait for its next run); the
+   stream shows on the channel's Live tab.
+
+**Turning it off:** on the server `systemctl disable --now romanfeed-always@cozy.service`,
+then end the broadcast in Studio.
+
 ## Settings
 
 All in the channel config under `live:` (defaults shown; the channel file has
@@ -224,6 +266,8 @@ romanfeed live start --dry-run    # plan + broadcast body + ffmpeg command, key 
 romanfeed live start              # tonight's broadcast; refuses unless live.enabled is true
 romanfeed live lane two --dry-run # a lane's current session: scene, title, ffmpeg (key masked); sends nothing
 romanfeed live lane two           # one lane session (the server's lane timers run this)
+romanfeed live always cozy --dry-run  # the 24/7 room, title, segment and ffmpeg (key masked); sends nothing
+romanfeed live always cozy        # one segment of the 24/7 stream (systemd restarts it for good)
 ```
 
 The stream key is created once (a reusable YouTube live stream), stored in

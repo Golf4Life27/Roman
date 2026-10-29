@@ -69,5 +69,10 @@ Format check of the library (a regular night joins the files without re-encoding
 can leave YouTube at "Preparing stream"):
 `sudo -u romanfeed /opt/romanfeed/venv/bin/romanfeed live doctor --library-dir /var/lib/romanfeed/live`
 
+The 24/7 stream (docs/LIVE_STREAM.md, "The stream that never ends"):
+`sudo bash /opt/romanfeed/app/deploy/live/setup.sh always` once, then
+`journalctl -u romanfeed-always@cozy -f` to watch it. Off:
+`sudo systemctl disable --now romanfeed-always@cozy.service`.
+
 Logs: `journalctl -u romanfeed-live -u romanfeed-sync --since today`. The
 stream key never appears in them: ffmpeg's output is masked before logging.

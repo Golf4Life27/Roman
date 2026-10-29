@@ -25,6 +25,10 @@ next 24 hours gets its broadcast here too, titled with the scene the server
 will stream. A broadcast belongs to a session when it is bound to the lane's
 stream and scheduled within 30 minutes of the session's start.
 
+The never-ending stream (live/always.py) is checked here too: one
+broadcast for good on the Studio key named "24/7", re-dressed when the
+season's room changes.
+
 Right after a broadcast is created it gets what the insert cannot carry
 (broadcast.dress): tags and the Music category, and for a scene stream a
 custom thumbnail from the scene's first frame. Each is best effort; a
@@ -295,4 +299,15 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
             notes = bc.dress(yt, broadcast_id, body["snippet"], extras)
             lines.append(f"created https://youtu.be/{broadcast_id} '{body['snippet']['title']}' "
                          f"for {sl.start:%Y-%m-%d %H:%M %Z} ({label}; {', '.join(notes)})")
+
+        # The never-ending stream keeps one broadcast for good (live/always.py);
+        # nothing above touches it: its title never ends "· Live" and its
+        # description has no MARK.
+        from romanfeed.live import always
+        for x in cfg.live.always:
+            try:
+                lines.append(always.ensure_broadcast(cfg, yt, x, now, work, dry_run=dry_run))
+            except Exception as exc:
+                log.exception("24/7 %s: could not check its broadcast", x.id)
+                lines.append(f"24/7 {x.id}: could not check its broadcast ({exc})")
     return "\n".join(lines) or "nothing to schedule"

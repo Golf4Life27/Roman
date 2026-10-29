@@ -10,6 +10,11 @@
 # writes it to /etc/romanfeed/env, installs the lane units and turns on the
 # timer of every lane that has a key. Typed keys are not echoed back.
 #
+# The 24/7 stream that never ends (live.always in the channel config):
+#   sudo bash /opt/romanfeed/app/deploy/live/setup.sh always
+# asks for the Studio stream key named "24/7", writes it to /etc/romanfeed/env,
+# installs romanfeed-always@.service and starts it. Typed keys are not echoed.
+#
 # It installs ffmpeg + Python, creates the `romanfeed` service user, puts the
 # code in /opt/romanfeed/app with its own venv, places the secrets 0600 under
 # /etc/romanfeed, and installs the systemd units -- DISABLED. Nothing streams
@@ -20,9 +25,11 @@ set -euo pipefail
 YT_TOKEN=""
 ENV_SRC=""
 LANES=0
+ALWAYS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     lanes) LANES=1; shift ;;
+    always) ALWAYS=1; shift ;;
     --youtube-token) YT_TOKEN="$2"; shift 2 ;;
     --env) ENV_SRC="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -37,6 +44,33 @@ VENV=/opt/romanfeed/venv
 ETC=/etc/romanfeed
 LIB=/var/lib/romanfeed/live
 LANE_UNITS="romanfeed-lane@.service romanfeed-lane-two.timer romanfeed-lane-three.timer"
+
+if [ "$ALWAYS" -eq 1 ]; then
+  [ -f "$ETC/env" ] || { echo "no $ETC/env: run the full setup first" >&2; exit 1; }
+  var=YOUTUBE_STREAM_KEY_247
+  echo "== 24/7 stream: the Studio stream key named 24/7 (Studio -> Go live -> Stream -> stream key list)"
+  if grep -q "^$var=." "$ETC/env"; then have="set"; else have="not set"; fi
+  read -r -s -p "   24/7 key ($var, $have; Enter keeps it): " key; echo
+  key="$(printf '%s' "$key" | tr -d '[:space:]')"
+  if [ -n "$key" ]; then
+    sed -i "/^$var=/d" "$ETC/env"
+    printf '%s=%s\n' "$var" "$key" >> "$ETC/env"
+    echo "   key saved (ends in ...${key: -4}; check it against Studio)"
+  fi
+  chown romanfeed:romanfeed "$ETC/env"; chmod 0600 "$ETC/env"
+  if ! grep -q "^$var=." "$ETC/env"; then
+    echo "   no key, the 24/7 stream stays off" >&2; exit 1
+  fi
+  install -m 0644 "$APP/deploy/live/romanfeed-always@.service" /etc/systemd/system/romanfeed-always@.service
+  systemctl daemon-reload
+  systemctl enable romanfeed-always@cozy.service >/dev/null
+  systemctl restart romanfeed-always@cozy.service
+  sleep 5
+  echo "   24/7 stream: $(systemctl is-active romanfeed-always@cozy.service)"
+  echo "Done. It shows on YouTube once the broadcast job next runs (Live broadcast, GitHub Actions)."
+  echo "Watch it with: journalctl -u romanfeed-always@cozy -f"
+  exit 0
+fi
 
 if [ "$LANES" -eq 1 ]; then
   [ -f "$ETC/env" ] || { echo "no $ETC/env: run the full setup first" >&2; exit 1; }
@@ -106,7 +140,8 @@ echo "== library -> $LIB"
 install -d -m 0750 -o romanfeed -g romanfeed "$LIB"
 
 echo "== systemd units (installed, NOT enabled)"
-for u in romanfeed-sync.service romanfeed-sync.timer romanfeed-live.service romanfeed-live.timer $LANE_UNITS; do
+for u in romanfeed-sync.service romanfeed-sync.timer romanfeed-live.service romanfeed-live.timer $LANE_UNITS \
+         romanfeed-always@.service; do
   install -m 0644 "$APP/deploy/live/$u" "/etc/systemd/system/$u"
 done
 systemctl daemon-reload

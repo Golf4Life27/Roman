@@ -116,6 +116,23 @@ class LaneSettings:
 
 
 @dataclass
+class AlwaysSettings:
+    """A stream that never ends (romanfeed/live/always.py): one cozy scene
+    around the clock, on its own Studio stream key. Alex chose this on Oct 29
+    ("Run it unbroken"), so unlike the night and the lanes it is not held
+    under 12 hours and leaves no replay.
+
+    `key_name` is the name the stream key was given in Studio; the GitHub
+    job finds the stream by it, so no GitHub secret is needed. The key
+    itself is read on the server from the environment variable `key_env`.
+    `music_minutes` of composed music loop under the scene."""
+    id: str
+    key_name: str
+    key_env: str
+    music_minutes: int = 180
+
+
+@dataclass
 class LiveSettings:
     """The nightly live stream (romanfeed.live). Off unless the owner turns it on.
 
@@ -145,6 +162,8 @@ class LiveSettings:
     music_minutes: int = 120
     # The live network: extra streams beside the nightly one (LaneSettings).
     lanes: list = field(default_factory=list)
+    # Streams that never end (AlwaysSettings).
+    always: list = field(default_factory=list)
 
 
 @dataclass
@@ -294,8 +313,10 @@ def _build(cls, data: dict[str, Any] | None):
 def _build_live(data: dict[str, Any] | None) -> LiveSettings:
     data = dict(data or {})
     lanes = [_build(LaneSettings, x) for x in data.pop("lanes", None) or []]
+    always = [_build(AlwaysSettings, x) for x in data.pop("always", None) or []]
     live = _build(LiveSettings, data)
     live.lanes = lanes
+    live.always = always
     return live
 
 
@@ -380,3 +401,15 @@ def _check_live(live: LiveSettings) -> None:
             hh, _, mm = t.partition(":")
             if not (hh.isdigit() and mm.isdigit() and int(hh) < 24 and int(mm) < 60):
                 raise ValueError(f"live.lanes {lane.id}: start {t!r} is not HH:MM")
+    always_ids = [x.id for x in live.always]
+    if len(set(always_ids)) != len(always_ids) or set(always_ids) & set(ids + ["night"]):
+        raise ValueError("live.always: ids must be unique and differ from the lanes' and 'night'")
+    keys = ["YOUTUBE_STREAM_KEY"] + [lane.key_env for lane in live.lanes]
+    for x in live.always:
+        if not x.key_env or x.key_env in keys:
+            raise ValueError(f"live.always {x.id}: key_env must name its own stream key")
+        keys.append(x.key_env)
+        if not x.key_name.strip():
+            raise ValueError(f"live.always {x.id}: key_name must be the stream key's name in Studio")
+        if x.music_minutes < 10:
+            raise ValueError(f"live.always {x.id}: music_minutes must be at least 10")

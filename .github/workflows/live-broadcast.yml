@@ -17,6 +17,11 @@
 # (an upload-only token gets 403 "insufficient authentication scopes"),
 # secret YOUTUBE_STREAM_KEY (Studio's stream key), and for the lanes
 # YOUTUBE_STREAM_KEY_2 / YOUTUBE_STREAM_KEY_3 (their own Studio stream keys).
+#
+# And it keeps the 24/7 stream's one broadcast (romanfeed/live/always.py):
+# found by the Studio key's name ("24/7"), so it needs no secret of its own.
+# The two night runs are for it: a broadcast YouTube ended overnight is back
+# within a few hours, not the next morning.
 name: Live broadcast
 on:
   schedule:
@@ -25,6 +30,8 @@ on:
     - cron: "13 17 * * *"   # 12:13 CDT
     - cron: "43 19 * * *"   # 14:43 CDT
     - cron: "13 22 * * *"   # 17:13 CDT
+    - cron: "13 3 * * *"    # 22:13 CDT, for the 24/7 stream
+    - cron: "13 7 * * *"    # 02:13 CDT, for the 24/7 stream
   workflow_dispatch:
     inputs:
       dry_run:

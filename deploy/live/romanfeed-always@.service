@@ -1,0 +1,28 @@
+[Unit]
+Description=Space Screens 24/7 stream %i: one cozy room that never ends
+Wants=network-online.target
+After=network-online.target
+# Never give up restarting (see Restart below).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=romanfeed
+Group=romanfeed
+WorkingDirectory=/opt/romanfeed/app
+EnvironmentFile=/etc/romanfeed/env
+# Each start picks up the latest code. A failed pull ('-') uses what is on disk.
+ExecStartPre=-/usr/bin/git -C /opt/romanfeed/app pull --ff-only --quiet
+# Streams until the season's room changes (at most a week), then exits 0 and
+# is started again here on the new room. ffmpeg drop-outs are reconnected
+# inside Python; YouTube keeps the broadcast live through the gap (auto-stop
+# is off on it). The key is YOUTUBE_STREAM_KEY_247 in the env file
+# (setup.sh always). No RuntimeMaxSec: Alex chose an unbroken stream on Oct 29.
+ExecStart=/opt/romanfeed/venv/bin/romanfeed live always %i --library-dir /var/lib/romanfeed/live
+Restart=always
+RestartSec=15
+# Exit 2 means switched off (live.enabled false) or no key: stay stopped
+# until setup.sh always is run again.
+RestartPreventExitStatus=2
+KillMode=mixed
+TimeoutStopSec=60
