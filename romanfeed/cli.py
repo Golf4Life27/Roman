@@ -390,6 +390,10 @@ def _cmd_live(args) -> int:
         return 0
     if args.live_cmd == "lane":
         return live.cmd_lane(cfg, lib, args.lane, dry_run=args.dry_run)
+    if args.live_cmd == "always":
+        from romanfeed.live import always
+
+        return always.cmd_always(cfg, lib, args.stream, dry_run=args.dry_run)
     try:
         if args.live_cmd == "plan":
             return live.cmd_plan(cfg, lib)
@@ -663,7 +667,8 @@ def main(argv: list[str] | None = None) -> int:
                        ("start", "run tonight's broadcast (refuses unless live.enabled is true)"),
                        ("doctor", "check every library file shares one format (a regular night joins them)"),
                        ("schedule", "create tonight's and the lanes' broadcasts (GitHub runs this each morning)"),
-                       ("lane", "run one session of a live lane, ~11.5 h (the server's lane timers run this)")]:
+                       ("lane", "run one session of a live lane, ~11.5 h (the server's lane timers run this)"),
+                       ("always", "run the never-ending 24/7 stream until its room changes (systemd restarts it)")]:
         lp = lsub.add_parser(name, help=text)
         lp.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
         lp.add_argument("--library-dir", help="override live.library_dir (the server uses /var/lib/romanfeed/live)")
@@ -676,6 +681,10 @@ def main(argv: list[str] | None = None) -> int:
             lp.add_argument("lane", help="the lane id from live.lanes in the channel config")
             lp.add_argument("--dry-run", action="store_true",
                             help="print the session, scene, title and ffmpeg command (key masked); send nothing")
+        if name == "always":
+            lp.add_argument("stream", help="the stream id from live.always in the channel config")
+            lp.add_argument("--dry-run", action="store_true",
+                            help="print the room, title, segment and ffmpeg command (key masked); send nothing")
     lv.set_defaults(fn=_cmd_live)
 
     cz = sub.add_parser("cozy", help="cozy animated scenes: calendar, monthly generator, weekly video")

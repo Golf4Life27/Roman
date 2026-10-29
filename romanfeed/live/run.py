@@ -11,7 +11,11 @@ The one rule this module exists to keep: a night always ends, and ends under
      broadcast is ended even when ffmpeg crashed or the watchdog fired.
 
 systemd's RuntimeMaxSec=12h on the service is a fourth, outside Python.
-Nothing here loops or restarts: one night, one broadcast, then exit.
+
+One night, one broadcast, then exit. The only repeat is a reconnect: when
+ffmpeg drops out early (a network blip to YouTube's ingest used to end the
+night hours short), it is started again for the time that is left. The end
+is fixed when the night starts, so a reconnect never stretches the night.
 """
 from __future__ import annotations
 
@@ -20,6 +24,8 @@ import logging
 import signal
 import subprocess
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -37,6 +43,11 @@ from romanfeed.render.ffmpeg import ffmpeg_path
 log = logging.getLogger(__name__)
 
 WATCHDOG_GRACE_S = 15 * 60
+RECONNECT_DELAY_S = 10         # YouTube keeps a broadcast open through a short gap
+RECONNECT_MIN_LEFT_S = 10 * 60  # less than this left: the night has simply ended
+MAX_RECONNECTS = 6
+_clock = time.monotonic
+_sleep = time.sleep
 PLACEHOLDER_URL = "rtmp://a.rtmp.youtube.com/live2/<stream-key>"
 INGEST = "rtmp://a.rtmp.youtube.com/live2"
 
@@ -138,6 +149,38 @@ def run_stream(cmd: list[str], *, timeout_s: int, secret: str | None = None) -> 
         pump.join(timeout=5)
 
 
+def stream_to_end(make_cmd: Callable[[int], list[str]], duration_s: int, *, secret: str | None = None,
+                  label: str = "night") -> int:
+    """Stream for duration_s, reconnecting when ffmpeg stops early.
+
+    make_cmd(seconds) builds the ffmpeg command for the time that is left.
+    The end is fixed here, before the first connect, so every reconnect only
+    fills what remains: -t and the watchdog shrink with it and the night
+    still ends under the 11.5 h cap. No reconnect after the watchdog fired,
+    and SIGTERM (systemd) still ends everything at once."""
+    end = _clock() + duration_s
+    left = duration_s
+    rc = 1
+    for attempt in range(MAX_RECONNECTS + 1):
+        rc = run_stream(make_cmd(left), timeout_s=left + WATCHDOG_GRACE_S, secret=secret)
+        if rc == -9:
+            break
+        left = int(end - _clock())
+        if left < RECONNECT_MIN_LEFT_S:
+            break
+        if attempt == MAX_RECONNECTS:
+            log.error("%s: ffmpeg stopped early %d times; giving up with %d min left",
+                      label, MAX_RECONNECTS + 1, left // 60)
+            break
+        log.warning("%s: ffmpeg stopped with %d min left (exit %d); reconnecting in %d s",
+                    label, left // 60, rc, RECONNECT_DELAY_S)
+        _sleep(RECONNECT_DELAY_S)
+        left = int(end - _clock())
+        if left < RECONNECT_MIN_LEFT_S:
+            break
+    return rc
+
+
 def _sigterm(signum, frame):  # noqa: ARG001 - signal handler signature
     raise SystemExit(128 + signum)
 
@@ -211,6 +254,8 @@ def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     # so 21:00 finds it ready.
     print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
     prepare_lanes(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
+    from romanfeed.live import always
+    always.prepare_ahead(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
     return 0
 
 
@@ -319,17 +364,19 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         # RuntimeMaxSec. Ending the stream ends the broadcast (Auto-stop).
         url = f"{INGEST}/{key}"
         if scene:
-            cmd = scene_mod.stream_command(scene, plan.duration_s, url)
+            def make_cmd(seconds):
+                return scene_mod.stream_command(scene, seconds, url)
             scene_mod.record_played(lib, scene)
             log.info("scene night: %s for %s", scene.scene.id, scene.theme.label)
         else:
-            cmd = ffmpeg_command(plan.concat_path, plan.duration_s, url)
+            def make_cmd(seconds):
+                return ffmpeg_command(plan.concat_path, seconds, url)
             write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
         yt, broadcast_id = open_broadcast(cfg, lib, plan, scene, key)
         rc = 1
         try:
             log.info("streaming %d s with the Studio stream key (watchdog %d s)", plan.duration_s, timeout)
-            rc = run_stream(cmd, timeout_s=timeout, secret=key)
+            rc = stream_to_end(make_cmd, plan.duration_s, secret=key)
             log.info("ffmpeg exited %d", rc)
         finally:
             if broadcast_id:
@@ -344,17 +391,19 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
     yt = youtube.client()
     info = bc.ensure_stream(yt, state)
     if scene:
-        cmd = scene_mod.stream_command(scene, plan.duration_s, info.rtmp_url)
+        def make_cmd(seconds):
+            return scene_mod.stream_command(scene, seconds, info.rtmp_url)
         scene_mod.record_played(lib, scene)
     else:
-        cmd = ffmpeg_command(plan.concat_path, plan.duration_s, info.rtmp_url)
+        def make_cmd(seconds):
+            return ffmpeg_command(plan.concat_path, seconds, info.rtmp_url)
         write_last_first(lib / "playlist-state.json", plan.playlist[0].name, plan.night.isoformat())
     broadcast_id = bc.create_broadcast(yt, plan.body)
     rc = 1
     try:
         bc.bind(yt, broadcast_id, info.stream_id)
         log.info("streaming %d s to broadcast %s (watchdog %d s)", plan.duration_s, broadcast_id, timeout)
-        rc = run_stream(cmd, timeout_s=timeout, secret=info.stream_name)
+        rc = stream_to_end(make_cmd, plan.duration_s, secret=info.stream_name)
         log.info("ffmpeg exited %d", rc)
     finally:
         try:
@@ -415,6 +464,7 @@ def cmd_lane(cfg: ChannelConfig, lib: Path, lane_id: str, *, dry_run: bool = Fal
         return 0
     signal.signal(signal.SIGTERM, _sigterm)
     log.info("lane %s: streaming %d s (watchdog %d s)", lane_id, duration, timeout)
-    rc = run_stream(cmd, timeout_s=timeout, secret=key)
+    rc = stream_to_end(lambda seconds: scene_mod.stream_command(night, seconds, url), duration,
+                       secret=key, label=f"lane {lane_id}")
     log.info("lane %s: ffmpeg exited %d", lane_id, rc)
     return 0 if rc == 0 else 1

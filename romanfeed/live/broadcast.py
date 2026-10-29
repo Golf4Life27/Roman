@@ -260,7 +260,8 @@ def thumbnail_subject(theme_key: str, theme_label: str) -> str:
     return "Live · Cozy Space Night" if theme_key == "evergreen" else f"Live · Cozy {theme_label}"
 
 
-def scene_thumbnail(cfg, scene, *, hours_label: str, subject: str, work: Path) -> Path | None:
+def scene_thumbnail(cfg, scene, *, hours_label: str, subject: str, work: Path,
+                    length_label: str | None = None) -> Path | None:
     """A custom thumbnail from the scene's first frame with the stream's
     length on it, as the weekly cozy videos get. None if anything fails: the
     broadcast then keeps YouTube's own frame."""
@@ -272,8 +273,8 @@ def scene_thumbnail(cfg, scene, *, hours_label: str, subject: str, work: Path) -
         src = sc.fetch_scene(cfg.cozy.repo, cfg.cozy.release_tag, scene, work / "scenes")
         still = work / f"{scene.id}-still.png"
         ffmpeg.run(["-y", "-i", str(src), "-frames:v", "1", str(still)])
-        return make_thumbnail(still, work / f"{scene.id}-live.jpg", length_label=f"{hours_label} Hours",
-                              subject=subject)
+        return make_thumbnail(still, work / f"{scene.id}-live.jpg",
+                              length_label=length_label or f"{hours_label} Hours", subject=subject)
     except Exception as exc:
         log.warning("no custom thumbnail for %s (%s)", scene.id, exc)
         return None

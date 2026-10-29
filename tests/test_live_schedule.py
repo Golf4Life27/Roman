@@ -72,6 +72,7 @@ THUMBS: list = []
 def cfg(monkeypatch, tmp_path):
     c = load_config("config/channels/deep-space-ambient.yaml")
     c.live.enabled = True
+    c.live.always = []      # the 24/7 stream's broadcast has its own tests (test_always.py)
     monkeypatch.setattr(schedule, "tonight_scene", lambda cfg, night, work: OBSERVATORY)
     thumb = tmp_path / "live.jpg"
     thumb.write_bytes(b"jpg")
