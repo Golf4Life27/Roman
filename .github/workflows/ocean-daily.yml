@@ -1,0 +1,136 @@
+# Daily render + upload for Deep Blue Screens (config/channels/ocean-ambient.yaml).
+#
+# Same machine as Space Screens' daily.yml, its own channel: the upload token
+# is this channel's own (the channel-tokens release, made by connect-channel.yml)
+# and every upload is checked against the channel id confirmed at connection,
+# so an ocean video can never land on Space Screens. Until the channel is
+# connected the job says so and stops, without rendering.
+#
+# 04:30 UTC, after Space Screens' 03:00 run has its start: both share the
+# ledger (merged at the end) and the upload quota.
+name: Ocean daily render
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: smoke-test (short private [TEST] upload) or daily (full run per config)
+        type: choice
+        options: [smoke-test, daily]
+        default: smoke-test
+      images:
+        description: images per video (override; blank = config)
+        default: ""
+      seconds:
+        description: seconds per image (override; blank = config)
+        default: ""
+permissions:
+  contents: read
+jobs:
+  render:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ROMANFEED_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      SLUG: ocean-ambient
+    steps:
+      - name: Ping watchdog (start)
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          [ -z "$HEALTHCHECK_URL" ] && exit 0
+          curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/start" || true
+      - uses: actions/checkout@v4
+      - name: Channel connected?
+        id: token
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p secrets
+          if gh release download channel-tokens -p "$SLUG.*" -D secrets --clobber 2>/dev/null && [ -s "secrets/$SLUG.token.enc" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "channel=$(tr -d '[:space:]' < secrets/$SLUG.channel)" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Not connected yet::$SLUG has no upload access yet (run Connect channel); nothing rendered"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.token.outputs.ready == 'true'
+        with:
+          python-version: "3.11"
+      - if: steps.token.outputs.ready == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core
+      - if: steps.token.outputs.ready == 'true'
+        run: pip install -e ".[youtube]"
+      - name: Restore ledger
+        if: steps.token.outputs.ready == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/state.db
+          key: ledger-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Write this channel's token
+        if: steps.token.outputs.ready == 'true'
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+          python -m romanfeed channel-token "$SLUG" "secrets/$SLUG.token.enc" --out "secrets/$SLUG.token.json"
+          rm -f secrets/youtube.token.json   # this job never needs Space Screens' own token
+      - name: Render
+        if: steps.token.outputs.ready == 'true'
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/${{ env.SLUG }}.token.json
+          ROMANFEED_EXPECT_CHANNEL: ${{ steps.token.outputs.channel }}
+        run: |
+          [ -n "$ROMANFEED_EXPECT_CHANNEL" ] || { echo "::error::no confirmed channel id for $SLUG"; exit 1; }
+          mode="${{ inputs.mode || 'daily' }}"
+          args=""
+          if [ "$mode" = "smoke-test" ]; then
+            args="--private-test --images ${{ inputs.images || 6 }} --seconds ${{ inputs.seconds || 8 }}"
+          else
+            [ -n "${{ inputs.images }}" ] && args="$args --images ${{ inputs.images }}"
+            [ -n "${{ inputs.seconds }}" ] && args="$args --seconds ${{ inputs.seconds }}"
+          fi
+          echo "mode=$mode args=$args"
+          python -m romanfeed run "config/channels/$SLUG.yaml" $args
+      - name: Ledger merge (move ours aside)
+        if: steps.token.outputs.ready == 'true'
+        run: mv data/state.db data/mine.db
+      - name: Ledger merge (restore newest)
+        if: steps.token.outputs.ready == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-merge-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Ledger merge (union)
+        if: steps.token.outputs.ready == 'true'
+        run: |
+          if [ -f data/state.db ]; then python -m romanfeed ledger-merge data/mine.db --into data/state.db
+          else mv data/mine.db data/state.db; fi
+      - name: Disk report
+        if: always()
+        run: df -h / && du -sh output work data/work 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.token.outputs.ready == 'true'
+        with:
+          name: ocean-render-${{ github.run_id }}
+          path: |
+            output/**/*.mp4
+            !output/**/*-*h.mp4
+            output/**/*.upload.json
+            output/**/*.thumb.jpg
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Ping watchdog (finish)
+        if: always()
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          [ -z "$HEALTHCHECK_URL" ] && exit 0
+          url="$HEALTHCHECK_URL"
+          [ "$JOB_STATUS" = "success" ] || url="$HEALTHCHECK_URL/fail"
+          curl -fsS -m 10 --retry 3 "$url" || true

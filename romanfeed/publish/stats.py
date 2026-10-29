@@ -633,3 +633,21 @@ def send_email(subject: str, text: str, html: str, *, to: str, smtp_host: str, s
         server.login(user, password)
         server.send_message(msg)
     log.info("stats email sent (%s)", subject)
+
+
+def sibling_lines(cfg, *, ledger, today: date, yt_public=None) -> list[str]:
+    """One channel beyond Space Screens, for the Monday report: its public
+    subscriber and view counts (by handle) and its uploads in the last 7 days."""
+    from datetime import timedelta
+
+    week_ago = (today - timedelta(days=7)).isoformat()
+    vids = [v for v in ledger.videos(cfg.channel.slug) if v.youtube_id and (v.rendered_at or "")[:10] >= week_ago]
+    lines = [f"{cfg.channel.name} ({cfg.channel.handle})"]
+    if yt_public is not None and cfg.channel.handle:
+        try:
+            subs, views, count = channel_counts(yt_public, cfg.channel.handle)
+            lines.append(f"  Subscribers {subs:,} · views {views:,} · videos {count:,}")
+        except Exception as exc:  # HttpError and friends; the rest of the report still goes out
+            lines.append(f"  Public numbers unavailable ({exc.__class__.__name__})")
+    lines.append(f"  Uploaded in the last 7 days: {len(vids)}")
+    return lines

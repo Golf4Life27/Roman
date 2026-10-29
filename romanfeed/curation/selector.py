@@ -158,6 +158,59 @@ def earth_unsuitable(asset: ImageAsset) -> bool:
     return not any(p in record for p in EARTH_PROOF) or earth_rights_unclear(asset)
 
 
+# Ocean channel (Wikimedia Commons photos): the sea and what lives in it.
+# Commons search also finds maps, museum drawings, fish markets, dinners and
+# dead animals on a beach; none of that belongs in a calm video.
+OCEAN_HINTS = (
+    "ocean", "sea", "reef", "coral", "underwater", "marine", "whale", "dolphin", "turtle", "shark", "ray", "fish",
+    "jellyfish", "medusa", "octopus", "squid", "cuttlefish", "kelp", "seagrass", "anemone", "nudibranch", "seal",
+    "sea lion", "otter", "manatee", "dugong", "starfish", "sea star", "urchin", "lagoon", "atoll", "wave", "surf",
+    "tide", "coast", "shore", "bay", "seahorse", "eel", "grouper", "clownfish", "plankton", "diver", "snorkel",
+    "abyss", "deep-sea", "deep sea", "hydrothermal", "iceberg", "puffin", "penguin", "pelagic", "barracuda",
+    "manta", "orca", "cetacea", "gorgonian", "sea fan", "cenote",
+)
+OCEAN_BLOCK = (
+    "map", "chart", "diagram", "logo", "stamp", "coin", "poster", "drawing", "illustration", "painting",
+    "engraving", "lithograph", "plate ", "museum", "specimen", "preserved", "skeleton", "skull", "fossil",
+    "dead", "carcass", "stranded", "bycatch", "caught", "fishing", "fisherman", "fishermen", "trawler", "net",
+    "market", "food", "dish", "sushi", "cooked", "restaurant", "aquarium tank", "plastic", "pollution", "oil spill",
+    "garbage", "litter", "debris", "harbour", "harbor", "port of", "ship", "boat", "ferry", "cruise", "navy",
+    "warship", "submarine", "tanker", "container", "crane", "pier", "bridge", "building", "hotel", "beach chair",
+    "bikini", "swimsuit", "portrait", "selfie", "people", "tourists", "crowd", "festival", "screenshot",
+    "infographic", "graph", "label", "sign", "text", "book", "page", "scan", "postcard", "film still",
+    # research-cruise photos: the archive's NOAA searches return the ship and
+    # its crew as often as the sea
+    "scientist", "researcher", "crew", "deck", "laboratory", "lab ", "meeting", "workshop", "sampling",
+    "recovery of", "deployment", "launch", "instrument", "equipment", "rov ", "remotely operated",
+    # roadside whales and other things shaped like sea life
+    "statue", "sculpture", "roadside", "replica", "mural", "inflatable", "concrete", "attraction",
+    "theme park", "catoosa",
+)
+
+
+_CATALOGUE_RE = re.compile(r"\b(?:USNM|NMNH|MCZ|AMNH|FMNH|ZMB|NHMUK|BMNH|MNHN|SIO|LACM|CAS|YPM)[\s:-]*\d{3,}", re.I)
+
+
+def ocean_unsuitable(asset: ImageAsset) -> bool:
+    """True unless this reads as a calm photo of the sea or sea life."""
+    title = asset.title.strip()
+    low = title.lower()
+    if len(low) < 4 or _is_filename_title(title) or _normalized_title(title) in _GENERIC_TITLES:
+        return True
+    if any(re.search(rf"\b{re.escape(b.strip())}", low) for b in OCEAN_BLOCK):
+        return True
+    # Museum catalogue numbers ("Asteroidea (USNM 1450538)"): a specimen on a tray.
+    if _CATALOGUE_RE.search(title):
+        return True
+    # The title, the search term or the file's categories must say "sea" (the
+    # subject tag, keywords[0], is on every photo and proves nothing). Many
+    # good files carry only a Latin name, so a sea-life search term counts;
+    # place-name searches (Okeanos Explorer, Papahanaumokuakea) have no sea
+    # word, so their photos must show it in the title or categories.
+    head = f"{low} {' '.join(asset.keywords[1:8]).lower()}"
+    return not any(h in head for h in OCEAN_HINTS)
+
+
 def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
     """True if the asset does not belong in a video about `subject`.
 
@@ -167,6 +220,8 @@ def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
     earth: only the Earth-from-orbit source's photos, judged by earth_unsuitable."""
     if subject == "earth":
         return not is_earth(asset) or earth_unsuitable(asset)
+    if subject == "ocean":
+        return ocean_unsuitable(asset)
     if is_earth(asset):
         return True
     title = asset.title.strip()

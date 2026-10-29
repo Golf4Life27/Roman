@@ -36,14 +36,22 @@ def test_roman_filters_pre_launch(monkeypatch):
 
 
 def test_resolver_runs_once_at_download(tmp_path, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 24)).save(buf, "JPEG")
+    jpeg = buf.getvalue()
     calls = []
 
     def fake_get(url, stream=True, timeout=60, headers=None):
         class R:
+            headers = {"Content-Length": str(len(jpeg))}
             def __enter__(self): return self
             def __exit__(self, *a): pass
             def raise_for_status(self): pass
-            def iter_content(self, n): yield b"data"
+            def iter_content(self, n): yield jpeg
         calls.append(url)
         return R()
 

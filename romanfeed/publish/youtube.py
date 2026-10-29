@@ -168,6 +168,13 @@ def _upload(video_path: Path, body: dict, *, thumbnail: Path | None = None) -> s
             log.info("upload %.0f%%", status.progress() * 100)
     vid = resp["id"]
     log.info("uploaded https://youtu.be/%s", vid)
+    # A sibling channel's job sets the channel its token was confirmed for; a
+    # reply from any other channel means the wrong token, so stop the run
+    # before a second upload lands in the wrong place.
+    expect = os.environ.get("ROMANFEED_EXPECT_CHANNEL", "").strip()
+    got = (resp.get("snippet") or {}).get("channelId", "")
+    if expect and got and got != expect:
+        raise SystemExit(f"upload {vid} landed on channel {got}, expected {expect}; stopping")
     if thumbnail:
         # The video is already up; a missing thumbnail is a cosmetic problem
         # to fix later with `romanfeed thumbnails`, never a reason to fail the run.

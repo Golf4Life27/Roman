@@ -92,6 +92,22 @@ jobs:
         run: |
           python -m romanfeed supply config/channels/deep-space-ambient.yaml > supply.txt
           { echo; echo "Image supply (days of daily long videos lined up)"; sed 's/^/  /' supply.txt; } >> report.txt
+      # Deep Blue Screens and every lane after it: public numbers, uploads this
+      # week and photo supply. Separate step so a slow archive cannot cost the
+      # Space Screens report above.
+      - name: Other channels
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+        run: |
+          python -m romanfeed siblings > siblings.txt
+          for f in config/channels/*.yaml; do
+            grep -q '^  subject: space' "$f" && continue
+            grep -q '^  subject:' "$f" || continue
+            python -m romanfeed supply "$f" | sed 's/^/  /' >> siblings.txt || true
+          done
+          [ -s siblings.txt ] && { echo; echo "Other channels"; sed 's/^/  /' siblings.txt; } >> report.txt
       # Parallel jobs each save the ledger they restored plus their own rows;
       # merge with the newest saved copy first so nobody erases anybody.
       - name: Ledger merge (move ours aside)
