@@ -6,8 +6,8 @@
 # While it is false the job renders a 6-minute preview, keeps it as an
 # artifact for three days, and uploads nothing. Turning it on is the owner's call.
 #
-# Saturday, because the daily render (2 uploads) runs Mon/Wed/Fri: Saturday's
-# quota is 4 Shorts x 1,600 + this 1,600 = 8,000 of 10,000.
+# Saturday. Uploads have their own quota bucket (100 a day, 1 unit each), so
+# this one sits beside the daily render and 4 Shorts with room to spare.
 name: Cozy weekly
 on:
   schedule:

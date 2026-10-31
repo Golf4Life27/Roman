@@ -23,7 +23,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -435,10 +435,32 @@ def _snapshot(ledger: Ledger, cfg: ChannelConfig, today: str) -> None:
         log.warning("channel snapshot failed: %s", exc)
 
 
-def shorts_today(ledger: Ledger, channel: str, today: str) -> int:
+# The Shorts day runs from 15:00 to 15:00 UTC (10:00 CDT / 9:00 CST), not
+# midnight to midnight. The four runs are due 16:10 to 03:40 UTC, and GitHub
+# starts scheduled runs up to ~6 hours late (Oct 24-30: 23:10 ran at 02:18,
+# 01:40 at 07:42). Counted by the calendar day, a late evening run spilled
+# into the next day's count: that day hit the cap early and lost a Short.
+# Every run, however late, now lands inside the day it was due.
+SHORTS_DAY_STARTS_UTC = 15
+
+
+def shorts_day(now: datetime | None = None) -> tuple[str, str]:
+    """(start, end) of the Shorts day holding `now`, as ledger timestamps."""
+    now = now or datetime.now(timezone.utc)
+    start = now.astimezone(timezone.utc).replace(hour=SHORTS_DAY_STARTS_UTC, minute=0, second=0, microsecond=0)
+    if start > now:
+        start -= timedelta(days=1)
+    end = start + timedelta(days=1)
+    return start.isoformat(timespec="seconds"), end.isoformat(timespec="seconds")
+
+
+def shorts_today(ledger: Ledger, channel: str, now: datetime | None = None) -> int:
+    """Shorts uploaded so far in the Shorts day holding `now`."""
+    start, end = shorts_day(now)
     row = ledger.conn.execute(
-        "SELECT COUNT(*) FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL AND created_at LIKE ?",
-        (channel, f"{today}%"),
+        "SELECT COUNT(*) FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL"
+        " AND created_at >= ? AND created_at < ?",
+        (channel, start, end),
     ).fetchone()
     return int(row[0])
 
@@ -491,7 +513,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
 
     Uploads only when shorts.enabled is true, publish.mode is upload, and this
     is not a dry run. The day's cap is shorts.per_day, counted from the ledger
-    so three scheduled runs a day cannot exceed it between them."""
+    so the scheduled runs of a day cannot exceed it between them."""
     upload = cfg.shorts.enabled and cfg.publish.mode == "upload" and not dry_run
     mode = "upload" if upload else "dry-run"
     today = datetime.now(timezone.utc).date().isoformat()
@@ -504,7 +526,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
 
     with Ledger(data_dir / "state.db") as ledger:
         _snapshot(ledger, cfg, today)
-        room = max(cfg.shorts.per_day - shorts_today(ledger, cfg.channel.slug, today), 0)
+        room = max(cfg.shorts.per_day - shorts_today(ledger, cfg.channel.slug), 0)
         want = room if count is None else min(count, room)
         if want <= 0:
             log.info("shorts: daily cap of %d already reached", cfg.shorts.per_day)

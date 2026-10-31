@@ -192,3 +192,37 @@ def test_a_video_with_nothing_usable_hands_its_turn_on(ledger, monkeypatch, tmp_
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert len(res) == 1 and res[0].parent_slug == "chan-2026-09-28" and len(sent) == 1
+
+
+def _at(stamp: str):
+    from datetime import datetime
+    return datetime.fromisoformat(stamp)
+
+
+def test_the_shorts_day_runs_from_15_utc_to_15_utc():
+    assert shorts.shorts_day(_at("2026-10-30T16:10:00+00:00")) == ("2026-10-30T15:00:00+00:00", "2026-10-31T15:00:00+00:00")
+    assert shorts.shorts_day(_at("2026-10-31T07:42:00+00:00")) == ("2026-10-30T15:00:00+00:00", "2026-10-31T15:00:00+00:00")
+    assert shorts.shorts_day(_at("2026-10-31T15:00:00+00:00"))[0] == "2026-10-31T15:00:00+00:00"
+
+
+def test_a_run_github_starts_late_counts_toward_the_day_it_was_due(tmp_path):
+    # The four runs are due 16:10, 23:10, 01:40 and 03:40 UTC; GitHub started
+    # some of them 3 to 6 hours late. Counted by calendar day, the late 23:10
+    # run fell into the next day and that day lost a Short to the cap.
+    with Ledger(tmp_path / "state.db") as led:
+        def short_at(stamp, n):
+            led.record_short("chan", f"nasa:L{n}", "p", f"S{n}")
+            led.conn.execute("UPDATE shorts SET created_at = ? WHERE asset_id = ?", (stamp, f"nasa:L{n}"))
+        short_at("2026-10-30T16:40:00+00:00", 1)   # 16:10 run, a little late
+        short_at("2026-10-31T02:18:00+00:00", 2)   # 23:10 run, 3 h late
+        short_at("2026-10-31T06:50:00+00:00", 3)   # 01:40 run, 5 h late
+        assert shorts.shorts_today(led, "chan", _at("2026-10-31T09:40:00+00:00")) == 3   # room for the 03:40 run
+        assert shorts.shorts_today(led, "chan", _at("2026-10-31T16:10:00+00:00")) == 0   # a fresh day for 16:10
+
+
+def test_the_channel_config_posts_four_shorts_a_day():
+    from romanfeed.config import load_config
+    cfg = load_config(Path("config/channels/deep-space-ambient.yaml"))
+    assert cfg.shorts.per_day == 4
+    wf = Path(".github/workflows/shorts.yml").read_text()
+    assert wf.count('- cron: "') == cfg.shorts.per_day
