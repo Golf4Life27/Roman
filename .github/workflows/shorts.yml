@@ -54,10 +54,6 @@ on:
         type: choice
         options: [auto, calm, hook]
         default: auto
-      sample:
-        description: with dry_run, attach the rendered Short to the shorts-samples release
-        type: boolean
-        default: false
       crosspost_test:
         description: also send the social cut to the TikTok inbox as a private draft, whatever crosspost.mode says
         type: boolean
@@ -117,13 +113,6 @@ jobs:
           [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
           [ "$EXTRA" = "true" ] && args="$args --extra"
           python -m romanfeed shorts config/channels/deep-space-ambient.yaml $args
-      - name: Attach the sample
-        if: ${{ inputs.sample && inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view shorts-samples >/dev/null 2>&1 || gh release create shorts-samples --title "Shorts samples" --notes "Dry-run Shorts to watch before a change ships." --prerelease
-          for f in output/*/shorts/*.mp4; do [ -e "$f" ] && gh release upload shorts-samples "$f" --clobber; done
       # Parallel jobs each save the ledger they restored plus their own rows;
       # merge with the newest saved copy first so nobody erases anybody.
       - name: Ledger merge (move ours aside)
