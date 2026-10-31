@@ -200,6 +200,18 @@ class ShortsSettings:
     # (romanfeed/narration.py). Needs GOOGLE_TTS_API_KEY; without it, music only.
     narration: bool = True
     voice: str = "en-US-Chirp3-HD-Charon"
+    # A Shorts test: `test_per_day` a day through `test_until` (a date, Central
+    # time), then back to `per_day`. The extra Shorts come from the extra
+    # slots in shorts.yml, which post nothing outside the test.
+    test_per_day: int = 0
+    test_until: str = ""
+    # At most this many Earth-from-orbit Shorts in any 24 hours (0 = no cap).
+    earth_per_day: int = 0
+    # Every Nth Short uses the hook style (narration.hook_script, a livelier
+    # voice read faster, a quicker pan, the music a little louder); 0 = never.
+    hook_every: int = 0
+    hook_voice: str = "en-US-Chirp3-HD-Puck"
+    hook_rate: float = 1.12
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")

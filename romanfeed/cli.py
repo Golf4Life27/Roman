@@ -254,7 +254,8 @@ def _cmd_shorts(args) -> int:
     from romanfeed.shorts import run_shorts
 
     cfg = load_config(args.config)
-    res = run_shorts(cfg, count=args.count, dry_run=args.dry_run, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir))
+    res = run_shorts(cfg, count=args.count, dry_run=args.dry_run, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir),
+                     extra=args.extra, style=args.style)
     if not cfg.shorts.enabled:
         print("shorts.enabled is false in the channel config: rendered only, nothing uploaded")
     for r in res:
@@ -642,8 +643,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sh = sub.add_parser("shorts", help="cut vertical Shorts from published videos (uploads only when shorts.enabled)")
     sh.add_argument("config")
-    sh.add_argument("--count", type=int, help="at most this many (default: what is left of shorts.per_day today)")
+    sh.add_argument("--count", type=int, help="at most this many (default: what the 24-hour cap leaves)")
     sh.add_argument("--dry-run", action="store_true", help="render and write metadata, upload nothing")
+    sh.add_argument("--extra", action="store_true", help="a test-only slot: posts only while the Shorts test runs")
+    sh.add_argument("--style", choices=["auto", "calm", "hook"], default="auto",
+                    help="auto alternates per shorts.hook_every; calm or hook forces one")
     sh.add_argument("--output-dir", default="output")
     sh.set_defaults(fn=_cmd_shorts)
 

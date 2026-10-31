@@ -267,6 +267,19 @@ shorts:
   # and 71 of 116 subscribers Oct 2-29; Oct 22-24 (4 a day) averaged 2,284
   # views and 6.3 subscribers a day, Oct 26-28 (2 a day) 1,084 and 2.0.
   per_day: 4
+  # Shorts test, owner 2026-10-31 ("We could try all shorts for a few days",
+  # "ok push it"): 8 a day Oct 31 - Nov 3, then back to 4 by itself.
+  test_per_day: 8
+  test_until: "2026-11-03"
+  # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
+  # 1.6: Earth gets at most 2 Shorts in any 24 hours.
+  earth_per_day: 2
+  # Every other Short in the hook style (owner: the calm read is "educational,
+  # but might not be crazy engaging"), tagged hook-style so the Monday report
+  # can compare the two.
+  hook_every: 2
+  hook_voice: en-US-Chirp3-HD-Puck
+  hook_rate: 1.12
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

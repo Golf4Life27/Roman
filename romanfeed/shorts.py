@@ -32,7 +32,7 @@ from PIL import Image, ImageFilter, ImageOps, ImageStat
 
 from romanfeed.audio import MusicLibrary, build_soundtrack
 from romanfeed.audio.composer import ComposedLibrary
-from romanfeed.config import ChannelConfig
+from romanfeed.config import ChannelConfig, ShortsSettings
 from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
@@ -142,6 +142,7 @@ def parents(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is_
 
 
 SPARE_PICKS = 3   # extra parents tried when one gives no usable image
+HOOK_TAG = "hook-style"
 
 
 def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
@@ -302,7 +303,8 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
 
 def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
-                 cta_from: float | None = None, pointer: tuple[str, str] | None = None) -> Path:
+                 cta_from: float | None = None, pointer: tuple[str, str] | None = None,
+                 max_pan: int = 900) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
     long video waits until `cta_from`; without, it is on screen throughout.
     `pointer` (call, line under it) replaces the subscribe plate's text: the
@@ -310,7 +312,7 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     s = cfg.shorts
     dur = duration or s.seconds
     handle = cfg.channel.handle or cfg.channel.name
-    frame, ex, ey = vertical_frame(asset.local_path, work_dir / "short_frame.png", width=s.width, height=s.height, max_pan=900)
+    frame, ex, ey = vertical_frame(asset.local_path, work_dir / "short_frame.png", width=s.width, height=s.height, max_pan=max_pan)
     narrated = bool(captions)
     layers: list[tuple[Path, str | None]] = []   # (png, ffmpeg enable expression or None)
     base = work_dir / "short_overlay.png"
@@ -354,12 +356,21 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     return out_path
 
 
-def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Path, stem: str, key: str):
+def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Path, stem: str, key: str,
+            hook: bool = False):
     """Script + voice for one image: (script, voice wav, voice seconds), or None.
 
     A script that runs long is retried without its size/distance sentence; a
     Short tops out at 45 s and the voice needs the music either side of it."""
     budget = 45.0 - 0.8 - 3.0
+    if hook:
+        script = narration.hook_script(asset, full_label=link_label)
+        if not script:
+            return None
+        wav = narration.synthesize(script, work / f"{stem}.voice.wav", api_key=key,
+                                   voice=cfg.shorts.hook_voice, speaking_rate=cfg.shorts.hook_rate)
+        secs = probe_duration(str(wav))
+        return (script, wav, secs) if secs <= budget else None
     for include_size in (True, False):
         script = narration.fact_script(asset, full_label=link_label, include_size=include_size)
         if not script:
@@ -378,7 +389,8 @@ _FROM_ORBIT = re.compile(r"[\s,]*(?:as\s+)?(?:pictured|seen|photographed|viewed|
                          r"(?:the\s+)?(?:international\s+space\s+station|space\s+station|iss|orbit)\b.*$", re.I)
 
 
-def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None) -> VideoMetadata:
+def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
+                   hook: bool = False) -> VideoMetadata:
     name = (_FROM_ORBIT.sub("", asset.title).strip(" ,.") or asset.title) if is_earth(asset) else asset.title
     lead = lead_name(name, limit=60) or name
     tele = telescope_short(asset)
@@ -412,6 +424,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     lines += ["", "#shorts #space #sleep"]
     tags = list(dict.fromkeys(["shorts", "space", "sleep", "space for sleep", "relaxing space", lead.lower(),
                                *(t.lower() for t in [tele] if t), "telescope", "nebula", "galaxy"]))
+    if hook:
+        tags.insert(0, HOOK_TAG)   # how the Monday report tells the two styles apart
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -435,34 +449,44 @@ def _snapshot(ledger: Ledger, cfg: ChannelConfig, today: str) -> None:
         log.warning("channel snapshot failed: %s", exc)
 
 
-# The Shorts day runs from 15:00 to 15:00 UTC (10:00 CDT / 9:00 CST), not
-# midnight to midnight. The four runs are due 16:10 to 03:40 UTC, and GitHub
-# starts scheduled runs up to ~6 hours late (Oct 24-30: 23:10 ran at 02:18,
-# 01:40 at 07:42). Counted by the calendar day, a late evening run spilled
-# into the next day's count: that day hit the cap early and lost a Short.
-# Every run, however late, now lands inside the day it was due.
-SHORTS_DAY_STARTS_UTC = 15
+# GitHub starts the scheduled runs up to ~6 hours late (Oct 24-30: 23:10 ran
+# at 02:18, 01:40 at 07:42), so a calendar-day cap let a late evening run eat
+# the next day's allowance and a Short was lost. The cap is now a rolling 24
+# hours, with one Short of slack for a single scheduled run (each posts one
+# Short, so the slots, not the cap, set the pace).
+CAP_SLACK = 1
 
 
-def shorts_day(now: datetime | None = None) -> tuple[str, str]:
-    """(start, end) of the Shorts day holding `now`, as ledger timestamps."""
+def _since(now: datetime | None, hours: float = 24) -> str:
     now = now or datetime.now(timezone.utc)
-    start = now.astimezone(timezone.utc).replace(hour=SHORTS_DAY_STARTS_UTC, minute=0, second=0, microsecond=0)
-    if start > now:
-        start -= timedelta(days=1)
-    end = start + timedelta(days=1)
-    return start.isoformat(timespec="seconds"), end.isoformat(timespec="seconds")
+    return (now.astimezone(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+
+
+def recent_shorts(ledger: Ledger, channel: str, now: datetime | None = None) -> list[str]:
+    """Asset ids of the Shorts uploaded in the 24 hours before `now`."""
+    rows = ledger.conn.execute(
+        "SELECT asset_id FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL AND created_at > ?",
+        (channel, _since(now)),
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def shorts_today(ledger: Ledger, channel: str, now: datetime | None = None) -> int:
-    """Shorts uploaded so far in the Shorts day holding `now`."""
-    start, end = shorts_day(now)
-    row = ledger.conn.execute(
-        "SELECT COUNT(*) FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL"
-        " AND created_at >= ? AND created_at < ?",
-        (channel, start, end),
-    ).fetchone()
-    return int(row[0])
+    """Shorts uploaded in the 24 hours before `now`."""
+    return len(recent_shorts(ledger, channel, now))
+
+
+def in_test(s: ShortsSettings, now: datetime | None = None) -> bool:
+    """True while the Shorts test runs (through `test_until`, Central time)."""
+    if not (s.test_per_day and s.test_until):
+        return False
+    now = now or datetime.now(timezone.utc)
+    central = (now.astimezone(timezone.utc) - timedelta(hours=5)).date()
+    return central <= date.fromisoformat(s.test_until)
+
+
+def daily_target(s: ShortsSettings, now: datetime | None = None) -> int:
+    return s.test_per_day if in_test(s, now) else s.per_day
 
 
 def _length(voice_secs: float) -> float:
@@ -485,22 +509,26 @@ def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: s
 
 
 def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path, label: str, work: Path,
-                duration: float, voice=None, pointer: tuple[str, str] | None = None) -> Path:
+                duration: float, voice=None, pointer: tuple[str, str] | None = None, hook: bool = False) -> Path:
     """One cut of a Short: voice (script, wav, seconds) over the music with
     captions for the facts and the closing plate under the last line, or
     music only with the plate throughout."""
     audio, captions, cta_from = music, None, None
+    # The hook style speaks almost at once, over louder music, and pans further.
+    start, gain, pan = (0.25, 0.32, 1500) if hook else (0.8, 0.22, 900)
     if voice:
         script, wav, secs = voice
-        audio = narration.mix_voice(wav, music, out.with_suffix(".mix.m4a"), voice_start=0.8, duration=duration)
+        audio = narration.mix_voice(wav, music, out.with_suffix(".mix.m4a"), voice_start=start, duration=duration,
+                                    music_gain=gain)
         # Captions cover the facts; the closing pointer sentence is shown
         # as the end card instead of as a caption.
         body = script.rsplit(" The full ", 1)[0]
         body_secs = secs * len(body) / max(len(script), 1)
-        captions = narration.caption_chunks(body, start=0.8, duration=body_secs)
-        cta_from = 0.8 + body_secs
+        captions = narration.caption_chunks(body, start=start, duration=body_secs)
+        cta_from = start + body_secs
     path = render_short(asset, out, cfg=cfg, audio=audio, link_label=label, work_dir=work,
-                        duration=duration, captions=captions, cta_from=cta_from, pointer=pointer)
+                        duration=duration, captions=captions, cta_from=cta_from, pointer=pointer,
+                        max_pan=pan if voice else 900)
     if voice:
         Path(audio).unlink(missing_ok=True)
     return path
@@ -508,12 +536,17 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
 
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
-               public: Callable[[str], bool] = is_public) -> list[ShortResult]:
+               public: Callable[[str], bool] = is_public, extra: bool = False,
+               style: str = "auto") -> list[ShortResult]:
     """Cut and (if switched on) publish up to `count` Shorts.
 
     Uploads only when shorts.enabled is true, publish.mode is upload, and this
     is not a dry run. The day's cap is shorts.per_day, counted from the ledger
-    so the scheduled runs of a day cannot exceed it between them."""
+    so the scheduled runs of a day cannot exceed it between them.
+
+    `extra` marks a run from one of the test-only slots: it posts only while
+    the Shorts test runs. `style` is auto (every hook_every-th Short in the
+    hook style), calm or hook."""
     upload = cfg.shorts.enabled and cfg.publish.mode == "upload" and not dry_run
     mode = "upload" if upload else "dry-run"
     today = datetime.now(timezone.utc).date().isoformat()
@@ -524,13 +557,22 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
     cache = data_dir / "cache" / "images"
     results: list[ShortResult] = []
 
+    if extra and not in_test(cfg.shorts):
+        log.info("shorts: a test-only slot, and no Shorts test is running")
+        return results
     with Ledger(data_dir / "state.db") as ledger:
         _snapshot(ledger, cfg, today)
-        room = max(cfg.shorts.per_day - shorts_today(ledger, cfg.channel.slug), 0)
+        recent = recent_shorts(ledger, cfg.channel.slug)
+        target = daily_target(cfg.shorts)
+        # The slack is for a single scheduled run that drift pushed close to
+        # the next day's; a manual batch still stops at the day's number.
+        room = max(target + (CAP_SLACK if count == 1 else 0) - len(recent), 0)
         want = room if count is None else min(count, room)
         if want <= 0:
-            log.info("shorts: daily cap of %d already reached", cfg.shorts.per_day)
+            log.info("shorts: %d Shorts in the last 24 hours, the cap for %d a day", len(recent), target)
             return results
+        recent_meta = ledger.asset_meta(recent) if cfg.shorts.earth_per_day else {}
+        earth_recent = sum(1 for m in recent_meta.values() if is_earth(asset_from_meta(m)))
         # Spare picks: a video whose candidates are all unusable hands its
         # turn to the next one instead of costing the run its Short.
         picks = plan(ledger, cfg.channel.slug, want + SPARE_PICKS, per_short=cfg.shorts.candidates, public=public)
@@ -551,6 +593,15 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             if len(results) >= want:
                 break
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
+            # Deep sky earns the subscribers (Oct 22-24: 3.6 per 1,000 Shorts
+            # views against 1.6 for Earth), so Earth gets a capped share.
+            if cfg.shorts.earth_per_day and earth_recent >= cfg.shorts.earth_per_day:
+                cands = [a for a in cands if not is_earth(a)]
+                if not cands:
+                    continue
+            n = len(recent) + len(results)
+            hook = style == "hook" or (style == "auto" and cfg.shorts.hook_every > 0
+                                       and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
@@ -562,7 +613,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                 # image with nothing to say loses to one with a story.
                 for cand in ranked:
                     stem = f"{cfg.channel.slug}-short-{cand.asset_id.replace(':', '_')}"
-                    spoken = narrate(cand, cfg=cfg, link_label=label, work=work, stem=stem, key=key)
+                    spoken = narrate(cand, cfg=cfg, link_label=label, work=work, stem=stem, key=key, hook=hook)
                     if spoken:
                         best = cand
                         break
@@ -586,15 +637,20 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             if upload and any(not t.publishable for t in tracks):
                 raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
             script = spoken[0] if spoken else None
+            hooked = hook and bool(spoken)
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
-                               duration=dur, voice=spoken)
-            md = short_metadata(cfg, best, parent, tracks, script=script)
+                               duration=dur, voice=spoken, hook=hooked)
+            md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
             log.info("short %s from %s (%s) -> %s", best.asset_id, parent.slug,
-                     "narrated" if spoken else "music only", vid or "(dry run)")
-            if social_on:
+                     ("hook style" if hooked else "narrated") if spoken else "music only", vid or "(dry run)")
+            if is_earth(best):
+                earth_recent += 1
+            # Test-only slots post to YouTube alone: the TikTok and Instagram
+            # queue holds four slots a day, and extra clips would pile up there.
+            if social_on and not extra:
                 s_dur = social[3] if social else dur
                 s_audio = audio if s_dur == dur else build_soundtrack(
                     library, genre=cfg.audio.genre, duration=s_dur, out_path=work / f"{stem}.social.m4a",

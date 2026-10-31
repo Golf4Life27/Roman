@@ -155,14 +155,76 @@ def fact_script(asset: ImageAsset, *, full_label: str, include_size: bool = True
     return " ".join(lines)
 
 
-def synthesize(text: str, out_path: Path, *, api_key: str, voice: str = DEFAULT_VOICE, timeout: int = 60) -> Path:
+# The "hook" style (owner, 2026-10-31: the calm read is educational but not
+# gripping). It opens on the most striking true line the caption holds, keeps
+# one fact, and is read faster by a livelier voice. Every hook is built from
+# the caption's own numbers or is true of every image of its kind, so nothing
+# is invented here either.
+HOOK_VOICE = "en-US-Chirp3-HD-Puck"
+_QUAL = r"(?:(about|around|roughly|nearly|almost|some|over|more than)\s+)?"
+_NUM = r"(\d[\d,.]*(?:\s+(?:million|billion|thousand))?)"
+_DISTANCE = re.compile(_QUAL + _NUM + r"\s+light[- ]years?\s+(?:away|from (?:Earth|us|the Sun))", re.I)
+_EXTENT = re.compile(_QUAL + _NUM + r"\s+light[- ]years?\s+(across|wide|long|in diameter)", re.I)
+SPACE_HOOKS = [
+    "Stop scrolling. This is a real photo of deep space.",
+    "Everything you're about to see is real.",
+    "No art, no effects. This is what the telescope saw.",
+]
+EARTH_HOOKS = [
+    "This is a real photo of Earth, taken from orbit.",
+    "Astronauts saw this out of their window.",
+]
+
+
+def _rotate(lines: list[str], key: str) -> str:
+    import hashlib
+
+    return lines[int(hashlib.sha1(key.encode()).hexdigest(), 16) % len(lines)]
+
+
+def hook_line(asset: ImageAsset, text: str) -> str:
+    """The opening line: a distance or a size from the caption, said so it lands."""
+    m = _DISTANCE.search(text)
+    if m:
+        qual = f"{m.group(1).lower()} " if m.group(1) else ""
+        return f"The light in this picture has been traveling for {qual}{m.group(2)} years to reach you."
+    m = _EXTENT.search(text)
+    if m:
+        qual = f"{m.group(1).lower()} " if m.group(1) else ""
+        return f"What you're looking at is {qual}{m.group(2)} light-years {m.group(3).lower()}."
+    earth = bool(telescopes_for(asset)) and telescopes_for(asset)[0] == "iss"
+    return _rotate(EARTH_HOOKS if earth else SPACE_HOOKS, asset.asset_id)
+
+
+def hook_script(asset: ImageAsset, *, full_label: str) -> str | None:
+    """The hook style: the hook, one fact, the pointer and a quick subscribe."""
+    good = [s for s in sentences(clean_caption(asset.description)) if _usable(s)]
+    while good and _DANGLING.match(good[0]):
+        good.pop(0)
+    if not good:
+        return None
+    hook = hook_line(asset, " ".join(good))
+    fact = good[0]
+    if len(fact.split()) > 30 and len(good) > 1 and len(good[1].split()) <= 30:
+        fact = good[1] if not _DANGLING.match(good[1]) else fact
+    earth = bool(telescopes_for(asset)) and telescopes_for(asset)[0] == "iss"
+    return " ".join([hook, fact, f"The full {full_label} version is on the channel.",
+                     subscribe_call(asset.asset_id, earth=earth)[0]])
+
+
+def synthesize(text: str, out_path: Path, *, api_key: str, voice: str = DEFAULT_VOICE,
+               speaking_rate: float = 1.0, timeout: int = 60) -> Path:
     """Speak `text` with Google Cloud TTS and write a WAV."""
     lang = "-".join(voice.split("-")[:2])
-    r = requests.post(
-        TTS_URL, params={"key": api_key}, timeout=timeout,
-        json={"input": {"text": text}, "voice": {"languageCode": lang, "name": voice},
-              "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100}},
-    )
+    audio = {"audioEncoding": "LINEAR16", "sampleRateHertz": 44100}
+    if speaking_rate != 1.0:
+        audio["speakingRate"] = speaking_rate
+    body = {"input": {"text": text}, "voice": {"languageCode": lang, "name": voice}, "audioConfig": audio}
+    r = requests.post(TTS_URL, params={"key": api_key}, timeout=timeout, json=body)
+    if r.status_code == 400 and "speakingRate" in audio:
+        log.warning("voice %s refused speakingRate; reading at the normal pace", voice)
+        audio.pop("speakingRate")
+        r = requests.post(TTS_URL, params={"key": api_key}, timeout=timeout, json=body)
     if r.status_code != 200:
         raise RuntimeError(f"text-to-speech failed: HTTP {r.status_code}: {r.text[:300]}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
