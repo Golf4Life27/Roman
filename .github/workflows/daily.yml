@@ -21,9 +21,11 @@ name: Daily render
 on:
   schedule:
     # Every day since 2026-10-24 (owner's call: long videos earned 10 of the
-    # 16 new subscribers in Oct 15-21, Shorts 2), with Shorts cut from 4 a
-    # day to 2 to stay inside the upload quota. It was Mon/Wed/Fri, to spare
-    # the image library and avoid looking like bulk output; space-station
+    # 16 new subscribers in Oct 15-21, Shorts 2). Shorts went from 4 a day to
+    # 2 for the old upload quota, then back to 4 on 2026-10-31 once Shorts
+    # proved the bigger driver and uploads had their own quota bucket. It
+    # was Mon/Wed/Fri, to spare the image library and avoid looking like
+    # bulk output; space-station
     # Earth photos now fill more days (config `earth:`), and `romanfeed
     # supply` says how many days the unused images cover. The weekly report
     # compares subscribers per day before and since the switch.

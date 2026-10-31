@@ -192,3 +192,95 @@ def test_a_video_with_nothing_usable_hands_its_turn_on(ledger, monkeypatch, tmp_
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert len(res) == 1 and res[0].parent_slug == "chan-2026-09-28" and len(sent) == 1
+
+
+def _at(stamp: str):
+    from datetime import datetime
+    return datetime.fromisoformat(stamp)
+
+
+def test_the_cap_counts_the_last_24_hours_so_late_runs_keep_their_slot(tmp_path):
+    # GitHub started some runs 3 to 6 hours late. Counted by calendar day, the
+    # late 23:10 run fell into the next day and that day lost a Short.
+    with Ledger(tmp_path / "state.db") as led:
+        def short_at(stamp, n):
+            led.record_short("chan", f"nasa:L{n}", "p", f"S{n}")
+            led.conn.execute("UPDATE shorts SET created_at = ? WHERE asset_id = ?", (stamp, f"nasa:L{n}"))
+        short_at("2026-10-30T16:40:00+00:00", 1)
+        short_at("2026-10-31T02:18:00+00:00", 2)
+        short_at("2026-10-31T06:50:00+00:00", 3)
+        assert shorts.shorts_today(led, "chan", _at("2026-10-31T09:40:00+00:00")) == 3
+        assert shorts.shorts_today(led, "chan", _at("2026-10-31T17:00:00+00:00")) == 2
+        assert sorted(shorts.recent_shorts(led, "chan", _at("2026-11-01T03:00:00+00:00"))) == ["nasa:L3"]
+
+
+def test_the_test_runs_through_its_last_day_in_central_time_then_falls_back():
+    s = ShortsSettings(per_day=4, test_per_day=8, test_until="2026-11-03")
+    assert shorts.daily_target(s, _at("2026-10-31T12:00:00+00:00")) == 8
+    assert shorts.daily_target(s, _at("2026-11-04T04:30:00+00:00")) == 8   # 23:30 Central on Nov 3
+    assert shorts.daily_target(s, _at("2026-11-04T06:00:00+00:00")) == 4
+    assert shorts.daily_target(ShortsSettings(per_day=4)) == 4
+
+
+def test_a_test_only_slot_posts_nothing_once_the_test_is_over(tmp_path, monkeypatch):
+    monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
+    cfg = _cfg(enabled=True, per_day=4, test_per_day=8, test_until="2020-01-01")
+    assert shorts.run_shorts(cfg, extra=True, data_dir=tmp_path, output_dir=tmp_path / "out", public=lambda v: True) == []
+
+
+def test_the_channel_config_runs_the_shorts_test_on_the_test_slots():
+    import re
+    from romanfeed.config import load_config
+    cfg = load_config(Path("config/channels/deep-space-ambient.yaml"))
+    assert cfg.shorts.per_day == 4 and cfg.shorts.test_per_day == 8
+    wf = Path(".github/workflows/shorts.yml").read_text()
+    crons = re.findall(r'- cron: "([^"]+)"', wf)
+    extra = re.search(r"EXTRA: .*fromJSON\('(\[.*?\])'\)", wf).group(1)
+    import json
+    extra = json.loads(extra)
+    assert len(crons) == cfg.shorts.test_per_day
+    assert set(extra) <= set(crons) and len(crons) - len(extra) == cfg.shorts.per_day
+
+
+def test_a_hook_opens_on_the_captions_own_distance():
+    from romanfeed import narration
+    a = _asset(1, title="Messier 13", source="ESA/Hubble",
+               description="Messier 13 is a globular cluster packed with several hundred thousand stars. "
+                           "It lies about 22,000 light-years away in the constellation of Hercules.")
+    hook = narration.hook_line(a, a.description)
+    assert hook == "The light in this picture has been traveling for about 22,000 years to reach you."
+    script = narration.hook_script(a, full_label="8-hour")
+    assert script.startswith(hook + " Messier 13 is a globular cluster")
+    assert " The full 8-hour version is on the channel." in script
+
+
+def test_a_hook_without_numbers_says_only_what_is_true_of_every_image():
+    from romanfeed import narration
+    a = _asset(2, title="A spiral", source="ESA/Hubble",
+               description="This spiral galaxy shows a bright core surrounded by dusty winding arms of young stars.")
+    assert narration.hook_line(a, a.description) in narration.SPACE_HOOKS
+    assert narration.hook_line(a, "It is 120,000 light-years across.") == \
+        "What you're looking at is 120,000 light-years across."
+
+
+def test_a_hook_style_short_is_tagged_for_the_report():
+    a = _asset(3, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb", description="Star birth in Carina.")
+    md = shorts.short_metadata(_cfg(), a, shorts.Parent("p", "VID8h", 28800, ""), [], hook=True)
+    assert md.tags[0] == shorts.HOOK_TAG
+    assert shorts.HOOK_TAG not in shorts.short_metadata(_cfg(), a, shorts.Parent("p", "VID8h", 28800, ""), []).tags
+
+
+def test_earth_shorts_stop_at_their_cap(ledger, monkeypatch, tmp_path):
+    led_path = ledger.db_path
+    ledger.close()
+    sent = []
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: sent.append(md.tags[0]) or "YT")
+    monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
+    monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
+    monkeypatch.setattr(shorts, "is_earth", lambda a: True)
+    monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=1), count=3, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(res) == 1
