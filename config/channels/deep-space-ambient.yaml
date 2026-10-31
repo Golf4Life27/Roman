@@ -260,11 +260,26 @@ publish:
 # writes metadata only. Four a day; each links to its full sleep video.
 shorts:
   enabled: true               # owner approved 2026-10-01
-  # 2 from 2026-10-24 (owner's call, with daily long videos): long videos earn
-  # subscribers at about twice the Shorts rate (4.5 vs 2.3 per 1,000 views,
-  # Oct 15-21). 2 Shorts + 2 long uploads = ~6,500 of the 10,000 daily quota;
-  # ~8,100 on Saturdays with the cozy video.
-  per_day: 2
+  # 4 again from 2026-10-31 (owner: "it was shorts"). The Oct 24 cut to 2 was
+  # for the upload quota, which no longer binds: uploads have had their own
+  # bucket of 100 a day, 1 unit each, since June 2026 (it was 1,600 units of
+  # the shared 10,000). Measured in Studio: Shorts made 18.9K of 28.5K views
+  # and 71 of 116 subscribers Oct 2-29; Oct 22-24 (4 a day) averaged 2,284
+  # views and 6.3 subscribers a day, Oct 26-28 (2 a day) 1,084 and 2.0.
+  per_day: 4
+  # Shorts test, owner 2026-10-31 ("We could try all shorts for a few days",
+  # "ok push it"): 8 a day Oct 31 - Nov 3, then back to 4 by itself.
+  test_per_day: 8
+  test_until: "2026-11-03"
+  # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
+  # 1.6: Earth gets at most 2 Shorts in any 24 hours.
+  earth_per_day: 2
+  # Every other Short in the hook style (owner: the calm read is "educational,
+  # but might not be crazy engaging"), tagged hook-style so the Monday report
+  # can compare the two.
+  hook_every: 2
+  hook_voice: en-US-Chirp3-HD-Puck
+  hook_rate: 1.12
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
