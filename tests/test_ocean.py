@@ -314,3 +314,13 @@ def test_title_drops_flickr_site_and_uploader():
     assert title_from_file("File:Spinner Dolphins - Flickr - benmacaskill.jpg") == "Spinner Dolphins"
     assert title_from_file("File:Humpback whale (Flickr).jpg") == "Humpback whale"
     assert title_from_file("File:Sea turtle - Flickr - NOAA Photo Library (1).jpg") == "Sea turtle"
+
+
+def test_named_ships_are_turned_away():
+    from romanfeed.curation.selector import ocean_unsuitable
+    from romanfeed.sources.base import ImageAsset
+    for title in ("Leonardo (A 5301) 13", "Research vessel at sea", "Frigate Carlo Bergamini (F 590)"):
+        a = ImageAsset(asset_id="x", title=title, url="u", source="commons", keywords=["ocean", "sea"])
+        assert ocean_unsuitable(a), title
+    keep = ImageAsset(asset_id="y", title="Rhincodon typus", url="u", source="commons", keywords=["ocean", "whale shark"])
+    assert not ocean_unsuitable(keep)

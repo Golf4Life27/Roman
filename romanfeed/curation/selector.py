@@ -185,9 +185,13 @@ OCEAN_BLOCK = (
     # roadside whales and other things shaped like sea life
     "statue", "sculpture", "roadside", "replica", "mural", "inflatable", "concrete", "attraction",
     "theme park", "catoosa",
+    # named ships: "Leonardo (A 5301)" reached the first ocean video
+    "vessel", "r/v", "nrv ", "hms ", "uss ",
 )
 
 
+# A naval pennant or hull number in brackets: "(A 5301)", "(F-590)", "(DDG 51)".
+_PENNANT_RE = re.compile(r"\((?:[A-Z]{1,3})[\s-]?\d{2,4}\)")
 _CATALOGUE_RE = re.compile(r"\b(?:USNM|NMNH|MCZ|AMNH|FMNH|ZMB|NHMUK|BMNH|MNHN|SIO|LACM|CAS|YPM)[\s:-]*\d{3,}", re.I)
 
 
@@ -200,7 +204,7 @@ def ocean_unsuitable(asset: ImageAsset) -> bool:
     if any(re.search(rf"\b{re.escape(b.strip())}", low) for b in OCEAN_BLOCK):
         return True
     # Museum catalogue numbers ("Asteroidea (USNM 1450538)"): a specimen on a tray.
-    if _CATALOGUE_RE.search(title):
+    if _CATALOGUE_RE.search(title) or _PENNANT_RE.search(title):
         return True
     # The title, the search term or the file's categories must say "sea" (the
     # subject tag, keywords[0], is on every photo and proves nothing). Many
