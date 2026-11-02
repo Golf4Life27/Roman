@@ -217,6 +217,20 @@ def _shorten(text: str, limit: int) -> str:
     return cut.rstrip(_TRAILING_JUNK) or head.rstrip(_TRAILING_JUNK)
 
 
+# NOAA sanctuary file names open on the sanctuary's code ("FKNMS green moray
+# eel", "NMSAS Rose Atoll"); viewers don't know them, so the title drops them.
+_SANCTUARY_CODE = re.compile(r"^(?:[A-Z]{0,6}NMS[A-Z]{0,3}|NOAA|NMFS|NPS)\b[\s·:,-]*")
+
+
+def _ocean_lead(title: str) -> str:
+    text = re.sub(r"\s*\([^)]*\)", "", title).strip(" ,-")
+    text = re.sub(r"\s*·.*$", "", text).strip(" ,-")  # "Spinner Dolphins · Flickr · uploader"
+    trimmed = _SANCTUARY_CODE.sub("", text).strip(" ,-")
+    if trimmed:
+        text = trimmed[0].upper() + trimmed[1:]
+    return text
+
+
 def lead_name(title: str, limit: int = 40) -> str:
     """A short human name for one image, for the title's {lead} token.
 
@@ -327,7 +341,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     if ocean and assets:
         # Commons file names carry Latin names and photo numbers ("Green sea
         # turtle (Chelonia mydas) at Kona"); the title keeps the plain name.
-        lead = lead_name(re.sub(r"\s*\([^)]*\)", "", assets[0].title).strip(" ,-"), limit=60)
+        lead = lead_name(_ocean_lead(assets[0].title), limit=60)
     tele = telescope_short(assets[0]) if assets and not ocean else None
     from romanfeed.curation.selector import is_earth
 

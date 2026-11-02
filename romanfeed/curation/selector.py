@@ -187,6 +187,10 @@ OCEAN_BLOCK = (
     "theme park", "catoosa",
     # named ships: "Leonardo (A 5301)" reached the first ocean video
     "vessel", "r/v", "nrv ", "hms ", "uss ",
+    # the Nov 1-2 videos opened on a journal figure ("East Scotia Ridge · Plos Biol"),
+    # an instrument test in a pool and a staged opera
+    "plos", "journal", "figure", "fig.", "seismomet", "sismom", "bassin d'essai", "test tank",
+    "opera", "theatre", "theater", "stage ",
 )
 
 
