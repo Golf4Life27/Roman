@@ -284,3 +284,30 @@ def test_earth_shorts_stop_at_their_cap(ledger, monkeypatch, tmp_path):
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=1), count=3, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert len(res) == 1
+
+
+def test_capped_earth_sets_do_not_crowd_out_deep_sky(ledger, monkeypatch, tmp_path):
+    """Nov 1-2: Earth sets had the fewest Shorts, so they took every pick while
+    Earth was at its cap, and runs posted nothing for 18 hours."""
+    led_path = ledger.db_path
+    earth = [_asset(i, keywords=["earth"]) for i in range(30, 50)]
+    for n, day in enumerate(["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]):
+        _video(ledger, f"chan-{day}", f"E{n}", 28800, f"{day}T10:00:00")
+        ledger.record_video_assets(f"chan-{day}", earth[n * 5:(n + 1) * 5])
+    # the two deep-sky sets each already have a Short; the Earth sets have none
+    ledger.record_short("chan", "nasa:A0", "chan-2026-09-28", "S0")
+    ledger.record_short("chan", "nasa:A10", "chan-2026-09-30", "S1")
+    ledger.record_short("chan", "nasa:A30", "chan-2026-10-01", "S2")
+    ledger.close()
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: "YT")
+    monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "already_posted", lambda a, posted: False)
+    monkeypatch.setattr(shorts, "recent_upload_titles", lambda channel_id: [])
+    monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
+    monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
+    monkeypatch.setattr(shorts, "is_earth", lambda a: "earth" in a.keywords)
+    monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=1), count=1, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert [r.parent_slug for r in res] in (["chan-2026-09-28"], ["chan-2026-09-30"])
