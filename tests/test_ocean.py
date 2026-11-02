@@ -324,3 +324,27 @@ def test_named_ships_are_turned_away():
         assert ocean_unsuitable(a), title
     keep = ImageAsset(asset_id="y", title="Rhincodon typus", url="u", source="commons", keywords=["ocean", "whale shark"])
     assert not ocean_unsuitable(keep)
+
+
+def test_journal_figures_lab_tests_and_stage_shows_are_turned_away():
+    from romanfeed.curation.selector import ocean_unsuitable
+    from romanfeed.sources.base import ImageAsset
+    for title in ("East Scotia Ridge · Plos Biol",
+                  "Test des sismomètres OBS (Ocean Bottom Seismometer) en bassin d'essais",
+                  '"Breaking the Waves" at Opera Philadelphia'):
+        a = ImageAsset(asset_id="x", title=title, url="u", source="commons", keywords=["ocean", "sea"])
+        assert ocean_unsuitable(a), title
+    for title in ("Green sea turtle", "Hawksbill turtle (Testudines) on the reef", "Octopus cyanea"):
+        keep = ImageAsset(asset_id="y", title=title, url="u", source="commons", keywords=["ocean", "sea turtle"])
+        assert not ocean_unsuitable(keep), title
+
+
+def test_ocean_lead_drops_sanctuary_codes_and_site_tails():
+    from romanfeed.publish.metadata import _ocean_lead
+    assert _ocean_lead("NMSAS Rose Atoll") == "Rose Atoll"
+    assert _ocean_lead("FKNMS green moray eel") == "Green moray eel"
+    assert _ocean_lead("HIHWNMS upside down humpback whale") == "Upside down humpback whale"
+    assert _ocean_lead("Spinner Dolphins · Flickr · benmacaskill") == "Spinner Dolphins"
+    assert _ocean_lead("Milford Sound NZ") == "Milford Sound NZ"
+    assert _ocean_lead("Green sea turtle (Chelonia mydas) at Kona") == "Green sea turtle at Kona"
+    assert _ocean_lead("NOAA") == "NOAA"
