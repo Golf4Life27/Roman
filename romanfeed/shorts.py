@@ -146,19 +146,24 @@ HOOK_TAG = "hook-style"
 
 
 def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
-         public: Callable[[str], bool] = is_public) -> list[tuple[Parent, list[str]]]:
+         public: Callable[[str], bool] = is_public,
+         keep: Callable[[list[str]], list[str]] | None = None) -> list[tuple[Parent, list[str]]]:
     """Which parent each of the next `count` Shorts comes from, and the
     candidate asset ids it chooses its best image from.
 
     Parents with the fewest Shorts go first (newest breaking ties), one Short
     per parent per lap, so every long video gets its turn instead of the
     newest one hogging the feed. Candidates are spread through the running
-    order and never shared between two Shorts of the same run."""
+    order and never shared between two Shorts of the same run. `keep` narrows
+    each parent's unused ids before planning (the Earth cap uses it), so a
+    parent with nothing left to offer never takes a pick."""
     used = ledger.shorts_asset_ids(channel)
     done = ledger.shorts_per_parent(channel)
     pool = []
     for p in parents(ledger, channel, public=public):
         ids = [a for a in ledger.assets_of_video(p.slug) if a not in used]
+        if ids and keep:
+            ids = keep(ids)
         if ids:
             pool.append((p, ids))
     pool.sort(key=lambda pi: done.get(pi[0].slug, 0))  # stable: newest-first kept within a tie
@@ -573,9 +578,22 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             return results
         recent_meta = ledger.asset_meta(recent) if cfg.shorts.earth_per_day else {}
         earth_recent = sum(1 for m in recent_meta.values() if is_earth(asset_from_meta(m)))
+        earth_full = bool(cfg.shorts.earth_per_day) and earth_recent >= cfg.shorts.earth_per_day
+        keep = None
+        if earth_full:
+            # Earth sets have the fewest Shorts once Earth is capped, so they
+            # head the running order; left in, they took every pick and the run
+            # posted nothing (Nov 1-2: no Short for 18 hours). Ids the ledger
+            # has no metadata for stay in; the loop below checks them again.
+            log.info("shorts: %d Earth Shorts in the last 24 hours, the cap; deep sky only", earth_recent)
+
+            def keep(ids: list[str]) -> list[str]:
+                m = ledger.asset_meta(ids)
+                return [a for a in ids if a not in m or not is_earth(asset_from_meta(m[a]))]
         # Spare picks: a video whose candidates are all unusable hands its
         # turn to the next one instead of costing the run its Short.
-        picks = plan(ledger, cfg.channel.slug, want + SPARE_PICKS, per_short=cfg.shorts.candidates, public=public)
+        picks = plan(ledger, cfg.channel.slug, want + SPARE_PICKS, per_short=cfg.shorts.candidates,
+                     public=public, keep=keep)
         if not picks:
             log.warning("shorts: no published video with unused images to cut from")
             return results
@@ -598,6 +616,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             if cfg.shorts.earth_per_day and earth_recent >= cfg.shorts.earth_per_day:
                 cands = [a for a in cands if not is_earth(a)]
                 if not cands:
+                    log.warning("shorts: only Earth images left in %s, and Earth is at its cap", parent.slug)
                     continue
             n = len(recent) + len(results)
             hook = style == "hook" or (style == "auto" and cfg.shorts.hook_every > 0

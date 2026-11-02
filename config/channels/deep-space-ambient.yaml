@@ -268,9 +268,11 @@ shorts:
   # views and 6.3 subscribers a day, Oct 26-28 (2 a day) 1,084 and 2.0.
   per_day: 4
   # Shorts test, owner 2026-10-31 ("We could try all shorts for a few days",
-  # "ok push it"): 8 a day Oct 31 - Nov 3, then back to 4 by itself.
+  # "ok push it"): 8 a day Oct 31 - Nov 3, then back to 4 by itself. One day
+  # added (to Nov 4) because the Earth cap stalled every run from Nov 1 17:45
+  # to Nov 2 midday Central: 6 Shorts posted in the first 41 hours, not ~13.
   test_per_day: 8
-  test_until: "2026-11-03"
+  test_until: "2026-11-04"
   # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
   # 1.6: Earth gets at most 2 Shorts in any 24 hours.
   earth_per_day: 2
