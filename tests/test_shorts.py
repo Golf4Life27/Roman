@@ -238,8 +238,11 @@ def test_the_channel_config_runs_the_shorts_test_on_the_test_slots():
     extra = re.search(r"EXTRA: .*fromJSON\('(\[.*?\])'\)", wf).group(1)
     import json
     extra = json.loads(extra)
-    assert len(crons) == cfg.shorts.test_per_day
-    assert set(extra) <= set(crons) and len(crons) - len(extra) == cfg.shorts.per_day
+    backup = json.loads(re.search(r"BACKUP: .*fromJSON\('(\[.*?\])'\)", wf).group(1))
+    slots = [c for c in crons if c not in backup]  # backups post only after a skipped slot
+    assert set(backup) <= set(crons) and not set(backup) & set(extra)
+    assert len(slots) == cfg.shorts.test_per_day
+    assert set(extra) <= set(slots) and len(slots) - len(extra) == cfg.shorts.per_day
 
 
 def test_a_hook_opens_on_the_captions_own_distance():
@@ -337,5 +340,17 @@ def test_a_scheduled_run_makes_up_a_skipped_slot(ledger, monkeypatch, tmp_path, 
     ledger.close()
     _quiet_run(monkeypatch)
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, catch_up=catch_up, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(res) == made
+
+
+@pytest.mark.parametrize("posted_today, made", [(1, 2), (3, 0)])
+def test_a_backup_slot_posts_only_after_a_skipped_slot(ledger, monkeypatch, tmp_path, posted_today, made):
+    led_path = ledger.db_path
+    for i in range(posted_today):
+        ledger.record_short("chan", f"nasa:A{i}", "chan-2026-09-28", f"S{i}")
+    ledger.close()
+    _quiet_run(monkeypatch)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, backup=True, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert len(res) == made
