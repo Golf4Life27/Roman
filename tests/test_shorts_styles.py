@@ -1,0 +1,72 @@
+from datetime import date
+
+from romanfeed.publish import shorts_styles as ss
+from romanfeed.state import Ledger
+
+
+class _Exec:
+    def __init__(self, val):
+        self.val = val
+
+    def execute(self):
+        return self.val
+
+
+class _YT:
+    def __init__(self, items):
+        self.items = items
+
+    def videos(self):
+        return self
+
+    def list(self, part, id):
+        want = id.split(",")
+        return _Exec({"items": [i for i in self.items if i["id"] in want]})
+
+
+class _YTA:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def reports(self):
+        return self
+
+    def query(self, **kw):
+        assert kw["dimensions"] == "video"
+        return _Exec({"columnHeaders": [{"name": n} for n in ("video", "views", "averageViewDuration", "subscribersGained")],
+                      "rows": self.rows})
+
+
+def _item(vid, hook, views):
+    return {"id": vid, "snippet": {"title": f"T {vid}", "tags": ["space", "Hook-Style"] if hook else ["space"]},
+            "statistics": {"viewCount": str(views)}}
+
+
+def test_collect_splits_by_tag_and_reads_analytics(tmp_path):
+    with Ledger(tmp_path / "state.db") as led:
+        for n, vid in enumerate(["H1", "C1", "H2", "GONE"]):
+            led.record_short("chan", f"nasa:A{n}", "p", vid)
+        led.record_short("chan", "nasa:A9", "p", None)  # a dry run: not counted
+        yt = _YT([_item("H1", True, 900), _item("C1", False, 300), _item("H2", True, 100)])
+        yta = _YTA([["H1", 800, 12, 3], ["C1", 250, 20, 1]])
+        rows = ss.collect(yt, yta, led, "chan", date(2026, 1, 1), date(2026, 12, 31))
+    by = {r.video_id: r for r in rows}
+    assert set(by) == {"H1", "C1", "H2"}  # deleted or private ones drop out
+    assert by["H1"].style == "hook" and by["C1"].style == "calm"
+    assert (by["H1"].views, by["H1"].subs, by["H2"].views) == (800, 3, 0)
+    hook = ss.totals(rows, "hook")
+    assert (hook.shorts, hook.public_views, hook.subs) == (2, 1000, 3)
+    lines = ss.report_lines(rows, date(2026, 1, 1), date(2026, 12, 31))
+    assert any("Reading: too early" in line for line in lines)
+
+
+def _t(style, shorts, views, subs):
+    return ss.StyleTotals(style, shorts, views, views, subs, 10.0)
+
+
+def test_verdict_waits_for_enough_shorts_and_subscribers():
+    assert ss.verdict(_t("hook", 5, 5000, 20), _t("calm", 9, 5000, 2)).startswith("too early")
+    assert ss.verdict(_t("hook", 9, 5000, 5), _t("calm", 9, 5000, 3)).startswith("inside noise")
+    assert ss.verdict(_t("hook", 9, 5000, 12), _t("calm", 9, 5000, 6)).startswith("hook wins")
+    assert ss.verdict(_t("hook", 9, 5000, 6), _t("calm", 9, 5000, 12)).startswith("calm wins")
+    assert ss.verdict(_t("hook", 9, 5000, 6), _t("calm", 9, 5000, 7)).startswith("inside noise")

@@ -460,6 +460,9 @@ def _snapshot(ledger: Ledger, cfg: ChannelConfig, today: str) -> None:
 # hours, with one Short of slack for a single scheduled run (each posts one
 # Short, so the slots, not the cap, set the pace).
 CAP_SLACK = 1
+# A one-Short scheduled run posts two when the cap leaves at least this much
+# room beyond the slack, i.e. an earlier slot in the last 24 hours never ran.
+CATCH_UP_GAP = 2
 
 
 def _since(now: datetime | None, hours: float = 24) -> str:
@@ -542,7 +545,7 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
-               style: str = "auto") -> list[ShortResult]:
+               style: str = "auto", catch_up: bool = False) -> list[ShortResult]:
     """Cut and (if switched on) publish up to `count` Shorts.
 
     Uploads only when shorts.enabled is true, publish.mode is upload, and this
@@ -551,7 +554,11 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
 
     `extra` marks a run from one of the test-only slots: it posts only while
     the Shorts test runs. `style` is auto (every hook_every-th Short in the
-    hook style), calm or hook."""
+    hook style), calm or hook.
+
+    `catch_up` marks a scheduled run: when the last 24 hours are short by
+    more than the slack (GitHub skipped an earlier slot), a one-Short run
+    posts one more to make it up, still inside the day's cap."""
     upload = cfg.shorts.enabled and cfg.publish.mode == "upload" and not dry_run
     mode = "upload" if upload else "dry-run"
     today = datetime.now(timezone.utc).date().isoformat()
@@ -573,6 +580,12 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         # the next day's; a manual batch still stops at the day's number.
         room = max(target + (CAP_SLACK if count == 1 else 0) - len(recent), 0)
         want = room if count is None else min(count, room)
+        if catch_up and count == 1 and room >= CAP_SLACK + CATCH_UP_GAP:
+            # GitHub drops scheduled runs (Nov 2-4: the 12:10, 14:10 and 16:10
+            # UTC slots, morning after morning); the next run makes one up.
+            log.info("shorts: %d Shorts in the last 24 hours against %d a day; catching up one",
+                     len(recent), target)
+            want = 2
         if want <= 0:
             log.info("shorts: %d Shorts in the last 24 hours, the cap for %d a day", len(recent), target)
             return results

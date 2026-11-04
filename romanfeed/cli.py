@@ -255,13 +255,30 @@ def _cmd_shorts(args) -> int:
 
     cfg = load_config(args.config)
     res = run_shorts(cfg, count=args.count, dry_run=args.dry_run, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir),
-                     extra=args.extra, style=args.style)
+                     extra=args.extra, style=args.style, catch_up=args.catch_up)
     if not cfg.shorts.enabled:
         print("shorts.enabled is false in the channel config: rendered only, nothing uploaded")
     for r in res:
         print(f"{r.asset_id:32} from {r.parent_slug:34} {r.youtube_id or '(not uploaded)':14} {r.title}")
     if not res:
         print("no Shorts made (daily cap reached, or nothing left to cut from)")
+    return 0
+
+
+def _cmd_shorts_styles(args) -> int:
+    from datetime import date, timedelta
+
+    from romanfeed.publish import shorts_styles as ss
+    from romanfeed.publish.stats import analytics_client
+    from romanfeed.publish.youtube import client
+    from romanfeed.state import Ledger
+
+    cfg = load_config(args.config)
+    today = date.today()
+    since = date.fromisoformat(args.since) if args.since else today - timedelta(days=7)
+    with Ledger(Path(args.data_dir) / "state.db") as ledger:
+        rows = ss.collect(client(), analytics_client(), ledger, cfg.channel.slug, since, today)
+    print("\n".join(ss.report_lines(rows, since, today)))
     return 0
 
 
@@ -648,8 +665,15 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--extra", action="store_true", help="a test-only slot: posts only while the Shorts test runs")
     sh.add_argument("--style", choices=["auto", "calm", "hook"], default="auto",
                     help="auto alternates per shorts.hook_every; calm or hook forces one")
+    sh.add_argument("--catch-up", action="store_true",
+                    help="a scheduled run: post one extra Short when an earlier slot in the last 24 hours never ran")
     sh.add_argument("--output-dir", default="output")
     sh.set_defaults(fn=_cmd_shorts)
+
+    ss = sub.add_parser("shorts-styles", help="hook-style against calm Shorts: views, view length, subscribers")
+    ss.add_argument("--config", default="config/channels/deep-space-ambient.yaml")
+    ss.add_argument("--since", help="first day to count, YYYY-MM-DD (default: 7 days ago)")
+    ss.set_defaults(fn=_cmd_shorts_styles)
 
     st = sub.add_parser("stats", help="weekly subscriber / watch-hour report against the YPP goal")
     st.add_argument("--config", default="config/channels/deep-space-ambient.yaml")

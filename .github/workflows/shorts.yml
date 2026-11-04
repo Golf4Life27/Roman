@@ -112,6 +112,8 @@ jobs:
           args="--count $COUNT --style $STYLE"
           [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
           [ "$EXTRA" = "true" ] && args="$args --extra"
+          # A scheduled run makes up a slot GitHub skipped (see run_shorts).
+          [ "${{ github.event_name }}" = "schedule" ] && args="$args --catch-up"
           python -m romanfeed shorts config/channels/deep-space-ambient.yaml $args
       # Parallel jobs each save the ledger they restored plus their own rows;
       # merge with the newest saved copy first so nobody erases anybody.

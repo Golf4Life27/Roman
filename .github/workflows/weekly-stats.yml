@@ -26,6 +26,10 @@ on:
         description: print the report only, send no email
         type: boolean
         default: false
+      since:
+        description: first day for the hook-vs-calm Shorts numbers (YYYY-MM-DD; default 7 days ago)
+        type: string
+        default: ""
 permissions:
   contents: read
   issues: write
@@ -92,6 +96,17 @@ jobs:
         run: |
           python -m romanfeed supply config/channels/deep-space-ambient.yaml > supply.txt
           { echo; echo "Image supply (days of daily long videos lined up)"; sed 's/^/  /' supply.txt; } >> report.txt
+      # Hook-style against calm Shorts over the last week, Short by Short.
+      - name: Shorts styles
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          SINCE: ${{ inputs.since }}
+        run: |
+          python -m romanfeed shorts-styles ${SINCE:+--since "$SINCE"} > styles.txt
+          cat styles.txt
+          { echo; echo "Hook against calm Shorts"; sed 's/^/  /' styles.txt; } >> report.txt
       # Deep Blue Screens and every lane after it: public numbers, uploads this
       # week and photo supply. Separate step so a slow archive cannot cost the
       # Space Screens report above.
