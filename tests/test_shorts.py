@@ -311,3 +311,31 @@ def test_capped_earth_sets_do_not_crowd_out_deep_sky(ledger, monkeypatch, tmp_pa
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=1), count=1, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert [r.parent_slug for r in res] in (["chan-2026-09-28"], ["chan-2026-09-30"])
+
+
+def _quiet_run(monkeypatch):
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: "YT")
+    monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "already_posted", lambda a, posted: False)
+    monkeypatch.setattr(shorts, "recent_upload_titles", lambda channel_id: [])
+    monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
+    monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
+    monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
+
+
+@pytest.mark.parametrize("posted_today, catch_up, made", [
+    (1, True, 2),    # two of four slots never ran: the scheduled run makes one up
+    (1, False, 1),   # a manual one-Short run stays at one
+    (3, True, 1),    # on pace: no catch-up
+])
+def test_a_scheduled_run_makes_up_a_skipped_slot(ledger, monkeypatch, tmp_path, posted_today, catch_up, made):
+    """Nov 2-4: GitHub skipped the morning slots day after day."""
+    led_path = ledger.db_path
+    for i in range(posted_today):
+        ledger.record_short("chan", f"nasa:A{i}", "chan-2026-09-28", f"S{i}")
+    ledger.close()
+    _quiet_run(monkeypatch)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, catch_up=catch_up, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(res) == made
