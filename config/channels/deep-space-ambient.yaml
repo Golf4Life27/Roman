@@ -271,14 +271,19 @@ shorts:
   # "ok push it"): 8 a day Oct 31 - Nov 3, then back to 4 by itself. One day
   # added (to Nov 4) because the Earth cap stalled every run from Nov 1 17:45
   # to Nov 2 midday Central: 6 Shorts posted in the first 41 hours, not ~13.
+  # Kept at 8 through Monday Nov 9: once it ran at full rate (Nov 2 22:34 to
+  # Nov 4 15:30 UTC) the live count went 135 -> 152, about 10 a day against
+  # 2 a day the week before. Analytics can only say where those came from by
+  # Monday's report, which decides 8 or 4 from then on.
   test_per_day: 8
-  test_until: "2026-11-04"
+  test_until: "2026-11-09"
   # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
   # 1.6: Earth gets at most 2 Shorts in any 24 hours.
   earth_per_day: 2
   # Every other Short in the hook style (owner: the calm read is "educational,
   # but might not be crazy engaging"), tagged hook-style so the Monday report
-  # can compare the two.
+  # can compare the two. Nov 4: 21 Shorts in, still inside noise (3
+  # subscribers between both styles, all calm), so it keeps alternating.
   hook_every: 2
   hook_voice: en-US-Chirp3-HD-Puck
   hook_rate: 1.12
