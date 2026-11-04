@@ -279,7 +279,10 @@ shorts:
   test_until: "2026-11-09"
   # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
   # 1.6: Earth gets at most 2 Shorts in any 24 hours.
-  earth_per_day: 2
+  # Test Nov 5-11: no Earth Shorts. Nov 1-4 Earth Shorts drew 48-123 views
+  # each and 0 subscribers; deep sky 231-267 and all 3. Kill rule: if Shorts
+  # average under 200 views each over the week, Earth comes back at 2 a day.
+  earth_per_day: -1
   # Every other Short in the hook style (owner: the calm read is "educational,
   # but might not be crazy engaging"), tagged hook-style so the Monday report
   # can compare the two. Nov 4: 21 Shorts in, still inside noise (3

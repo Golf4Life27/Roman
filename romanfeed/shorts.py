@@ -545,7 +545,8 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
-               style: str = "auto", catch_up: bool = False) -> list[ShortResult]:
+               style: str = "auto", catch_up: bool = False,
+               backup: bool = False) -> list[ShortResult]:
     """Cut and (if switched on) publish up to `count` Shorts.
 
     Uploads only when shorts.enabled is true, publish.mode is upload, and this
@@ -558,7 +559,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
 
     `catch_up` marks a scheduled run: when the last 24 hours are short by
     more than the slack (GitHub skipped an earlier slot), a one-Short run
-    posts one more to make it up, still inside the day's cap."""
+    posts one more to make it up, still inside the day's cap.
+
+    `backup` marks a backup slot: it posts only when an earlier slot was
+    skipped (the same shortfall `catch_up` looks for), never on a day on pace."""
     upload = cfg.shorts.enabled and cfg.publish.mode == "upload" and not dry_run
     mode = "upload" if upload else "dry-run"
     today = datetime.now(timezone.utc).date().isoformat()
@@ -580,7 +584,11 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         # the next day's; a manual batch still stops at the day's number.
         room = max(target + (CAP_SLACK if count == 1 else 0) - len(recent), 0)
         want = room if count is None else min(count, room)
-        if catch_up and count == 1 and room >= CAP_SLACK + CATCH_UP_GAP:
+        behind = room >= CAP_SLACK + CATCH_UP_GAP
+        if backup and not behind:
+            log.info("shorts: a backup slot, and no slot was skipped (%d Shorts in the last 24 hours)", len(recent))
+            return results
+        if (catch_up or backup) and count == 1 and behind:
             # GitHub drops scheduled runs (Nov 2-4: the 12:10, 14:10 and 16:10
             # UTC slots, morning after morning); the next run makes one up.
             log.info("shorts: %d Shorts in the last 24 hours against %d a day; catching up one",
@@ -591,7 +599,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             return results
         recent_meta = ledger.asset_meta(recent) if cfg.shorts.earth_per_day else {}
         earth_recent = sum(1 for m in recent_meta.values() if is_earth(asset_from_meta(m)))
-        earth_full = bool(cfg.shorts.earth_per_day) and earth_recent >= cfg.shorts.earth_per_day
+        # earth_per_day: 0 = no cap, N = at most N in 24 hours, -1 = none at all
+        cap = cfg.shorts.earth_per_day
+        earth_full = cap < 0 or (cap > 0 and earth_recent >= cap)
         keep = None
         if earth_full:
             # Earth sets have the fewest Shorts once Earth is capped, so they
@@ -626,7 +636,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
             # Deep sky earns the subscribers (Oct 22-24: 3.6 per 1,000 Shorts
             # views against 1.6 for Earth), so Earth gets a capped share.
-            if cfg.shorts.earth_per_day and earth_recent >= cfg.shorts.earth_per_day:
+            if cap < 0 or (cap > 0 and earth_recent >= cap):
                 cands = [a for a in cands if not is_earth(a)]
                 if not cands:
                     log.warning("shorts: only Earth images left in %s, and Earth is at its cap", parent.slug)

@@ -206,7 +206,7 @@ class ShortsSettings:
     test_per_day: int = 0
     test_until: str = ""
     # At most this many Earth-from-orbit Shorts in any 24 hours (0 = no cap).
-    earth_per_day: int = 0
+    earth_per_day: int = 0          # 0 = no cap, -1 = no Earth Shorts at all
     # Every Nth Short uses the hook style (narration.hook_script, a livelier
     # voice read faster, a quicker pan, the music a little louder); 0 = never.
     hook_every: int = 0

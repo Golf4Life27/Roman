@@ -40,6 +40,10 @@ on:
     - cron: "10 14 * * *"   # 09:10 CDT
     - cron: "10 19 * * *"   # 14:10 CDT
     - cron: "10 21 * * *"   # 16:10 CDT
+    # Backup slots: GitHub dropped the 12:10-16:10 UTC runs Nov 2, 3 and 4.
+    # These post only when a slot in the last 24 hours never ran.
+    - cron: "37 17 * * *"   # 12:37 CDT
+    - cron: "37 20 * * *"   # 15:37 CDT
   workflow_dispatch:
     inputs:
       count:
@@ -107,11 +111,13 @@ jobs:
           CROSSPOST_MODE: ${{ inputs.crosspost_test && 'test' || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STYLE: ${{ inputs.style || 'auto' }}
+          BACKUP: ${{ contains(fromJSON('["37 17 * * *", "37 20 * * *"]'), github.event.schedule) }}
           EXTRA: ${{ contains(fromJSON('["10 12 * * *", "10 14 * * *", "10 19 * * *", "10 21 * * *"]'), github.event.schedule) }}
         run: |
           args="--count $COUNT --style $STYLE"
           [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
           [ "$EXTRA" = "true" ] && args="$args --extra"
+          [ "$BACKUP" = "true" ] && args="$args --backup"
           # A scheduled run makes up a slot GitHub skipped (see run_shorts).
           [ "${{ github.event_name }}" = "schedule" ] && args="$args --catch-up"
           python -m romanfeed shorts config/channels/deep-space-ambient.yaml $args

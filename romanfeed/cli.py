@@ -255,7 +255,8 @@ def _cmd_shorts(args) -> int:
 
     cfg = load_config(args.config)
     res = run_shorts(cfg, count=args.count, dry_run=args.dry_run, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir),
-                     extra=args.extra, style=args.style, catch_up=args.catch_up)
+                     extra=args.extra, style=args.style, catch_up=args.catch_up,
+                     backup=args.backup)
     if not cfg.shorts.enabled:
         print("shorts.enabled is false in the channel config: rendered only, nothing uploaded")
     for r in res:
@@ -667,6 +668,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="auto alternates per shorts.hook_every; calm or hook forces one")
     sh.add_argument("--catch-up", action="store_true",
                     help="a scheduled run: post one extra Short when an earlier slot in the last 24 hours never ran")
+    sh.add_argument("--backup", action="store_true",
+                    help="a backup slot: posts only when an earlier slot in the last 24 hours never ran")
     sh.add_argument("--output-dir", default="output")
     sh.set_defaults(fn=_cmd_shorts)
 
