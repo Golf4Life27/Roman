@@ -599,7 +599,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             return results
         recent_meta = ledger.asset_meta(recent) if cfg.shorts.earth_per_day else {}
         earth_recent = sum(1 for m in recent_meta.values() if is_earth(asset_from_meta(m)))
-        earth_full = bool(cfg.shorts.earth_per_day) and earth_recent >= cfg.shorts.earth_per_day
+        # earth_per_day: 0 = no cap, N = at most N in 24 hours, -1 = none at all
+        cap = cfg.shorts.earth_per_day
+        earth_full = cap < 0 or (cap > 0 and earth_recent >= cap)
         keep = None
         if earth_full:
             # Earth sets have the fewest Shorts once Earth is capped, so they
@@ -634,7 +636,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
             # Deep sky earns the subscribers (Oct 22-24: 3.6 per 1,000 Shorts
             # views against 1.6 for Earth), so Earth gets a capped share.
-            if cfg.shorts.earth_per_day and earth_recent >= cfg.shorts.earth_per_day:
+            if cap < 0 or (cap > 0 and earth_recent >= cap):
                 cands = [a for a in cands if not is_earth(a)]
                 if not cands:
                     log.warning("shorts: only Earth images left in %s, and Earth is at its cap", parent.slug)

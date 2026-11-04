@@ -354,3 +354,13 @@ def test_a_backup_slot_posts_only_after_a_skipped_slot(ledger, monkeypatch, tmp_
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4), count=1, backup=True, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert len(res) == made
+
+
+def test_no_earth_shorts_at_all_when_the_cap_is_minus_one(ledger, monkeypatch, tmp_path):
+    led_path = ledger.db_path
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "is_earth", lambda a: int(a.asset_id.split("A")[1]) >= 10)  # the newer set is Earth
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=-1), count=3, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert res and all(r.parent_slug == "chan-2026-09-28" for r in res)
