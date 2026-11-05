@@ -219,6 +219,124 @@ def ocean_unsuitable(asset: ImageAsset) -> bool:
     return not any(h in head for h in OCEAN_HINTS)
 
 
+# Aviation channel (Wikimedia Commons photos): calm flight. Aircraft in the
+# sky, clouds, sunsets, night runways, landscapes from above. Commons search
+# for aircraft also finds crashes, airshows, cockpit panels, museum halls,
+# terminals full of signs, models and spotter shots of parked planes.
+AVIATION_HINTS = (
+    "aircraft", "airplane", "aeroplane", "airliner", "plane", "jet", "boeing", "airbus", "douglas", "lockheed",
+    "mcdonnell", "concorde", "embraer", "bombardier", "fokker", "antonov", "ilyushin", "tupolev", "de havilland",
+    "cessna", "piper", "beechcraft", "junkers", "dornier", "convair", "vickers", "avro", "caravelle", "biplane",
+    "seaplane", "floatplane", "glider", "sailplane", "propeller", "turboprop", "flight", "flying", "aviation",
+    "airport", "runway", "contrail", "vapor trail", "vapour trail", "condensation trail", "cloud", "sky",
+    "sunset", "sunrise", "dusk", "dawn", "aerial", "night", "approach", "landing", "takeoff", "take-off",
+    "wing", "cockpit", "window", "trimotor", "ju 52", "dc-3", "dc-6", "tiger moth",
+)
+# Proof of the sky, read from the title and the file's categories (never the
+# search term, which says "in flight" on every result of an aircraft search):
+# a photo of a parked plane names an airport, not a flight.
+AVIATION_SKY = (
+    "in flight", "in-flight", "flying", "airborne", "landing", "approach", "takeoff", "take-off",
+    "taking off", "departure", "departing", "climb", "overhead", "flypast", "fly-by", "flyby", "above", " over ",
+    "sky", "skies", "cloud", "contrail", "vapor trail", "vapour trail", "condensation trail", "sunset", "sunrise",
+    "dusk", "dawn", "twilight", "golden hour", "blue hour", "night", "lights", "long exposure", "moon", "aurora",
+    "aerial", "from the air", "from above", "bird's eye", "birds eye", "from an aircraft", "from aircraft",
+    "from an airplane", "from airplane", "from a plane", "from plane", "views from", "window",
+)
+# Matched at a word start, like OCEAN_BLOCK ("crash" also turns away "crashed").
+AVIATION_BLOCK = (
+    # crashes and accidents
+    "crash", "wreck", "accident", "incident", "disaster", "collision", "ditching", "hijack", "emergency",
+    "burning", "burnt", "explosion", "smoke", "salvage", "debris", "remains of", "memorial",
+    # military combat and weapons
+    "combat", "weapon", "missile", "bomb", "gunship", "munition", "ordnance", "rocket", "airstrike",
+    "air strike", "strike", "attack", "fighter", "fighting", "warplane", "warship", "dogfight", "air raid",
+    "invasion", "paratroop", "parachut", "skydiv", "refuel",
+    # airshows and crowds
+    "airshow", "air show", "aerobatic", "display team", "red arrows", "blue angels", "thunderbirds", "frecce",
+    "patrouille", "crowd", "spectator", "audience",
+    # people
+    "portrait", "pilot", "crew", "passenger", "person", "selfie", "attendant", "stewardess", "steward",
+    "ceremony", "visit", "president", "minister", "prince", "princess", "queen", "family", "tourist",
+    "official", "employee", "worker", "mechanic", "engineer", "technician", "maintenance", "repair",
+    "inspection",
+    # cockpit panels and cabins
+    "instrument", "gauge", "dashboard", "avionics", "throttle", "yoke", "control column", "simulator",
+    "interior", "galley", "lavatory", "landing gear", "undercarriage", "engine nacelle", "close-up", "closeup",
+    # diagrams, maps, logos, tickets, print
+    "diagram", "route map", "emblem", "insignia", "badge", "patch", "ticket", "boarding pass", "timetable",
+    "schedule", "brochure", "poster", "advert", "postcard", "stamp", "coin", "drawing", "blueprint",
+    "three-view", "3-view", "illustration", "painting", "artwork", "rendering", "screenshot", "infographic",
+    "graph", "document", "manual", "label", "signage", "magazine", "newspaper", "cartoon", "journal", "figure",
+    "fig.",
+    # terminals
+    "terminal", "concourse", "check-in", "baggage", "luggage", "lounge", "duty free", "departure board",
+    "departures board", "arrivals board", "flight information", "security", "escalator", "jet bridge",
+    "jetway", "airbridge",
+    # models and toys
+    "model", "die-cast", "diecast", "miniature", "replica", "mock-up", "mockup", "radio control",
+    "radio-control", "paper plane",
+    # museums and the ground
+    "museum", "exhibit", "display", "static", "hangar", "preserved", "restoration", "storage", "stored",
+    "boneyard", "graveyard", "scrap", "parked", "apron", "pushback", "de-icing", "deicing", "loading",
+    "cargo hold", "towing", "statue", "sculpture", "mural", "monument", "cemetery",
+    # not aircraft
+    "space shuttle", "launch", "satellite",
+)
+# Short words that would match inside longer ones ("car" in "cargo", "chart"
+# in "charter", "art" in "Arthur"), so these must stand alone.
+AVIATION_BLOCK_WORDS = frozenset({
+    "map", "maps", "chart", "charts", "art", "kit", "toy", "toys", "lego", "gun", "guns", "war", "fire",
+    "logo", "logos", "sign", "signs", "text", "card", "seat", "seats", "panel", "panels", "gate", "gates",
+    "hall", "shop", "car", "cars", "bus", "truck", "train", "people", "man", "men", "woman", "women", "boy",
+    "girl", "kids", "children", "rc", "3d", "cgi", "page", "book", "menu", "meal", "food", "kite", "staff",
+})
+# A cockpit or a cabin counts only with the sky in the frame: "sunset from the
+# cockpit" stays, "Boeing 737 cockpit" (a wall of instruments and text) goes.
+_INSIDE = ("cockpit", "flight deck", "cabin")
+_INSIDE_SKY = ("sunset", "sunrise", "dusk", "dawn", "sky", "cloud", "night", "moon", "star", "aurora", "horizon",
+               "view", "window", "approach", "landing", "above", "over ")
+# The pilot's own view is a view, not a portrait.
+_VIEW_PHRASES = re.compile(r"\bpilots?'?s?\s+(?:eye\s+)?view\b|\bview from the cockpit\b|\bfrom the cockpit\b")
+# Aircraft registrations: US "N12345"/"N747PA", hyphenated "G-ABCD", "D-AIMA",
+# "VH-OQA", "9V-SKA", and the all-digit kinds "B-18701", "RA-96005", "JA8089",
+# "HL7461". Type names ("747-436", "C-130", "F-35A", "DC-3") never match.
+AIRCRAFT_REG = r"(?:N[1-9][0-9A-Z]{1,4}|[A-Z0-9]{1,2}-[A-Z]{3,4}|(?:B|RA|UR|EW|UN|EX|HL|JA|4X)-?\d{4,5}[A-Z]?)"
+_REG_IN_BRACKETS_RE = re.compile(rf"[(\[][^()\[\]]*\b{AIRCRAFT_REG}\b[^()\[\]]*[)\]]")
+_AVIATION_GENERIC = frozenset({"aircraft", "airplane", "aeroplane", "plane", "planes", "airliner", "aviation",
+                               "flight", "jet", "sky", "clouds"})
+
+
+def aviation_unsuitable(asset: ImageAsset) -> bool:
+    """True unless this reads as a calm photo of flight: an aircraft in the
+    sky, clouds, a sunset, a night runway or the land from above."""
+    title = asset.title.strip()
+    low = title.lower()
+    if len(low) < 4 or _is_filename_title(title) or _normalized_title(title) in _GENERIC_TITLES \
+            or _normalized_title(title) in _AVIATION_GENERIC:
+        return True
+    # A registration in brackets ("Cessna 172 (N12345)") is a spotter's record
+    # of one airframe, almost always on the ground; a museum or archive number
+    # is a catalogue entry.
+    if _REG_IN_BRACKETS_RE.search(title) or _CATALOGUE_RE.search(title):
+        return True
+    text = _VIEW_PHRASES.sub(" cockpit view ", low)
+    if any(re.search(rf"\b{re.escape(b.strip())}", text) for b in AVIATION_BLOCK):
+        return True
+    if AVIATION_BLOCK_WORDS.intersection(re.findall(r"[a-z0-9]+", text)):
+        return True
+    if any(w in text for w in _INSIDE) and not any(s in f"{text} " for s in _INSIDE_SKY):
+        return True
+    # The title or the search term must be about flight (keywords[0] is the
+    # subject tag on every photo and proves nothing) ...
+    head = f"{low} {' '.join(asset.keywords[1:8]).lower()}"
+    if not any(h in head for h in AVIATION_HINTS):
+        return True
+    # ... and the title or the file's own categories must show the sky.
+    seen = f" {low} {' '.join(asset.keywords[2:14]).lower()} "
+    return not any(s in seen for s in AVIATION_SKY)
+
+
 def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
     """True if the asset does not belong in a video about `subject`.
 
@@ -230,6 +348,8 @@ def looks_unsuitable(asset: ImageAsset, subject: str = "space") -> bool:
         return not is_earth(asset) or earth_unsuitable(asset)
     if subject == "ocean":
         return ocean_unsuitable(asset)
+    if subject == "aviation":
+        return aviation_unsuitable(asset)
     if is_earth(asset):
         return True
     title = asset.title.strip()

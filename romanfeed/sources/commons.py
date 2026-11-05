@@ -1,6 +1,6 @@
 """Wikimedia Commons: free-licensed photos found by search.
 
-The ocean channel's supplier. Commons is the one big archive with a clean
+The ocean and aviation channels' supplier. Commons is the one big archive with a clean
 search API *and* a machine-readable licence on every file, so the licence
 rule is enforced here, before anything is downloaded:
 

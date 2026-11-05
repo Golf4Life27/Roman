@@ -98,7 +98,9 @@ def intro_card(asset: ImageAsset, width: int, height: int, *, channel_name: str)
     name_font = _font(int(88 * s), bold=True)
     tele_font = _font(int(38 * s))
 
-    name = lead_name(asset.title, limit=60) or asset.title.strip()
+    from romanfeed.publish.metadata import display_name  # late, as in lead_name above
+
+    name = lead_name(display_name(asset), limit=60) or asset.title.strip()
     lines = _wrap(d, name, name_font, width * 0.78, 2)
     tele = photo_line(asset) if asset.asset_id.startswith("commons:") else telescope_line(asset)
 

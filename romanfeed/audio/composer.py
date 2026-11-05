@@ -153,6 +153,9 @@ class _Plan:
     # Ocean style only: band-limited noise shaped into slow breaking waves.
     surf_kernel: np.ndarray | None = None
     surf_env: Callable[[np.ndarray], np.ndarray] | None = None
+    # Aviation style only: a steady airplane cabin hum (shaped noise).
+    hum_kernel: np.ndarray | None = None
+    hum_env: Callable[[np.ndarray], np.ndarray] | None = None
 
 
 def _seed_int(seed: str) -> int:
@@ -519,9 +522,191 @@ def _plan_ocean(seconds: float, seed: str, sr: int) -> _Plan:
                  seed_int, fade_in, fade_out, surf, surf_env)
 
 
+# --- aviation style ----------------------------------------------------------
+# The aviation channel's own sound, so it is neither Space Screens nor the
+# ocean channel with new pictures: open suspended chords (root, second, fifth,
+# sixth; no thirds, so nothing leans major or minor), slower changes, long
+# held soft notes that swell in and fade instead of struck bells or piano, a
+# small dry room, and under it all a steady airplane cabin hum: noise with
+# most of its weight low, like engines heard through the hull, that never
+# rises and falls the way the surf does, only drifts a little over minutes.
+_AVIATION_MODES: dict[str, dict] = {
+    # Chord roots are only degrees whose second is a whole step and whose
+    # fifth is perfect, so an open chord never holds a semitone.
+    "major": {
+        "scale": [0, 2, 4, 5, 7, 9, 11], "penta": [0, 2, 4, 7, 9], "label": "major",
+        "moves": {0: [3, 5, 4], 3: [0, 4, 5], 4: [0, 5, 3], 5: [3, 0, 4]},
+    },
+    "mixolydian": {
+        "scale": [0, 2, 4, 5, 7, 9, 10], "penta": [0, 2, 4, 7, 9], "label": "Mixolydian",
+        "moves": {0: [6, 3, 4], 6: [3, 0, 4], 3: [0, 6, 4], 4: [0, 3, 6]},
+    },
+    "aeolian": {
+        "scale": [0, 2, 3, 5, 7, 8, 10], "penta": [0, 3, 5, 7, 10], "label": "Aeolian",
+        "moves": {0: [5, 3, 6], 5: [6, 3, 0], 3: [0, 6, 5], 6: [0, 5, 3]},
+    },
+}
+_AVIATION_ADJECTIVES = [
+    "Quiet", "Slow", "Soft", "Still", "Gentle", "Calm", "Level", "Smooth", "High", "Late", "Night", "Amber",
+    "Silver", "Distant", "Hushed", "Long", "Steady", "Weightless",
+]
+_AVIATION_NOUNS = [
+    "Cruise", "Altitude", "Jetstream", "Contrail", "Heading", "Glide", "Tailwind", "Beacon", "Descent",
+    "Stratus", "Cirrus", "Approach", "Window Seat", "Red-Eye", "Airway", "Flight Level", "Overcast",
+    "Night Flight", "Runway Lights", "Holding Pattern", "Updraft",
+]
+
+
+def _clashes(pcs: list[int]) -> bool:
+    """True if any two pitch classes sit a semitone or a tritone apart."""
+    return any((a - b) % 12 in (1, 6, 11) for i, a in enumerate(pcs) for b in pcs[i + 1:])
+
+
+def _open_chord(pc_of: Callable[[int], int], deg: int) -> list[int]:
+    """Root, second and fifth, plus the sixth, the fourth or the octave,
+    whichever is the first that keeps the chord free of semitones."""
+    base = [pc_of(deg), pc_of(deg + 1), pc_of(deg + 4)]
+    for extra in (deg + 5, deg + 3, deg + 7):
+        if not _clashes(base + [pc_of(extra)]):
+            return base + [pc_of(extra)]
+    return base + [pc_of(deg)]
+
+
+def _cabin_envelope(rng: np.random.Generator, seconds: float, level: float):
+    """Gain over time for the cabin hum: nearly constant, two slow drifts
+    (a minute or two, and several minutes) moving it by a few per cent."""
+    p1, p2 = float(rng.uniform(50.0, 110.0)), float(rng.uniform(240.0, 480.0))
+    f1, f2 = float(rng.uniform(0, 2 * np.pi)), float(rng.uniform(0, 2 * np.pi))
+    d1, d2 = float(rng.uniform(0.03, 0.06)), float(rng.uniform(0.03, 0.06))
+
+    def hum(t: np.ndarray) -> np.ndarray:
+        return level * (1.0 + d1 * np.sin(2 * np.pi * t / p1 + f1) + d2 * np.sin(2 * np.pi * t / p2 + f2))
+    return hum
+
+
+def _plan_aviation(seconds: float, seed: str, sr: int) -> _Plan:
+    seed_int = _seed_int("aviation:" + seed)
+    rng = np.random.default_rng(seed_int)
+    n_samples = int(round(seconds * sr))
+
+    mode_name = str(rng.choice(list(_AVIATION_MODES)))
+    mode = _AVIATION_MODES[mode_name]
+    root_pc = int(rng.integers(12))
+    key = _NOTE_NAMES[root_pc]
+    title = f"{rng.choice(_AVIATION_ADJECTIVES)} {rng.choice(_AVIATION_NOUNS)} in {key} {mode['label']}"
+    scale = mode["scale"]
+
+    def pc_of(degree: int) -> int:
+        return (root_pc + scale[degree % 7]) % 12
+
+    # Pads: mellow, a little hollow (odd harmonics a touch stronger), low and
+    # close together under the hum. Long notes: nearly pure, like a soft flute.
+    roll = rng.uniform(2.2, 2.8)
+    pad = _wavetable([(1.0 if h % 2 else 0.6) / (h ** roll) for h in range(1, 7)])
+    bass_tab = _wavetable([1.0, 0.2, 0.05])
+    breath = _wavetable([1.0, 0.12, 0.06, 0.02])
+    voices: list[_Voice] = []
+    chord_pcs: list[list[int]] = []
+
+    def add(t0: float, t1: float, freq: float, table, pan: float, env, bus: int = 0, amp: float = 1.0):
+        s0, s1 = max(_snap(t0, sr), 0), min(_snap(t1, sr) + _CTRL, n_samples)
+        if s1 <= s0 or freq * 2 >= sr:
+            return
+        gl, gr = _pan(pan)
+        voices.append(_Voice(s0, s1, freq / sr, float(rng.random()), table, gl * amp, gr * amp, env, bus))
+
+    starts, t = [], 0.0
+    while t < seconds:
+        starts.append(t)
+        t += float(rng.uniform(24.0, 36.0))
+    roots = _progression(rng, mode["moves"], len(starts))
+    upper = [55, 59, 62, 67]
+    bass_prev = 45
+    for i, (t0, deg) in enumerate(zip(starts, roots)):
+        t1 = starts[i + 1] if i + 1 < len(starts) else seconds
+        att, rel = rng.uniform(8.0, 12.0), rng.uniform(10.0, 14.0)
+        on = t0 - 5.0 if i else -0.6 * att
+        pcs = _open_chord(pc_of, deg)
+        chord_pcs.append(pcs)
+        upper = _voice_lead(upper, pcs, 53, 74)
+        bass = min((m for m in range(38, 52) if m % 12 == pcs[0]), key=lambda m: abs(m - bass_prev))
+        bass_prev = bass
+        for j, m in enumerate([bass] + upper):
+            f = _midi_hz(m)
+            amp = 0.07 if j == 0 else 0.042 * (0.8 if m > 70 else 1.0)
+            env = _pad_env(on, att, t1, rel, rng.uniform(0.015, 0.04), rng.uniform(0, 2 * np.pi), rng.uniform(0.06, 0.14))
+            spread = rng.uniform(0.3, 0.7) * (0.3 if j == 0 else 1.0)
+            cents = rng.uniform(1.5, 4.0)
+            tab = bass_tab if j == 0 else pad
+            for sgn in (-1.0, 1.0):
+                add(on, t1 + rel, f * 2 ** (sgn * cents / 1200), tab, sgn * spread, env, 0, amp)
+
+    # Long soft notes: each swells in over a second or two, holds, and fades
+    # over several seconds; one at a time, wide apart, never a semitone from
+    # the chord underneath.
+    penta = [root_pc + 64 + iv for iv in mode["penta"]] + [root_pc + 76 + iv for iv in mode["penta"][:3]]
+    penta = [m - 12 if m > 86 else m for m in penta]
+    idx = int(rng.integers(len(penta)))
+    t = rng.uniform(10.0, 20.0)
+    while t < seconds - 15.0:
+        pcs = chord_pcs[max(0, int(np.searchsorted(starts, t, side="right")) - 1)]
+        ok = [k for k, m in enumerate(penta) if all((m - pc) % 12 not in (1, 11) for pc in pcs)] or list(range(len(penta)))
+        want = int(np.clip(idx + rng.choice([-2, -1, -1, 1, 1, 2]), 0, len(penta) - 1))
+        idx = min(ok, key=lambda k: (abs(k - want), k))
+        f0 = _midi_hz(penta[idx])
+        att, hold, rel = rng.uniform(1.2, 2.5), rng.uniform(3.0, 7.0), rng.uniform(4.0, 7.0)
+        env = _pad_env(t, att, t + att + hold, rel, rng.uniform(0.15, 0.35), rng.uniform(0, 2 * np.pi), 0.08)
+        add(t, t + att + hold + rel, f0, breath, rng.uniform(-0.35, 0.35), env, 1, rng.uniform(0.6, 1.0) * 0.05)
+        gap = rng.uniform(9.0, 20.0)
+        if rng.random() < 0.4:
+            gap += rng.uniform(15.0, 35.0)
+        t += att + hold + gap
+
+    # A small, dry room: a cabin, not a hall or open water.
+    rt60 = float(rng.uniform(2.2, 3.2))
+    L = int(rt60 * sr)
+    tt = np.arange(L, dtype=np.float64) / sr
+    freqs = np.fft.rfftfreq(L, 1.0 / sr)
+    ir = np.empty((2, L), dtype=np.float32)
+    for ch in range(2):
+        spec = np.fft.rfft(rng.standard_normal(L))
+        dark = np.fft.irfft(spec / (1 + (freqs / 3000.0) ** 2), n=L)
+        h = dark * np.exp(-6.91 * tt / rt60)
+        pre = int(0.008 * sr)
+        h = np.concatenate([np.zeros(pre), h[: L - pre]])
+        ir[ch] = (h / np.sqrt(np.sum(h * h))).astype(np.float32)
+
+    taps = 1023
+    n = np.arange(taps) - taps // 2
+
+    def lp(fc: float) -> np.ndarray:
+        return 2 * fc / sr * np.sinc(2 * fc / sr * n)
+    # Air: the faint hiss of the vents, ~2.5-6 kHz, nearly level.
+    air = (lp(rng.uniform(5000.0, 6500.0)) - lp(rng.uniform(2200.0, 2800.0))) * np.hanning(taps)
+    air = (air / np.sqrt(np.sum(air * air))).astype(np.float32)
+    air_level = rng.uniform(0.005, 0.008)
+    p1, f1 = rng.uniform(90.0, 160.0), rng.uniform(0, 2 * np.pi)
+
+    def air_swell(t: np.ndarray) -> np.ndarray:
+        return air_level * (0.8 + 0.2 * np.sin(2 * np.pi * t / p1 + f1))
+
+    # Cabin hum: full weight below ~500 Hz, a quieter shelf up to ~2.5 kHz.
+    low = lp(rng.uniform(380.0, 560.0)) - lp(rng.uniform(35.0, 50.0))
+    shelf = lp(rng.uniform(2000.0, 2800.0)) - lp(rng.uniform(380.0, 560.0))
+    hum = (low + rng.uniform(0.18, 0.28) * shelf) * np.hanning(taps)
+    hum = (hum / np.sqrt(np.sum(hum * hum))).astype(np.float32)
+    hum_env = _cabin_envelope(rng, seconds, float(rng.uniform(0.065, 0.085)))
+    fade_in = min(6.0, seconds / 4)
+    fade_out = min(8.0, seconds / 4)
+    return _Plan(seconds, sr, n_samples, title, key, mode_name, voices, ir, air, air_swell,
+                 seed_int, fade_in, fade_out, hum_kernel=hum, hum_env=hum_env)
+
+
 def _make_plan(seconds: float, seed: str, sr: int, style: str = "space") -> _Plan:
     if style == "ocean":
         return _plan_ocean(seconds, seed, sr)
+    if style == "aviation":
+        return _plan_aviation(seconds, seed, sr)
     return _plan(seconds, seed, sr)
 
 
@@ -555,8 +740,10 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
     reverb = _OLAConvolver(plan.ir, block)
     air_f = _OLAConvolver(plan.air_kernel, block)
     surf_f = _OLAConvolver(plan.surf_kernel, block) if plan.surf_kernel is not None else None
+    hum_f = _OLAConvolver(plan.hum_kernel, block) if plan.hum_kernel is not None else None
     noise_rng = np.random.default_rng(plan.seed_int ^ 0x5EED)
     surf_rng = np.random.default_rng(plan.seed_int ^ 0x5EA)
+    hum_rng = np.random.default_rng(plan.seed_int ^ 0xCAB1)
 
     voices = sorted(plan.voices, key=lambda v: v.start)
     for c0 in range(0, N, block):
@@ -592,7 +779,14 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
         air = air_f.process(noise) * np.repeat(plan.air_swell(kt).astype(np.float32), _CTRL)[:n]
 
         pads, bells = bus[0], bus[1]
-        if surf_f is not None:
+        if hum_f is not None:
+            # The hum is the bed the music sits on: steady, dry, only a touch
+            # of it in the room so it stays close, like a cabin.
+            hum = hum_f.process(hum_rng.standard_normal((2, n), dtype=np.float32))
+            hum *= np.repeat(plan.hum_env(kt).astype(np.float32), _CTRL)[:n]
+            wet = reverb.process(pads + 1.2 * bells + 0.3 * air + 0.1 * hum)
+            mix = 0.6 * pads + 0.55 * bells + 0.5 * air + 1.0 * hum + 0.5 * wet
+        elif surf_f is not None:
             # Surf sits beside the music, mostly dry, a little in the room.
             surf = surf_f.process(surf_rng.standard_normal((2, n), dtype=np.float32))
             surf *= np.repeat(plan.surf_env(kt).astype(np.float32), _CTRL)[:n]

@@ -22,8 +22,8 @@ class ChannelInfo:
     handle: str = ""  # e.g. "@SpaceScreens"; used in on-screen prompts and links
     channel_id: str = ""  # UC...; the public upload feed is read from it
     # What the channel shows: "space" (telescope imagery; Earth days come from
-    # the `earth:` block) or "ocean" (sea photos). Picks the curation rules,
-    # the music style and the description text.
+    # the `earth:` block), "ocean" (sea photos) or "aviation" (calm flight
+    # photos). Picks the curation rules, the music style and the description text.
     subject: str = "space"
     # Website line in descriptions; blank leaves it out.
     website: str = ""
@@ -87,8 +87,9 @@ class AudioSettings:
     source: str = "library"
     composed_pieces: int = 8
     composed_seconds: float = 450.0
-    # Composer style: "space" (pads, bells, air) or "ocean" (surf, warmer
-    # harmony, soft piano notes). Each channel sounds like itself.
+    # Composer style: "space" (pads, bells, air), "ocean" (surf, warmer
+    # harmony, soft piano notes) or "aviation" (cabin hum, open suspended
+    # chords, long soft notes). Each channel sounds like itself.
     style: str = "space"
 
 
@@ -371,10 +372,10 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError("shorts.privacy must be private, unlisted or public")
     if not 15 <= cfg.shorts.seconds <= 60:
         raise ValueError("shorts.seconds must be between 15 and 60")
-    if cfg.channel.subject not in {"space", "ocean"}:
-        raise ValueError("channel.subject must be space or ocean")
-    if cfg.audio.style not in {"space", "ocean"}:
-        raise ValueError("audio.style must be space or ocean")
+    if cfg.channel.subject not in {"space", "ocean", "aviation"}:
+        raise ValueError("channel.subject must be space, ocean or aviation")
+    if cfg.audio.style not in {"space", "ocean", "aviation"}:
+        raise ValueError("audio.style must be space, ocean or aviation")
     if cfg.audio.source not in {"library", "composed"}:
         raise ValueError("audio.source must be 'library' or 'composed'")
     _check_live(cfg.live)

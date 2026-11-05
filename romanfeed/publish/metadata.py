@@ -126,6 +126,76 @@ def pick_ocean_subject(assets: list[ImageAsset]) -> str:
     return next((k for k in tied if any(h in lead for h in themes[k])), tied[0])
 
 
+# Aviation channel (channel.subject: aviation): real flight photos, credited
+# to their photographers, with the channel's own composed music and cabin hum.
+AVIATION_DESCRIPTION = """{hook}
+
+{subscribe}
+
+{tagline}
+
+IN THIS VIDEO
+{chapters}
+
+PHOTO CREDITS
+{credits}
+Every photo is public domain or Creative Commons Attribution (CC BY); each licence is named beside its photographer.
+
+MUSIC
+{music}
+Original music composed for this channel, over a soft airplane cabin hum. Free of copyright claims.
+
+ABOUT {channel_upper}
+Real photos of airliners and vintage aircraft in flight, views above the clouds, sunsets from the window and runways at night, shown slowly, with calm original music for sleep, study and rest.
+
+A new calm flight every day.
+{website}
+Not affiliated with or endorsed by any airline or aircraft maker.
+
+{hashtags}
+"""
+AVIATION_HOOK = (
+    "{length} of airplane white noise and calm music for sleep, study and relaxing: soft cabin hum and slow "
+    "views across {n_images} real photos of aircraft, skies and night runways, opening on {lead}."
+)
+AVIATION_HOOK_SLEEP = (
+    "{length} of airplane white noise for deep sleep, with slow views above the clouds, sunsets and night "
+    "runways. The screen fades to black after {dark_after} so the light won't keep you awake; the cabin hum "
+    "and music play on."
+)
+AVIATION_HOOK_SLEEP_NO_DARK = ("{length} of airplane white noise for deep sleep, with slow views above the clouds, "
+                               "sunsets and night runways. Put it on, dim the lights, and let it run.")
+AVIATION_HASHTAGS = "#airplanewhitenoise #sleepmusic #relaxingmusic"
+AVIATION_SUBSCRIBE = ("Subscribe for a new calm flight every day: "
+                      "https://www.youtube.com/{handle}?sub_confirmation=1")
+
+
+def pick_aviation_subject(assets: list[ImageAsset]) -> str:
+    themes = {
+        "Night Flight": ("night", "runway lights", "approach lights", "city lights", "moon", "aurora", "stars"),
+        "Sunset Flight": ("sunset", "sunrise", "dusk", "dawn", "golden hour", "twilight"),
+        "Above the Clouds": ("cloud", "above the", "stratosphere", "overcast"),
+        "Vintage Aircraft": ("vintage", "historic", "classic", "dc-3", "dc-6", "constellation", "tiger moth",
+                             "biplane", "trimotor", "ju 52", "piper cub", "stearman", "beech 18", "de havilland"),
+        "Airliners": ("airliner", "boeing", "airbus", "concorde", "embraer", "747", "777", "787", "737", "a380",
+                      "a350", "a330", "a320"),
+        "Contrails": ("contrail", "vapor trail", "vapour trail", "condensation trail"),
+    }
+    scores = {k: 0 for k in themes}
+    for a in assets:
+        blob = f" {a.title} {' '.join(a.keywords[:2])}".lower()
+        for theme, hints in themes.items():
+            if any(h in blob for h in hints):
+                scores[theme] += 1
+    if not any(scores.values()):
+        return "Above the Clouds"
+    top = max(scores.values())
+    # On a tie the opening photo's theme wins, so the title's two names agree.
+    lead = f" {assets[0].title} {' '.join(assets[0].keywords[:2])}".lower() if assets else ""
+    tied = [k for k, v in scores.items() if v == top]
+    return next((k for k in tied if any(h in lead for h in themes[k])), tied[0])
+
+
 ROMAN_NOTE = (
     "ABOUT {channel_upper}\n"
     "Real images from Hubble, Webb and other public NASA and ESA archives, shown slowly. "
@@ -231,6 +301,34 @@ def _ocean_lead(title: str) -> str:
     return text
 
 
+# Spotter-style file names carry the airframe's registration, its serial and
+# the date ("British Airways Boeing 747-436 G-BNLN c/n 24047 2009-06-12");
+# the title keeps the plane and the place.
+_SERIAL = re.compile(r"\b(?:c/n|msn|s/n|cn|ln)[\s.:#]*\d[\d/-]*\b", re.I)
+_ISO_DATE = re.compile(r"\b(?:19|20)\d{2}[-./]\d{1,2}[-./]\d{1,2}\b")
+
+
+def _aviation_lead(title: str) -> str:
+    from romanfeed.curation.selector import AIRCRAFT_REG
+
+    text = re.sub(r"\s*[(\[][^)\]]*[)\]]", "", title).strip(" ,-")   # airline codes, registrations, Latin
+    text = re.sub(r"\s*·.*$", "", text).strip(" ,-")                    # "· Flickr · uploader"
+    text = re.sub(rf"\b{AIRCRAFT_REG}\b", " ", text)
+    text = _ISO_DATE.sub(" ", _SERIAL.sub(" ", text))
+    text = re.sub(r"\s+([,;:])", r"\1", " ".join(text.split())).strip(" ,;:-")
+    text = re.sub(r"(?:\s+(?:at|in|on|of|over|from|near|with|and|-))+$", "", text, flags=re.I)
+    return text[:1].upper() + text[1:] if text else title.strip()
+
+
+def display_name(asset: ImageAsset) -> str:
+    """The name a photo goes by on screen and in titles, before shortening.
+    Aviation photos lose their registrations and serials; everything else is
+    shown as the archive names it."""
+    if asset.keywords[:1] == ["aviation"]:
+        return _aviation_lead(asset.title)
+    return asset.title
+
+
 def lead_name(title: str, limit: int = 40) -> str:
     """A short human name for one image, for the title's {lead} token.
 
@@ -316,7 +414,14 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     total = total_seconds or seconds_per_image * len(assets)
     length = length_text(total)
     ocean = cfg.channel.subject == "ocean"
-    subject = pick_ocean_subject(assets) if ocean else pick_subject(assets)
+    aviation = cfg.channel.subject == "aviation"
+    photos = ocean or aviation   # credited Commons photos, not telescope or station images
+    if ocean:
+        subject = pick_ocean_subject(assets)
+    elif aviation:
+        subject = pick_aviation_subject(assets)
+    else:
+        subject = pick_subject(assets)
 
     chapters = [(i * seconds_per_image, _clip_title(a.title)) for i, a in enumerate(assets)]
     # An 8-hour cut has hundreds of chapters; the description caps at 5000
@@ -342,10 +447,12 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         # Commons file names carry Latin names and photo numbers ("Green sea
         # turtle (Chelonia mydas) at Kona"); the title keeps the plain name.
         lead = lead_name(_ocean_lead(assets[0].title), limit=60)
-    tele = telescope_short(assets[0]) if assets and not ocean else None
+    elif aviation and assets:
+        lead = lead_name(_aviation_lead(assets[0].title), limit=60)
+    tele = telescope_short(assets[0]) if assets and not photos else None
     from romanfeed.curation.selector import is_earth
 
-    earth = not ocean and bool(assets) and all(is_earth(a) for a in assets)
+    earth = not photos and bool(assets) and all(is_earth(a) for a in assets)
     if earth:
         template = (cfg.earth.sleep_title_template if sleep else "") or cfg.earth.title_template
     else:
@@ -371,6 +478,10 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
         hook = ((OCEAN_HOOK_SLEEP if dark_after else OCEAN_HOOK_SLEEP_NO_DARK) if sleep else OCEAN_HOOK).format(
             length=length, n_images=len(assets), lead=lead or "the open ocean", dark_after=dark_words)
+    elif aviation:
+        dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
+        hook = ((AVIATION_HOOK_SLEEP if dark_after else AVIATION_HOOK_SLEEP_NO_DARK) if sleep else AVIATION_HOOK).format(
+            length=length, n_images=len(assets), lead=lead or "the sky above the clouds", dark_after=dark_words)
     elif earth:
         dark_words = _minutes(dark_after).replace("Min", "minutes") if dark_after else ""
         hook = ((EARTH_HOOK_SLEEP if dark_after else EARTH_HOOK_SLEEP_NO_DARK) if sleep else EARTH_HOOK).format(
@@ -383,16 +494,20 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     handle = cfg.channel.handle.strip()
     if ocean:
         subscribe = OCEAN_SUBSCRIBE.format(handle=handle) if handle else ""
+    elif aviation:
+        subscribe = AVIATION_SUBSCRIBE.format(handle=handle) if handle else ""
     else:
         subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
                      if handle else "")
-    template = cfg.publish.description_template or (OCEAN_DESCRIPTION if ocean else DEFAULT_DESCRIPTION)
+    template = cfg.publish.description_template or (
+        OCEAN_DESCRIPTION if ocean else AVIATION_DESCRIPTION if aviation else DEFAULT_DESCRIPTION)
+    hashtags = OCEAN_HASHTAGS if ocean else AVIATION_HASHTAGS if aviation else HASHTAGS
     def render(n: int) -> str:
         text = template.format(
             tagline=cfg.channel.tagline, length=length, n_images=len(assets), genre=cfg.audio.genre,
             chapters=chapter_block(n), credits=credits, music=music,
             roman_note=ROMAN_NOTE.format(channel_upper=cfg.channel.name.upper()), date=when.isoformat(),
-            hook=hook, subscribe=subscribe, hashtags=OCEAN_HASHTAGS if ocean else HASHTAGS, lead=lead,
+            hook=hook, subscribe=subscribe, hashtags=hashtags, lead=lead,
             channel_upper=cfg.channel.name.upper(), website=cfg.channel.website,
         )
         return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
@@ -406,9 +521,15 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         n = max(1, n - max(1, (len(description) - 5000) // 60))
         description = render(n)
     extra = ["sleep music", "deep sleep music", "black screen sleep music", "fall asleep fast"] if sleep else (
-        ["ocean music for sleep"] if ocean else ["space music for sleep"])
+        ["ocean music for sleep"] if ocean else ["airplane white noise for sleep"] if aviation
+        else ["space music for sleep"])
     base_tags = (cfg.earth.tags + cfg.publish.tags) if earth else cfg.publish.tags
-    tail = ["ocean", "underwater", "relaxing music", "ambient"] if ocean else ["space", "sleep screen", "ambient"]
+    if ocean:
+        tail = ["ocean", "underwater", "relaxing music", "ambient"]
+    elif aviation:
+        tail = ["aviation", "airplane", "relaxing music", "ambient"]
+    else:
+        tail = ["space", "sleep screen", "ambient"]
     tags = list(dict.fromkeys(base_tags + extra + [subject.lower()] + tail))[:30]
     return VideoMetadata(
         title=title[:100], description=description[:5000], tags=tags, category_id=cfg.publish.category_id,
