@@ -624,6 +624,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         manifest = MusicLibrary(cfg.audio.library)
 
         posted = recent_upload_titles(cfg.channel.channel_id)
+        posted_total = ledger.conn.execute(
+            "SELECT COUNT(*) FROM shorts WHERE channel = ? AND youtube_id IS NOT NULL", (cfg.channel.slug,)
+        ).fetchone()[0]
         # The social cut is rendered whenever the channel has cross-posting
         # accounts set up (to watch while crosspost.mode is off), posted per mode.
         social_on = bool(cfg.crosspost.tiktok_account or cfg.crosspost.instagram_account)
@@ -641,7 +644,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                 if not cands:
                     log.warning("shorts: only Earth images left in %s, and Earth is at its cap", parent.slug)
                     continue
-            n = len(recent) + len(results)
+            # Counted over every Short ever posted: a 24-hour count stays the
+            # same at the cap (one in, one aged out), so every run got the same
+            # style (Nov 4-5: six calm in a row).
+            n = posted_total + len(results)
             hook = style == "hook" or (style == "auto" and cfg.shorts.hook_every > 0
                                        and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
