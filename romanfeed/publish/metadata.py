@@ -224,11 +224,12 @@ _SANCTUARY_CODE = re.compile(r"^(?:[A-Z]{0,6}NMS[A-Z]{0,3}|NOAA|NMFS|NPS)\b[\s·
 
 def _ocean_lead(title: str) -> str:
     text = re.sub(r"\s*\([^)]*\)", "", title).strip(" ,-")
+    # The code comes off before the "· site · uploader" tail, or "NMSAS · swains
+    # island" would keep only "NMSAS" (the Nov 4 titles did).
+    trimmed = _SANCTUARY_CODE.sub("", text).strip(" ,-·")
+    text = trimmed or text
     text = re.sub(r"\s*·.*$", "", text).strip(" ,-")  # "Spinner Dolphins · Flickr · uploader"
-    trimmed = _SANCTUARY_CODE.sub("", text).strip(" ,-")
-    if trimmed:
-        text = trimmed[0].upper() + trimmed[1:]
-    return text
+    return text[:1].upper() + text[1:]
 
 
 def lead_name(title: str, limit: int = 40) -> str:

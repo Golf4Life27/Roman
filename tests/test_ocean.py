@@ -348,3 +348,5 @@ def test_ocean_lead_drops_sanctuary_codes_and_site_tails():
     assert _ocean_lead("Milford Sound NZ") == "Milford Sound NZ"
     assert _ocean_lead("Green sea turtle (Chelonia mydas) at Kona") == "Green sea turtle at Kona"
     assert _ocean_lead("NOAA") == "NOAA"
+    assert _ocean_lead("NMSAS · swains island") == "Swains island"
+    assert _ocean_lead("FKNMS · pufferfish") == "Pufferfish"
