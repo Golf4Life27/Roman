@@ -64,6 +64,25 @@ sources:
       - airliner landing at sunset
       - airplane taking off at sunset
       - airplane silhouette sunset
+      - Boeing 757 in flight
+      - Boeing 727 in flight
+      - Boeing 707 in flight
+      - Airbus A340 in flight
+      - Airbus A321 in flight
+      - Airbus A300 in flight
+      - McDonnell Douglas MD-11 in flight
+      - McDonnell Douglas DC-10 in flight
+      - Lockheed L-1011 TriStar in flight
+      - Embraer E-Jet in flight
+      - Bombardier CRJ in flight
+      - ATR 72 in flight
+      - De Havilland Canada Dash 8 in flight
+      - Fokker 100 in flight
+      - Antonov An-225 in flight
+      - Ilyushin Il-96 in flight
+      - aircraft on approach at dusk
+      - aircraft flying over the sea
+      - aircraft flying over mountains
       # vintage aircraft
       - vintage aircraft in flight
       - Douglas DC-3 in flight
@@ -77,6 +96,16 @@ sources:
       - seaplane in flight
       - glider in flight
       - historic aircraft flying
+      - Lockheed Super Constellation in flight
+      - Douglas DC-4 in flight
+      - Boeing 377 Stratocruiser in flight
+      - Vickers Viscount in flight
+      - Sud Aviation Caravelle in flight
+      - Grumman Albatross in flight
+      - de Havilland Canada Beaver floatplane in flight
+      - Cessna 172 in flight
+      - Beechcraft in flight
+      - sailplane above the clouds
       # NASA's own aircraft (public domain)
       - NASA DC-8 in flight
       - NASA ER-2 above the clouds
@@ -102,6 +131,12 @@ sources:
       - coastline from an airplane
       - city lights from an airplane at night
       - aerial view at dusk
+      - clouds from above
+      - Iceland from an airplane
+      - Himalaya from an airplane
+      - islands from an airplane
+      - farmland from an airplane
+      - Milky Way from an airplane
       # night runways and airport lights
       - runway at night
       - airport at night
