@@ -35,6 +35,7 @@ from romanfeed.audio.composer import ComposedLibrary
 from romanfeed.config import ChannelConfig, ShortsSettings
 from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
+from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
 from romanfeed import crosspost, narration
@@ -362,12 +363,20 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
 
 
 def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Path, stem: str, key: str,
-            hook: bool = False):
+            hook: bool = False, why=None):
     """Script + voice for one image: (script, voice wav, voice seconds), or None.
 
     A script that runs long is retried without its size/distance sentence; a
     Short tops out at 45 s and the voice needs the music either side of it."""
     budget = 45.0 - 0.8 - 3.0
+    if why is not None:
+        # Read in the Short's own style (hook or calm), so the why test does
+        # not tilt the hook vs calm one.
+        script = why_mod.why_script(asset, why, full_label=link_label)
+        voice, rate = (cfg.shorts.hook_voice, cfg.shorts.hook_rate) if hook else (cfg.shorts.voice, 1.0)
+        wav = narration.synthesize(script, work / f"{stem}.voice.wav", api_key=key, voice=voice, speaking_rate=rate)
+        secs = probe_duration(str(wav))
+        return (script, wav, secs) if secs <= budget else None
     if hook:
         script = narration.hook_script(asset, full_label=link_label)
         if not script:
@@ -394,10 +403,15 @@ _FROM_ORBIT = re.compile(r"[\s,]*(?:as\s+)?(?:pictured|seen|photographed|viewed|
                          r"(?:the\s+)?(?:international\s+space\s+station|space\s+station|iss|orbit)\b.*$", re.I)
 
 
-def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
-                   hook: bool = False) -> VideoMetadata:
+def short_lead(asset: ImageAsset) -> str:
+    """The name a Short's title opens on ("Messier 15", "the Cat's Head Nebula")."""
     name = (_FROM_ORBIT.sub("", asset.title).strip(" ,.") or asset.title) if is_earth(asset) else asset.title
-    lead = lead_name(name, limit=60) or name
+    return lead_name(name, limit=60) or name
+
+
+def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
+                   hook: bool = False, why=None) -> VideoMetadata:
+    lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
     title_lead = lead
@@ -408,6 +422,11 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
             title_lead = f"{lead} from the Space Station"
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
+    if why is not None:
+        # The why group opens its title on the question; everything else
+        # keeps the name-first title.
+        title = _fit_title(cfg.shorts.title_template.replace("{lead_by}", "{lead}"), why.question,
+                           {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     link = f"https://youtu.be/{parent.link_id}"
     label = full_label(parent.link_seconds)
     line = telescope_line(asset)
@@ -424,6 +443,10 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         f"Image: {asset.credit or asset.source}",
         f"Music: {music}",
     ]
+    if why is not None:
+        lines.insert(lines.index(f"Image: {asset.credit or asset.source}"),
+                     f"Why, in {why.source}'s own words: {why.url}")
+        lines.insert(lines.index(f"Image: {asset.credit or asset.source}"), "")
     if handle:
         lines += ["", f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"]
     lines += ["", "#shorts #space #sleep"]
@@ -431,6 +454,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
                                *(t.lower() for t in [tele] if t), "telescope", "nebula", "galaxy"]))
     if hook:
         tags.insert(0, HOOK_TAG)   # how the Monday report tells the two styles apart
+    if why is not None:
+        tags.insert(0, why_mod.WHY_TAG)
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -651,12 +676,29 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             hook = style == "hook" or (style == "auto" and cfg.shorts.hook_every > 0
                                        and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
+            want_why = why_mod.why_due(cfg.shorts, n)
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
             label = full_label(parent.link_seconds)
-            best, spoken = ranked[0], None
-            if key:
+            best, spoken, why = ranked[0], None, None
+            if key and want_why:
+                # A why Short needs a caption sentence that gives the cause;
+                # the strongest frame that has one gets the slot.
+                for cand in ranked:
+                    found = why_mod.find_why(cand, short_lead(cand))
+                    if not found:
+                        continue
+                    stem = f"{cfg.channel.slug}-short-{cand.asset_id.replace(':', '_')}"
+                    spoken = narrate(cand, cfg=cfg, link_label=label, work=work, stem=stem, key=key, hook=hook,
+                                     why=found)
+                    if spoken:
+                        best, why = cand, found
+                        break
+                if why is None:
+                    log.info("shorts: no caption among %d candidates answers a why; a standard Short instead",
+                             len(ranked))
+            if key and why is None:
                 # The strongest frame whose caption makes a script; a pretty
                 # image with nothing to say loses to one with a story.
                 for cand in ranked:
@@ -688,12 +730,13 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             hooked = hook and bool(spoken)
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
                                duration=dur, voice=spoken, hook=hooked)
-            md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked)
+            md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
-            log.info("short %s from %s (%s) -> %s", best.asset_id, parent.slug,
-                     ("hook style" if hooked else "narrated") if spoken else "music only", vid or "(dry run)")
+            log.info("short %s from %s (%s%s, %s) -> %s", best.asset_id, parent.slug,
+                     ("hook style" if hooked else "narrated") if spoken else "music only",
+                     ", why" if why and spoken else "", why_mod.subject(best), vid or "(dry run)")
             if is_earth(best):
                 earth_recent += 1
             # Test-only slots post to YouTube alone: the TikTok and Instagram

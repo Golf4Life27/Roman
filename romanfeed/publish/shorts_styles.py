@@ -17,6 +17,7 @@ from datetime import date
 
 from romanfeed.publish.stats import _query
 from romanfeed.shorts import HOOK_TAG, asset_from_meta, is_earth
+from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
 STYLES = ("hook", "calm")
 
@@ -32,6 +33,8 @@ class ShortNumbers:
     views: int = 0         # Analytics, lagging
     avg_view_s: float = 0.0
     subs: int = 0
+    why: bool = False      # opened on a why question (romanfeed/why.py)
+    subject: str = "other"  # nebula, galaxy, cluster or other
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -63,7 +66,9 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             video_id=vid, posted=created, title=sn.get("title", vid),
             style="hook" if HOOK_TAG in tags else "calm",
             earth=asset in meta and is_earth(asset_from_meta(meta[asset])),
-            public_views=int(stt.get("viewCount", 0) or 0)))
+            public_views=int(stt.get("viewCount", 0) or 0),
+            why=WHY_TAG in tags,
+            subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
         chunk = [s.video_id for s in out[i:i + 200]]
@@ -122,6 +127,33 @@ def verdict(hook: StyleTotals, calm: StyleTotals, *, min_shorts: int = 8, min_su
     return f"inside noise: {a:.1f} vs {b:.1f} subscribers per 1,000 views"
 
 
+def group_line(label: str, pick: list[ShortNumbers]) -> str:
+    """One group's Shorts, live views per Short and subscribers per Short."""
+    n = len(pick)
+    views = sum(r.public_views for r in pick)
+    subs = sum(r.subs for r in pick)
+    return (f"  {label}: {n} Shorts, {views / n if n else 0:,.0f} live views each, "
+            f"{subs} subs ({subs / n if n else 0:.2f} per Short)")
+
+
+def why_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The why test (Nov 6-13): why Shorts against the rest, split by style and subject."""
+    if not any(r.why for r in rows):
+        return []
+    out = ["Why vs standard Shorts (views and subscribers per Short):"]
+    for label, w in (("why", True), ("standard", False)):
+        out.append(group_line(label, [r for r in rows if r.why == w]))
+    for style in STYLES:
+        for label, w in (("why", True), ("standard", False)):
+            out.append(group_line(f"{style} {label}", [r for r in rows if r.why == w and r.style == style]))
+    for subj in SUBJECTS:
+        for label, w in (("why", True), ("standard", False)):
+            pick = [r for r in rows if r.why == w and r.subject == subj]
+            if pick:
+                out.append(group_line(f"{subj} {label}", pick))
+    return out
+
+
 def _mmss(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
@@ -143,6 +175,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
             parts.append(f"{style} {t.shorts} Shorts, {t.views_per_short:,.0f} views each, {t.subs} subs")
         lines.append(f"  {label}: " + "; ".join(parts))
     lines.append("  Reading: " + verdict(totals(rows, "hook"), totals(rows, "calm")))
+    lines += why_lines(rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in rows:
         lines.append(f"    {r.posted[:16]} {r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "

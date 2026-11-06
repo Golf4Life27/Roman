@@ -213,6 +213,10 @@ class ShortsSettings:
     hook_every: int = 0
     hook_voice: str = "en-US-Chirp3-HD-Puck"
     hook_rate: float = 1.12
+    # "Why" Shorts (romanfeed/why.py): every why_every-th pair of Shorts opens on
+    # a why question its source caption answers, through why_until (Central).
+    why_every: int = 0
+    why_until: str = ""
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
