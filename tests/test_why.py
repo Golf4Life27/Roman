@@ -66,7 +66,12 @@ def test_subjects():
 
 
 def test_a_why_short_titles_on_its_question_and_cites_its_source():
-    from tests.test_shorts import _cfg
+    from romanfeed.config import AudioSettings, ChannelConfig, ChannelInfo, PublishSettings, VideoSettings
+
+    def _cfg():
+        return ChannelConfig(channel=ChannelInfo(slug="chan", name="Space Screens", handle="@SpaceScreens"),
+                             video=VideoSettings(), sources=[], audio=AudioSettings(allow_placeholder=True),
+                             publish=PublishSettings(mode="upload", privacy="public"), shorts=ShortsSettings())
     a = _a(description=RED)
     w = why.find_why(a, shorts.short_lead(a))
     script = why.why_script(a, w, full_label="8-hour")
