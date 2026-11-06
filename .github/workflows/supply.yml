@@ -5,12 +5,17 @@
 # answer is also written as a notice on the run, so it can be read without
 # opening the log. Runs on any pull request that touches the sources, and on
 # demand. The Monday report runs the same command (weekly-stats.yml).
+# The second job does the same for every channel beyond Space Screens (ocean,
+# aviation and the lanes after them), on its own clock so a slow photo archive
+# cannot cost the Space Screens answer.
 name: Image supply
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - config/channels/deep-space-ambient.yaml
+      - config/channels/ocean-ambient.yaml
+      - config/channels/aviation-ambient.yaml
       - romanfeed/supply.py
       - romanfeed/curation/selector.py
       - romanfeed/sources/**
@@ -40,3 +45,30 @@ jobs:
           python -m romanfeed supply config/channels/deep-space-ambient.yaml --why | tee supply.txt
           while IFS= read -r line; do echo "::notice title=Image supply::$line"; done < supply.txt
           { echo '## Image supply'; echo '```'; cat supply.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+  siblings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Restore ledger (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-supply-siblings-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Supply per channel
+        run: |
+          set -o pipefail
+          [ -f data/state.db ] || echo "::warning::no ledger restored; every photo counts as unused"
+          echo '## Photo supply, channels beyond Space Screens' >> "$GITHUB_STEP_SUMMARY"
+          for f in config/channels/*.yaml; do
+            grep -q '^  subject: space' "$f" && continue
+            grep -q '^  subject:' "$f" || continue
+            python -m romanfeed supply "$f" | tee supply.txt
+            while IFS= read -r line; do echo "::notice title=Photo supply ($(basename "$f" .yaml))::$line"; done < supply.txt
+            { echo '```'; cat supply.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done

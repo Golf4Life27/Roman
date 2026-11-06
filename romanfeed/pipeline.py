@@ -150,7 +150,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         if not assets:
             raise RuntimeError("no usable images after curation")
         # The lead opens the video with the intro card, which names its telescope.
-        if subject != "ocean":
+        # Photo channels (ocean, aviation) credit a photographer instead.
+        if subject in ("space", "earth"):
             assets = prefer_known_lead(assets)
 
         # 3. soundtrack

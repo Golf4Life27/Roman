@@ -1,0 +1,159 @@
+# Third channel lane: calm aviation for sleep and study. Same machine as the
+# ocean channel, its own look: real photos of airliners and vintage planes in
+# flight, views above the clouds, sunsets from the window or cockpit, night
+# runways and contrails, from Wikimedia Commons (public domain, CC0 and CC BY
+# only, every photographer credited), with its own composed music over a soft
+# cabin hum, amber thumbnails and flight titles.
+# The YouTube channel does not exist yet: channel_id stays empty, and
+# .github/workflows/aviation-daily.yml stays idle until connect-channel.yml
+# has stored this channel's own upload token. "Night Flight Screens" is the
+# working name; the connect job only accepts a channel with exactly this name.
+channel:
+  slug: aviation-ambient
+  name: Night Flight Screens
+  handle: "@NightFlightScreens"
+  channel_id: ""
+  tagline: Real photos of calm flights, slowly, with soft cabin hum and original music for sleep.
+  subject: aviation
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  # 60 x 60 s = one hour, the same pacing as the ocean channel.
+  seconds_per_image: 60
+  images_per_video: 60
+  transition_seconds: 3.0
+  captions: true
+  max_zoom: 1.14
+  crf: 20
+  preset: veryfast
+  extra_lengths_hours: [8]
+  intro_seconds: 12
+  subscribe_from: 14
+  subscribe_until: 40
+  subscribe_line: Subscribe for a new calm flight every day
+  sleep_dark_after_minutes: 45
+  thumbnail_line: FLIGHT FOR SLEEP
+  thumbnail_plate: [58, 32, 12]
+
+sources:
+  - type: commons
+    enabled: true
+    min_width: 1920
+    max_per_query: 300
+    options:
+      subject: aviation
+      download_width: 3840   # a standard Wikimedia thumbnail step; smaller originals come whole
+    queries:
+      # airliners in flight
+      - airliner in flight
+      - aircraft in flight
+      - Boeing 747 in flight
+      - Boeing 777 in flight
+      - Boeing 787 in flight
+      - Boeing 737 in flight
+      - Boeing 767 in flight
+      - Airbus A380 in flight
+      - Airbus A350 in flight
+      - Airbus A330 in flight
+      - Airbus A320 in flight
+      - Concorde in flight
+      - airliner above the clouds
+      - airliner on final approach
+      - airliner landing at sunset
+      - airplane taking off at sunset
+      - airplane silhouette sunset
+      # vintage aircraft
+      - vintage aircraft in flight
+      - Douglas DC-3 in flight
+      - Douglas DC-6 in flight
+      - Lockheed Constellation in flight
+      - de Havilland Tiger Moth in flight
+      - biplane in flight
+      - Piper Cub in flight
+      - Junkers Ju 52 in flight
+      - Ford Trimotor in flight
+      - seaplane in flight
+      - glider in flight
+      - historic aircraft flying
+      # NASA's own aircraft (public domain)
+      - NASA DC-8 in flight
+      - NASA ER-2 above the clouds
+      - SOFIA airborne observatory in flight
+      # from the window and the cockpit
+      - view from airplane window
+      - airplane wing above the clouds
+      - airplane wing at sunset
+      - cockpit view at sunset
+      - cockpit view at night
+      - above the clouds from an airplane
+      - sea of clouds from an airplane
+      - sunset above the clouds
+      - sunrise from an airplane
+      - cumulonimbus seen from an airplane
+      - aurora seen from an airplane
+      - moon above the clouds from an airplane
+      # landscapes from above
+      - mountains from an airplane
+      - Alps from an airplane
+      - Greenland from an airplane
+      - desert from an airplane
+      - coastline from an airplane
+      - city lights from an airplane at night
+      - aerial view at dusk
+      # night runways and airport lights
+      - runway at night
+      - airport at night
+      - runway lights
+      - approach lighting system at night
+      - airplane landing at night long exposure
+      - airport long exposure night
+      - control tower at night
+      # contrails
+      - contrail
+      - contrails at sunset
+      - vapor trail in the sky
+      - aircraft condensation trail
+
+audio:
+  genre: ambient
+  source: composed
+  style: aviation             # open suspended chords, long soft notes, steady cabin hum
+  fade_seconds: 8
+  crossfade_seconds: 8
+  gain_db: -6
+  allow_placeholder: false
+
+publish:
+  mode: upload
+  privacy: public
+  category_id: "10"           # Music: the video is a sleep-music video with pictures
+  # The fit drops the last part when the photo's name is long (YouTube stops at 100 characters).
+  title_template: "{lead} | {subject} | {length} Airplane White Noise for Sleep | Relaxing Flight Ambience"
+  sleep_title_template: ""
+  tags:
+    - aviation
+    - airplane white noise
+    - airplane white noise for sleep
+    - airplane sounds for sleep
+    - airplane cabin noise
+    - relaxing flight ambience
+    - flight ambience
+    - above the clouds
+    - night flight
+    - airliners
+    - vintage aircraft
+    - sunset flight
+    - white noise for sleep
+    - sleep music
+    - relaxing music
+    - screensaver
+    - calm
+    - study music
+
+# Off for the first week, as on the ocean channel: the long videos come first.
+shorts:
+  enabled: false
+live:
+  enabled: false
