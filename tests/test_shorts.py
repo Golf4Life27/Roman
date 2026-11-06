@@ -364,3 +364,19 @@ def test_no_earth_shorts_at_all_when_the_cap_is_minus_one(ledger, monkeypatch, t
     res = shorts.run_shorts(_cfg(enabled=True, per_day=4, earth_per_day=-1), count=3, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert res and all(r.parent_slug == "chan-2026-09-28" for r in res)
+
+
+def test_styles_alternate_across_runs_at_the_cap(ledger, monkeypatch, tmp_path):
+    """Nov 4-5: at the cap the 24-hour count never changed, so every run was calm."""
+    led_path = ledger.db_path
+    ledger.close()
+    _quiet_run(monkeypatch)
+    hooks = []
+    # at the cap the 24-hour window holds the same number every run
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: ["x1", "x2", "x3"])
+    monkeypatch.setattr(shorts.narration, "api_key", lambda: "k")
+    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: hooks.append(kw["hook"]) or None)
+    for _ in range(4):
+        shorts.run_shorts(_cfg(enabled=True, per_day=40, narration=True, hook_every=2), count=1, data_dir=led_path.parent,
+                          output_dir=tmp_path / "out", public=lambda v: True)
+    assert hooks[:1] and len(set(hooks)) == 2
