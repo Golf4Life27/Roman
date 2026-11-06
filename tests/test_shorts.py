@@ -245,6 +245,20 @@ def test_the_channel_config_runs_the_shorts_test_on_the_test_slots():
     assert set(extra) <= set(slots) and len(slots) - len(extra) == cfg.shorts.per_day
 
 
+def test_other_scheduled_workflows_start_a_backup_shorts_run():
+    # GitHub dropped every Shorts cron for 8 hours on Nov 5 while other
+    # scheduled workflows ran; their completion starts a backup run.
+    import yaml
+    wf = yaml.safe_load(Path(".github/workflows/shorts.yml").read_text())
+    on = wf.get("on", wf.get(True))
+    names = on["workflow_run"]["workflows"]
+    existing = {yaml.safe_load(p.read_text()).get("name") for p in Path(".github/workflows").glob("*.yml")}
+    assert names and set(names) <= existing and "Shorts" not in names
+    assert on["workflow_run"]["types"] == ["completed"]
+    text = Path(".github/workflows/shorts.yml").read_text()
+    assert "BACKUP: ${{ github.event_name == 'workflow_run' ||" in text
+
+
 def test_a_hook_opens_on_the_captions_own_distance():
     from romanfeed import narration
     a = _asset(1, title="Messier 13", source="ESA/Hubble",

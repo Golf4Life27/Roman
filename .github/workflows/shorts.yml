@@ -44,6 +44,14 @@ on:
     # These post only when a slot in the last 24 hours never ran.
     - cron: "37 17 * * *"   # 12:37 CDT
     - cron: "37 20 * * *"   # 15:37 CDT
+  # GitHub kept dropping every Shorts cron from 12:10 to 20:37 UTC (Nov 5: the
+  # two backups too) while these other scheduled workflows still ran. Each
+  # one finishing starts a backup run, which posts only when a slot in the
+  # last 24 hours never ran, so on a normal day it posts nothing.
+  workflow_run:
+    workflows: ["Live broadcast", "History", "Ocean daily render", "Daily render"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       count:
@@ -111,7 +119,7 @@ jobs:
           CROSSPOST_MODE: ${{ inputs.crosspost_test && 'test' || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STYLE: ${{ inputs.style || 'auto' }}
-          BACKUP: ${{ contains(fromJSON('["37 17 * * *", "37 20 * * *"]'), github.event.schedule) }}
+          BACKUP: ${{ github.event_name == 'workflow_run' || contains(fromJSON('["37 17 * * *", "37 20 * * *"]'), github.event.schedule) }}
           EXTRA: ${{ contains(fromJSON('["10 12 * * *", "10 14 * * *", "10 19 * * *", "10 21 * * *"]'), github.event.schedule) }}
         run: |
           args="--count $COUNT --style $STYLE"
