@@ -419,3 +419,30 @@ def test_a_why_short_is_cut_when_due_and_falls_back_when_no_caption_answers(ledg
     monkeypatch.setattr(why_mod, "find_why", lambda a, lead: None)
     shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
     assert published and calls and calls[-1] is None and why_mod.WHY_TAG not in published[-1].tags
+
+
+def test_a_why_slot_tries_a_spare_video_before_falling_back(ledger, monkeypatch, tmp_path):
+    """Nov 6: the first why slot found no answer in one video's images and fell back."""
+    from romanfeed import why as why_mod
+    led_path = ledger.db_path
+    for i in range(2):   # the next Short is the first of a why pair
+        ledger.record_short("chan", f"nasa:P{i}", "chan-2026-09-28", f"P{i}")
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
+    monkeypatch.setattr(shorts.narration, "api_key", lambda: "k")
+    calls, published = [], []
+    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: calls.append(kw.get("why")) or ("Q? A.", Path("v.wav"), 10.0))
+    monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
+    w = why_mod.Why("Why does Object glow red?", "Its red glow comes from hydrogen.", "NASA", "https://images.nasa.gov/details/A1")
+    first = []   # the first video looked at has no caption that answers a why
+
+    def find(a, lead):
+        group = int(a.asset_id.split(":A")[1]) >= 10
+        first.append(group) if not first else None
+        return None if group == first[0] else w
+    monkeypatch.setattr(why_mod, "find_why", find)
+    cfg = _cfg(enabled=True, per_day=40, narration=True, hook_every=2, why_every=2, why_until="2099-01-01")
+    shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(published) == 1 and calls == [w] and published[0].tags[0] == why_mod.WHY_TAG

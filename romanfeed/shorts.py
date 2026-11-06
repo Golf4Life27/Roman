@@ -658,7 +658,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         key = narration.api_key() if cfg.shorts.narration else None
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
-        for parent, ids in picks:
+        why_misses = 0
+        for i, (parent, ids) in enumerate(picks):
             if len(results) >= want:
                 break
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
@@ -695,6 +696,15 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                     if spoken:
                         best, why = cand, found
                         break
+                # Nov 6: the first why slot found no answer among one video's
+                # six images and fell back. A spare video gets a look first,
+                # as long as the Shorts still owed this run keep a video each.
+                spare = len(picks) - i - 1 - (want - len(results) - 1)
+                if why is None and why_misses < SPARE_PICKS and spare > 0:
+                    why_misses += 1
+                    log.info("shorts: no caption among %d candidates from %s answers a why; trying the next video",
+                             len(ranked), parent.slug)
+                    continue
                 if why is None:
                     log.info("shorts: no caption among %d candidates answers a why; a standard Short instead",
                              len(ranked))
