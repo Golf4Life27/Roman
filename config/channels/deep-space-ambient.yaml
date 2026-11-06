@@ -290,6 +290,14 @@ shorts:
   hook_every: 2
   hook_voice: en-US-Chirp3-HD-Puck
   hook_rate: 1.12
+  # "Why" test Nov 6-13 (main chat, under the owner's Nov 4 order to test
+  # daily): every second pair of Shorts opens on a why question that the
+  # image's own NASA/ESA caption answers in so many words, with that page
+  # linked in the description (romanfeed/why.py). The order runs calm, hook,
+  # calm-why, hook-why, so both styles get the same share. Kill rule: if why
+  # Shorts trail on both views and subscribers per Short after 7 days, stop.
+  why_every: 2
+  why_until: "2026-11-13"
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

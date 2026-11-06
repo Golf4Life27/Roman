@@ -380,3 +380,28 @@ def test_styles_alternate_across_runs_at_the_cap(ledger, monkeypatch, tmp_path):
         shorts.run_shorts(_cfg(enabled=True, per_day=40, narration=True, hook_every=2), count=1, data_dir=led_path.parent,
                           output_dir=tmp_path / "out", public=lambda v: True)
     assert hooks[:1] and len(set(hooks)) == 2
+
+
+def test_a_why_short_is_cut_when_due_and_falls_back_when_no_caption_answers(ledger, monkeypatch, tmp_path):
+    from romanfeed import why as why_mod
+    led_path = ledger.db_path
+    for i in range(2):   # two Shorts posted before: the next is the first of a why pair
+        ledger.record_short("chan", f"nasa:P{i}", "chan-2026-09-28", f"P{i}")
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
+    monkeypatch.setattr(shorts.narration, "api_key", lambda: "k")
+    calls, published = [], []
+    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: calls.append(kw.get("why")) or ("Q? A.", Path("v.wav"), 10.0))
+    monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
+    w = why_mod.Why("Why does Object glow red?", "Its red glow comes from hydrogen.", "NASA", "https://images.nasa.gov/details/A1")
+    monkeypatch.setattr(why_mod, "find_why", lambda a, lead: w)
+    cfg = _cfg(enabled=True, per_day=40, narration=True, hook_every=2, why_every=2, why_until="2099-01-01")
+    shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert calls[0] is w and published[0].tags[0] == why_mod.WHY_TAG
+    # no caption answers a why: the slot still gets a standard Short
+    calls.clear(); published.clear()
+    monkeypatch.setattr(why_mod, "find_why", lambda a, lead: None)
+    shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert published and calls and calls[-1] is None and why_mod.WHY_TAG not in published[-1].tags

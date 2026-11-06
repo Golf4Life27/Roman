@@ -70,3 +70,17 @@ def test_verdict_waits_for_enough_shorts_and_subscribers():
     assert ss.verdict(_t("hook", 9, 5000, 12), _t("calm", 9, 5000, 6)).startswith("hook wins")
     assert ss.verdict(_t("hook", 9, 5000, 6), _t("calm", 9, 5000, 12)).startswith("calm wins")
     assert ss.verdict(_t("hook", 9, 5000, 6), _t("calm", 9, 5000, 7)).startswith("inside noise")
+
+
+def test_the_why_test_is_split_by_style_and_subject():
+    rows = [
+        ss.ShortNumbers("a", "2026-11-07", "Why does X glow red?", "calm", False, 300, subs=2, why=True, subject="nebula"),
+        ss.ShortNumbers("b", "2026-11-07", "Why do Y glow?", "hook", False, 100, subs=0, why=True, subject="galaxy"),
+        ss.ShortNumbers("c", "2026-11-07", "Z | Calm", "calm", False, 200, subs=1, subject="nebula"),
+    ]
+    lines = ss.why_lines(rows)
+    assert lines[0].startswith("Why vs standard")
+    assert "  why: 2 Shorts, 200 live views each, 2 subs (1.00 per Short)" in lines
+    assert "  standard: 1 Shorts, 200 live views each, 1 subs (1.00 per Short)" in lines
+    assert any(l.startswith("  nebula why: 1 Shorts") for l in lines)
+    assert ss.why_lines([rows[2]]) == []
