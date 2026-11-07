@@ -185,6 +185,41 @@ def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
     return picks
 
 
+def why_pool(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is_public,
+             skip: set[str] = frozenset()) -> list[tuple[Parent, ImageAsset, "why_mod.Why"]]:
+    """Every unused image, in any public long video, whose caption answers a why.
+
+    Nov 7: only about one deep-sky caption in 30 says why in so many words, so
+    a why Short looks across the whole library rather than one video's six
+    picks. A question already asked by an earlier Short is never asked again
+    (the Horsehead Nebula has three images with the same answer)."""
+    used = ledger.shorts_asset_ids(channel)
+    asked: set[str] = set()
+    hits: list[tuple[Parent, ImageAsset, why_mod.Why]] = []
+    done = ledger.shorts_per_parent(channel)
+    ps = sorted(parents(ledger, channel, public=public), key=lambda p: done.get(p.slug, 0))
+    for p in ps:
+        ids = ledger.assets_of_video(p.slug)
+        meta = ledger.asset_meta(ids)
+        for a in ids:
+            if a not in meta:
+                continue
+            asset = asset_from_meta(meta[a])
+            found = why_mod.find_why(asset)
+            if not found:
+                continue
+            if a in used:
+                asked.add(found.question)
+            elif a not in skip and not is_earth(asset):
+                hits.append((p, asset, found))
+    out, seen = [], set(asked)
+    for p, asset, found in hits:
+        if found.question not in seen:
+            seen.add(found.question)
+            out.append((p, asset, found))
+    return out
+
+
 def backfill_meta(ledger: Ledger, cfg: ChannelConfig, asset_ids: list[str]) -> dict[str, dict]:
     """Metadata for ids the ledger has no record of, fetched from the sources.
 
@@ -658,8 +693,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         key = narration.api_key() if cfg.shorts.narration else None
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
-        why_misses = 0
-        for i, (parent, ids) in enumerate(picks):
+        for parent, ids in picks:
             if len(results) >= want:
                 break
             cands = [asset_from_meta(meta[a]) for a in ids if a in meta]
@@ -696,18 +730,24 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                     if spoken:
                         best, why = cand, found
                         break
-                # Nov 6: the first why slot found no answer among one video's
-                # six images and fell back. A spare video gets a look first,
-                # as long as the Shorts still owed this run keep a video each.
-                spare = len(picks) - i - 1 - (want - len(results) - 1)
-                if why is None and why_misses < SPARE_PICKS and spare > 0:
-                    why_misses += 1
-                    log.info("shorts: no caption among %d candidates from %s answers a why; trying the next video",
-                             len(ranked), parent.slug)
-                    continue
                 if why is None:
-                    log.info("shorts: no caption among %d candidates answers a why; a standard Short instead",
-                             len(ranked))
+                    # Nov 6-7: two why slots in a row found no answer in four
+                    # videos' picks; the answers are rare, so look library-wide.
+                    taken = {r.asset_id for r in results} | {a for _, ids_ in picks for a in ids_}
+                    pool = why_pool(ledger, cfg.channel.slug, public=public, skip=taken)
+                    for p2, cand, found in pool:
+                        if not ranked_candidates([cand], cache):
+                            continue
+                        l2 = full_label(p2.link_seconds)
+                        stem = f"{cfg.channel.slug}-short-{cand.asset_id.replace(':', '_')}"
+                        spoken = narrate(cand, cfg=cfg, link_label=l2, work=work, stem=stem, key=key, hook=hook,
+                                         why=found)
+                        if spoken:
+                            best, why, parent, label = cand, found, p2, l2
+                            log.info("shorts: a why from %s (%d unasked in the library)", p2.slug, len(pool))
+                            break
+                if why is None:
+                    log.info("shorts: no caption in the library answers a new why; a standard Short instead")
             if key and why is None:
                 # The strongest frame whose caption makes a script; a pretty
                 # image with nothing to say loses to one with a story.
