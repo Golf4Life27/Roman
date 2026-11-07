@@ -8,6 +8,7 @@ Read-only: prints a summary and writes every deep-space caption to a JSON file
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -49,6 +50,10 @@ def main(db: str, out: str) -> None:
         print(f"HIT {r['id']}: {r['why']} | {r['answer'][:160]}")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(rows, indent=1))
+    if os.environ.get("PRINT_CAPTIONS"):
+        # The artifact store can be out of reach; the job log never is.
+        for r in rows:
+            print("CAPTION " + json.dumps(r))
 
 
 if __name__ == "__main__":
