@@ -1,0 +1,28 @@
+# Read-only check: how many of the channel's images have a caption that
+# answers a "why" (the Nov 6-13 why test). Restores the ledger and never saves
+# it, uploads nothing to YouTube, and keeps the captions as an artifact.
+name: Why coverage
+on:
+  workflow_dispatch:
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Restore ledger (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-none
+          restore-keys: ledger-
+      - run: python scripts/why_coverage.py data/state.db out/captions.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: captions-${{ github.run_id }}
+          path: out/captions.json
+          retention-days: 7
