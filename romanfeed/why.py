@@ -6,9 +6,17 @@ Head Nebula glow red?", answered by a sentence from NASA's or ESA's own
 caption for the image, with that source named and linked in the description.
 
 Nothing is generated. A question is only asked when one sentence of the
-caption gives the cause in so many words ("glows red because...", "dark lanes
-of dust block..."), and the answer read out is that sentence. An image whose
-caption holds no such sentence is never a "why" Short; the picker moves on.
+caption gives the cause in so many words ("glows because it is illuminated by
+a nearby hot star", "so named because..."), and the answer read out is that
+sentence. An image whose caption holds no such sentence is never a "why"
+Short; the picker moves on.
+
+Nov 7 rebuild: across the channel's 1,274 images the first version matched 28
+captions and most read badly ("Why is new stars forming in Hubble Finds Mature
+Galaxy Masquerading as Toddler?"), because it asked about the image's press
+headline. Now the question names the object itself (a catalogue number or a
+proper name like "the Seagull Nebula"), the answer has to be about that
+object, and guesses ("may have triggered") are never read out as answers.
 """
 from __future__ import annotations
 
@@ -20,29 +28,12 @@ from romanfeed.sources.base import ImageAsset
 
 WHY_TAG = "why-caption"
 
-# The sentence has to say the cause, not just mention two things together.
-_CAUSE = re.compile(
-    r"\b(because|due to|caused by|comes? from|came from|produced by|powered by|energi[sz]ed by|excited by|"
-    r"ioni[sz]ed by|illuminated by|lit (?:up )?by|heated by|as a result of|which is why|thanks to|"
-    r"emitted by|given off by)\b", re.I)
 _COLOUR = r"(red|pink|blue|green|orange|purple|violet|golden|yellow)"
-# The colour has to sit right next to the glow: "glows red", "red glow",
-# "glowing pink", not a red star somewhere else in the sentence.
-_GLOW_COLOUR = re.compile(rf"\b(?:glow(?:s|ing)?|shines?|shining)\s+(?:a\s+)?(?:deep\s+|bright\s+|faint\s+)?{_COLOUR}\b|"
-                          rf"\b{_COLOUR}(?:dish)?\s+glow\b", re.I)
-_GLOW = re.compile(r"\b(glow(?:s|ing)?|shines?|shining)\b", re.I)
-_DARK_DUST = re.compile(r"\bdark\b.*\bdust\b|\bdust\b.*\bdark\b", re.I)
-_BLOCKS = re.compile(r"\b(block|obscur|absorb|hid(?:e|es|ing|den))\w*", re.I)
-_SHAPED = re.compile(r"\b(shaped|sculpted|carved|blown|distorted|stretched|warped|pulled|twisted)\s+"
-                     r"(?:out\s+|apart\s+|into\s+[a-z ]+?\s+)?by\b", re.I)
-_STARBIRTH = re.compile(r"\b(star formation|star[- ]forming|stars? (?:are|were) (?:being )?(?:born|formed|forming)|"
-                        r"new stars|stellar nursery|birth of (?:new )?stars)\b", re.I)
-_TRIGGER = re.compile(r"\b(trigger\w*|compress\w*|collaps\w*|squeez\w*|sparked)\b", re.I)
 
 
 @dataclass(frozen=True)
 class Why:
-    question: str   # "Why does the Cat's Head Nebula glow red?"
+    question: str   # "Why does the Horsehead Nebula glow?"
     answer: str     # the caption's own sentence that says why
     source: str     # "ESA/Hubble"
     url: str        # the image's page in that archive
@@ -62,56 +53,147 @@ def source_page(asset: ImageAsset) -> str | None:
     return None   # Wikimedia Commons and the like are not the primary source
 
 
-def _subject(lead: str) -> tuple[str, str]:
-    """("does"/"do", lead) so the question reads right for "the Pillars of Creation"."""
-    head = re.split(r"\s+of\s+", lead, maxsplit=1)[0]     # "the Pillars" of "the Pillars of Creation"
-    last = head.split()[-1].lower() if head.split() else ""
-    plural = last.endswith("s") and not last.endswith(("ss", "us", "is", "'s")) and not re.match(r"^\d", last)
-    return ("do" if plural else "does"), re.sub(r"^The\b", "the", lead)   # mid-sentence: "Why does the ..."
+_KIND = r"(?:Nebula|Galaxy|Cluster|Pillars?|Bubble|Cloud|Clouds|Ring|Remnant|Veil|Loop|Arc|Arcs|Quintet|Sextet|Triplet|Group)"
+_CATALOG = (r"(?:NGC|IC|Messier|M|Abell|Arp|LDN|LBN|RCW|Sh ?2-|Sharpless|Westerlund|Trumpler|Terzan|Hickson Compact Group|HCG|ESO|"
+            r"UGC|PGC|LEDA|N|SN|Cassiopeia|Sagittarius|Herbig-Haro|HH|Gum|Barnard|vdB|Collinder|Pismis|Haffner|Hodge|Mrk|Markarian)"
+            r" ?\d+[A-Za-z]?(?:-\d+)?")
+# "the Cat's Head Nebula", "the Pillars of Creation", "Westerlund 1", "NGC 4183"
+_PROPER = re.compile(rf"(?:\b[Tt]he )?(?:[A-Z][\w'-]*\s+){{1,3}}{_KIND}\b(?:\s+of\s+[A-Z][\w'-]+)?|\b{_CATALOG}\b")
+_HEADLINE = re.compile(r"\b(?:Hubble|Webb|Spitzer|Chandra|NASA|ESA|image|images|view|views|shows?|reveals?|captures?|portrays?|"
+                       r"spots?|spies|finds?|sees?|peers?|eyes|offers?|beholds?|mixes|bursts?|risen|new|labelled|annotated|compass|scale|"
+                       r"3D|composite|wide-field|close-up|detail|details)\b", re.I)
+_CATALOG_ONLY = re.compile(rf"\b{_CATALOG}\b")
+_BAD_NAME = re.compile(r"^(?:the )?(?:Milky Way(?: Galaxy)?|Local Group|Virgo Cluster|Galaxy|Nebula|Cluster)$", re.I)
 
 
-def question_for(sentence: str, lead: str) -> str | None:
-    """The why question this sentence answers about `lead`, or None."""
-    verb, who = _subject(lead)
-    be = "are" if verb == "do" else "is"
-    if _GLOW_COLOUR.search(sentence) and _CAUSE.search(sentence):
-        m = _GLOW_COLOUR.search(sentence)
-        colour = next(g for g in m.groups() if g).lower()
-        return f"Why {verb} {who} glow {colour}?"
-    if _GLOW.search(sentence) and _CAUSE.search(sentence):
-        return f"Why {verb} {who} glow?"
-    if _DARK_DUST.search(sentence) and _BLOCKS.search(sentence):
-        return f"What makes the dark patches in {who}?"
-    if _SHAPED.search(sentence):
-        return f"What shaped {who}?"
-    if _STARBIRTH.search(sentence) and _TRIGGER.search(sentence):
-        return f"Why {be} new stars forming in {who}?"
+def object_name(asset: ImageAsset) -> str | None:
+    """The object's own name, said the way a person would ("the Seagull Nebula",
+    "NGC 4183"), or None when neither the title nor the caption's opening gives one.
+
+    A press headline ("Hubble portrays a dusty spiral galaxy") is no name: the
+    question would read as nonsense, so the image is passed over instead."""
+    pieces = re.split(r"\s+(?:--|-|:|\|)\s+|\s*\(|,", asset.title or "")
+    texts = [p for p in pieces if p] + [" ".join(sentences(clean_caption(asset.description))[:2])]
+    for k, text in enumerate(texts):
+        # A headline title ("Hubble Spies a Scintillating Globular Cluster") is
+        # in Title Case, so only a catalogue number is trusted from it.
+        headline = k < len(texts) - 1 and (_HEADLINE.search(text) or len(text.split()) > 6)
+        for m in (_CATALOG_ONLY if headline else _PROPER).finditer(text):
+            name = m.group(0).strip()
+            if _HEADLINE.search(name) or _BAD_NAME.match(name):
+                continue
+            if re.match(r"^[Tt]he\b", name) or not re.search(rf"\b{_KIND}\b", name):
+                name = re.sub(r"^[Tt]he\b", "the", name)
+            else:
+                name = "the " + name
+            if re.match(rf"^the {_CATALOG}$", name):
+                name = name[4:]   # "the NGC 4183" -> "NGC 4183"
+            return name
     return None
 
 
-def find_why(asset: ImageAsset, lead: str) -> Why | None:
-    """The first sentence of the caption that answers a why question, as a Why."""
+def _is(name: str) -> str:
+    return "are" if _does(name) == "do" else "is"
+
+
+def _does(name: str) -> str:
+    head = re.split(r"\s+of\s+", name, maxsplit=1)[0].split()[-1].lower()
+    return "do" if head in ("pillars", "clouds", "arcs", "rings", "galaxies") else "does"
+
+
+_ABOUT = r"(?:nebula|galaxy|galaxies|cluster|cloud|clouds|gas|dust|knots?|pillar|pillars|bubble|shell|ring|region|remnant|object|it|its|this|these|the image|this image)"
+_NAME_WHY = re.compile(r"\b(?:so[- ]named because|named (?:for|after)|(?:gets|got|draws|takes|took|earned|owes|derives) its (?:common |popular |nick)?name)\b", re.I)
+_COLOUR_FROM = re.compile(rf"\b{_COLOUR}\b[^.;]*?\b(?:colou?r|hue|glow|light|regions?|areas?|patches|tint)\b[^.;]*?"
+                          r"\b(?:comes? from|shows? light from|is light from|is from|due to|caused by|produced by|emitted by|given off by)\b", re.I)
+_GLOW_WHY = re.compile(r"\b(?:glow(?:s|ing)?|shines?|shining)\b[^.;]*?\b(?:because|due to|caused by|powered by|energi[sz]ed by|"
+                       r"excited by|ioni[sz]ed by|heated by|as a result of)\b|\b(?:because|due to)\b[^.;]*?\bglow", re.I)
+_SHAPE_WHY = re.compile(r"\b(?:shaped|sculpted|carved|blown(?: out)?|eroded)\b(?:\s+\w+){0,3}\s+by\b|"
+                        r"\b(?:sculpting|carving|eroding)\b", re.I)
+_TRIGGER_WHY = re.compile(r"\btrigger\w*\b[^.;]*\b(?:star formation|new stars|stars? to form|birth)\b|"
+                          r"\b(?:star formation|new stars)\b[^.;]*\btrigger\w*\b", re.I)
+_DARK_WHY = re.compile(r"\bdark\b[^.;]*\b(?:dust|gas)\b[^.;]*\b(?:block|obscur|absorb|hid)\w*|"
+                       r"\b(?:dust|gas)\b[^.;]*\b(?:block|obscur|absorb)\w*[^.;]*\bdark\b", re.I)
+_BLOCK_WHY = re.compile(r"\bdust\b[^.;]*\b(?:block|obscur|absorb)\w*[^.;]*\blight\b", re.I)
+_UNSURE = re.compile(r"\b(?:may|might|could|possibly|perhaps|probably|thought to|believed to|suggests?|unclear|don't understand|"
+                     r"not (?:yet )?understood|mystery|whether)\b", re.I)
+_ANSWER_WORDS = (8, 40)
+
+
+def question_for(sentence: str, name: str) -> str | None:
+    """The question this caption sentence answers about `name`, or None.
+
+    Each question asks exactly what the sentence states: a name's origin, what
+    a colour is, what makes the gas glow, what shaped it, what set off new
+    stars, or what the dark patches are."""
+    if _UNSURE.search(sentence):
+        return None   # "may have triggered" is a guess, not an answer
+    s = sentence
+    core = re.sub(r"^the\s+", "", name, flags=re.I).lower()
+    if _NAME_WHY.search(s):
+        # "Hickson Compact Group 90, named after Paul Hickson" names the group,
+        # not the galaxy in the picture: the name has to be the one explained.
+        m = _NAME_WHY.search(s)
+        at = s.lower().find(core)
+        between = s[at:m.start()] if 0 <= at < m.start() else ""
+        if not between or re.search(r"\b(?:group|constellation|sequence|system|catalogu?e)\b", between, re.I):
+            return None
+        return f"Why is it called {name}?"
+    m = _COLOUR_FROM.search(s)
+    if m:
+        return f"Why {_is(name)} {name} {m.group(1).lower()}?"
+    if _GLOW_WHY.search(s) and re.search(r"\b(?:gas|hydrogen|oxygen|cloud|clouds|nebula|atoms?|knots?)\b", s, re.I):
+        whole = s.lower().startswith(("the nebula", "it ", core, "the " + core))
+        return f"Why {_does(name)} {name} glow?" if whole else f"Why does the gas in {name} glow?"
+    if _SHAPE_WHY.search(s):
+        return f"What shaped {name}?"
+    if _TRIGGER_WHY.search(s):
+        return f"Why are new stars forming in {name}?"
+    if _DARK_WHY.search(s):
+        return f"Why are there dark patches in {name}?"
+    if _BLOCK_WHY.search(s):
+        return f"What is blocking the light in {name}?"
+    return None
+
+
+def _about_object(s: str, prev: str, name: str) -> bool:
+    """The sentence is about the pictured object, not some other thing named in the caption."""
+    core = re.sub(r"^the\s+", "", name, flags=re.I).lower()
+    low = s.lower()
+    if core in low:
+        return True
+    if re.match(r"^(?:It|Its|This|These|The)\b", s) and re.search(rf"\b{_ABOUT}\b", low):
+        return core in prev.lower() or bool(re.match(r"^(?:This|These|The)\b", s))
+    return False
+
+
+def find_why(asset: ImageAsset, lead: str = "") -> Why | None:
+    """The first caption sentence that answers a why about the pictured object, as a Why."""
     url = source_page(asset)
-    if not url or not lead:
+    name = object_name(asset)
+    if not url or not name:
         return None
     prev = ""
-    core = re.sub(r"^the\s+", "", lead, flags=re.I).lower()
-    for s in sentences(clean_caption(asset.description)):
-        prev, s_prev = s, prev
-        if not _usable(s):
+    # "...central stars.A pair of stars..." -- two sentences glued together.
+    text = re.sub(r"(?<=[a-z])\.(?=[A-Z])", ". ", clean_caption(asset.description))
+    for s in sentences(text):
+        s_prev, prev = prev, s
+        n = len(s.split())
+        if not (_ANSWER_WORDS[0] <= n <= _ANSWER_WORDS[1]) or not _usable_answer(s):
             continue
-        if _DANGLING.match(s):
-            # "Its red glow comes from..." answers the question only when the
-            # sentence before it was about the object itself, not a star in it.
-            about_it = re.match(r"^Its?\b", s) and (
-                re.sub(r"^the\s+", "", s_prev, flags=re.I).lower().startswith(core)
-                or re.match(r"^This (?:image|picture|nebula|galaxy|cluster|object|region|cloud)\b", s_prev))
-            if not about_it:
-                continue
-        q = question_for(s, lead)
+        if re.search(r"\bcolon\b", s):
+            continue   # a caption typo for "colour" would be read out as "colon"
+        if not _about_object(s, s_prev, name):
+            continue
+        q = question_for(s, name)
         if q:
-            return Why(question=q, answer=s, source=asset.source, url=url)
+            return Why(question=q[0].upper() + q[1:], answer=s, source=asset.source, url=url)
     return None
+
+
+def _usable_answer(s: str) -> bool:
+    # _usable's word limits are for an opening line; the answer only has to
+    # read cleanly aloud.
+    return _usable(s) or not re.search(r"https?://|\bwww\.|@|\bCredit\b", s)
 
 
 SUBJECTS = ("nebula", "galaxy", "cluster", "other")

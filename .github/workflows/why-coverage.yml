@@ -4,6 +4,11 @@
 name: Why coverage
 on:
   workflow_dispatch:
+    inputs:
+      print_captions:
+        description: Also print every caption to the log
+        type: boolean
+        default: false
 jobs:
   coverage:
     runs-on: ubuntu-latest
@@ -20,7 +25,9 @@ jobs:
           path: data/state.db
           key: ledger-none
           restore-keys: ledger-
-      - run: python scripts/why_coverage.py data/state.db out/captions.json
+      - env:
+          PRINT_CAPTIONS: ${{ inputs.print_captions && '1' || '' }}
+        run: python scripts/why_coverage.py data/state.db out/captions.json
       - uses: actions/upload-artifact@v4
         with:
           name: captions-${{ github.run_id }}

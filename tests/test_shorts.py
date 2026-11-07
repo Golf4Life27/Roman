@@ -410,19 +410,19 @@ def test_a_why_short_is_cut_when_due_and_falls_back_when_no_caption_answers(ledg
     monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
     w = why_mod.Why("Why does Object glow red?", "Its red glow comes from hydrogen.", "NASA", "https://images.nasa.gov/details/A1")
-    monkeypatch.setattr(why_mod, "find_why", lambda a, lead: w)
+    monkeypatch.setattr(why_mod, "find_why", lambda a, lead="": w)
     cfg = _cfg(enabled=True, per_day=40, narration=True, hook_every=2, why_every=2, why_until="2099-01-01")
     shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
     assert calls[0] is w and published[0].tags[0] == why_mod.WHY_TAG
     # no caption answers a why: the slot still gets a standard Short
     calls.clear(); published.clear()
-    monkeypatch.setattr(why_mod, "find_why", lambda a, lead: None)
+    monkeypatch.setattr(why_mod, "find_why", lambda a, lead="": None)
     shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
     assert published and calls and calls[-1] is None and why_mod.WHY_TAG not in published[-1].tags
 
 
-def test_a_why_slot_tries_a_spare_video_before_falling_back(ledger, monkeypatch, tmp_path):
-    """Nov 6: the first why slot found no answer in one video's images and fell back."""
+def test_a_why_slot_looks_across_the_whole_library(ledger, monkeypatch, tmp_path):
+    """Nov 6-7: two why slots found no answer in four videos' picks; answers are rare."""
     from romanfeed import why as why_mod
     led_path = ledger.db_path
     for i in range(2):   # the next Short is the first of a why pair
@@ -432,17 +432,29 @@ def test_a_why_slot_tries_a_spare_video_before_falling_back(ledger, monkeypatch,
     monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
     monkeypatch.setattr(shorts.narration, "api_key", lambda: "k")
     calls, published = [], []
-    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: calls.append(kw.get("why")) or ("Q? A.", Path("v.wav"), 10.0))
+    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: calls.append((cand.asset_id, kw.get("why"))) or ("Q? A.", Path("v.wav"), 10.0))
     monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
-    w = why_mod.Why("Why does Object glow red?", "Its red glow comes from hydrogen.", "NASA", "https://images.nasa.gov/details/A1")
-    first = []   # the first video looked at has no caption that answers a why
-
-    def find(a, lead):
-        group = int(a.asset_id.split(":A")[1]) >= 10
-        first.append(group) if not first else None
-        return None if group == first[0] else w
-    monkeypatch.setattr(why_mod, "find_why", find)
+    w = why_mod.Why("Why does Object 7 glow?", "It glows because a hot star lights it.", "NASA", "https://images.nasa.gov/details/A7")
+    # one image in the whole library answers a why, and it is not among the planned picks
+    monkeypatch.setattr(why_mod, "find_why", lambda a, lead="": w if a.asset_id == "nasa:A7" else None)
+    monkeypatch.setattr(shorts, "plan", lambda *a, **k: [(shorts.parents(shorts.Ledger(led_path), "chan", public=lambda v: True)[0], ["nasa:A15", "nasa:A16"])])
     cfg = _cfg(enabled=True, per_day=40, narration=True, hook_every=2, why_every=2, why_until="2099-01-01")
-    shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
-    assert len(published) == 1 and calls == [w] and published[0].tags[0] == why_mod.WHY_TAG
+    res = shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert len(published) == 1 and calls == [("nasa:A7", w)] and published[0].tags[0] == why_mod.WHY_TAG
+    assert res[0].asset_id == "nasa:A7" and res[0].parent_slug == "chan-2026-09-28"
+
+
+def test_the_why_pool_never_asks_the_same_question_twice(ledger):
+    from romanfeed import why as why_mod
+    ledger.record_short("chan", "nasa:A1", "chan-2026-09-28", "S1")
+    same = why_mod.Why("Why does X glow?", "It glows because of a star.", "NASA", "u")
+    other = why_mod.Why("Why is it called Y?", "Y is so named because of its shape.", "NASA", "u")
+    import romanfeed.why as w
+    orig = w.find_why
+    try:
+        w.find_why = lambda a, lead="": {"nasa:A1": same, "nasa:A2": same, "nasa:A3": other, "nasa:A4": other}.get(a.asset_id)
+        pool = shorts.why_pool(ledger, "chan", public=lambda v: True)
+    finally:
+        w.find_why = orig
+    assert [a.asset_id for _, a, _ in pool] == ["nasa:A3"]
