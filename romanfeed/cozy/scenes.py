@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import date
@@ -105,12 +106,25 @@ def _get(url: str, dest: Path, timeout: int = 120) -> Path:
     return dest
 
 
+# Waits between tries of the manifest download. One GitHub hiccup (a 504 on
+# Nov 8) left a fresh runner with no library, so that night's broadcast got
+# the plain title instead of the cozy room's.
+MANIFEST_RETRY_WAITS = (5, 20)
+
+
 def fetch_manifest(repo: str, tag: str, dest: Path) -> Library:
-    """Download scenes.json. On failure, keep using the copy already on disk."""
-    try:
-        _get(release_url(repo, tag, MANIFEST), dest, timeout=30)
-    except Exception as exc:
-        log.warning("scene manifest not downloaded (%s); using %s", exc, "the local copy" if dest.exists() else "none")
+    """Download scenes.json, trying again after a short wait or two. On
+    failure, keep using the copy already on disk."""
+    for wait in (*MANIFEST_RETRY_WAITS, None):
+        try:
+            _get(release_url(repo, tag, MANIFEST), dest, timeout=30)
+            break
+        except Exception as exc:
+            if wait is not None:
+                log.info("scene manifest download failed (%s); trying again in %ss", exc, wait)
+                time.sleep(wait)
+                continue
+            log.warning("scene manifest not downloaded (%s); using %s", exc, "the local copy" if dest.exists() else "none")
     return load(dest)
 
 
