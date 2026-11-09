@@ -293,3 +293,49 @@ def test_cozy_clip_caption_and_posting(monkeypatch, tmp_path):
     assert posted.post_id == "p9" and out.name.startswith("cozy-clip-2026-10-10-halloween-cabin")
     assert sent[0]["scheduledFor"] == "2026-10-11T01:15:00Z"   # 20:15 CDT, its own slot
     assert sent[0]["content"] == text
+
+
+def test_the_scene_manifest_download_tries_again_after_a_hiccup(monkeypatch, tmp_path):
+    import io
+    import json as _json
+
+    from romanfeed.cozy import scenes as sc
+
+    class R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    body = _json.dumps({"scenes": [{"id": "a", "file": "a.mp4", "title": "A", "themes": ["autumn"]}]}).encode()
+    calls, waits = [], []
+
+    def urlopen(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("HTTP Error 504: Gateway Time-out")
+        return R(body)
+
+    monkeypatch.setattr(sc.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sc.time, "sleep", waits.append)
+    lib = sc.fetch_manifest("o/r", "t", tmp_path / "scenes" / sc.MANIFEST)
+    assert [s.id for s in lib.scenes] == ["a"]
+    assert len(calls) == 2 and waits == [sc.MANIFEST_RETRY_WAITS[0]]
+
+
+def test_the_scene_manifest_gives_up_after_its_retries(monkeypatch, tmp_path):
+    from romanfeed.cozy import scenes as sc
+
+    calls, waits = [], []
+
+    def urlopen(req, timeout):
+        calls.append(1)
+        raise OSError("HTTP Error 504: Gateway Time-out")
+
+    monkeypatch.setattr(sc.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sc.time, "sleep", waits.append)
+    lib = sc.fetch_manifest("o/r", "t", tmp_path / "scenes" / sc.MANIFEST)
+    assert lib.scenes == []
+    assert len(calls) == len(sc.MANIFEST_RETRY_WAITS) + 1
+    assert waits == list(sc.MANIFEST_RETRY_WAITS)
