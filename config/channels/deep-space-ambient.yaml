@@ -237,6 +237,11 @@ publish:
   # extra-length sleep cuts use the same shape (blank sleep_title_template).
   title_template: "{lead_by} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
   sleep_title_template: ""
+  # Paid tier demand check, Nov 12-19 (tests.md): this line goes right under the
+  # opening line of every new long video's description. 5+ YES comments by Nov 19
+  # = open a paid tier now; fewer = wait for the 500-subscriber plan.
+  ask: "Would you pay a few dollars a month for ad-free 10-hour versions and picking the next theme? Reply YES in the comments."
+  ask_until: "2026-11-19"
   tags:
     - space
     - space video

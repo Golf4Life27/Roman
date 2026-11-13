@@ -196,3 +196,22 @@ def test_sleep_cut_title_and_dark_screen_chapter():
     # long chapter titles give way so the CC BY credits and hashtags survive
     assert len(meta.description) <= 5000
     assert "IMAGE CREDITS" in meta.description and meta.description.rstrip().endswith("#deepsleep")
+
+
+def test_the_paid_tier_ask_sits_under_the_opening_line_until_its_last_day():
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assert cfg.publish.ask.startswith("Would you pay")
+    assets = [_asset(i, f"Nebula {i}", ["nebula"]) for i in range(3)]
+    cfg.publish.ask_until = "2026-11-19"
+    on = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 11, 19)).description
+    first, second = on.split("\n\n")[:2]
+    assert cfg.publish.ask not in first and second == cfg.publish.ask
+    off = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 11, 20)).description
+    assert cfg.publish.ask not in off
+
+
+def test_no_ask_line_when_the_channel_sets_none():
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    cfg.publish.ask = ""
+    meta = build_metadata(cfg, [_asset(0, "Ring Nebula", ["nebula"])], [], seconds_per_image=45, when=date(2026, 11, 12))
+    assert "Would you pay" not in meta.description

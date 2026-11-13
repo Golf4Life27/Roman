@@ -500,6 +500,9 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     else:
         subscribe = (f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"
                      if handle else "")
+    ask = cfg.publish.ask.strip()
+    if ask and (not cfg.publish.ask_until or when.isoformat() <= cfg.publish.ask_until):
+        hook = f"{hook}\n\n{ask}"
     template = cfg.publish.description_template or (
         OCEAN_DESCRIPTION if ocean else AVIATION_DESCRIPTION if aviation else DEFAULT_DESCRIPTION)
     hashtags = OCEAN_HASHTAGS if ocean else AVIATION_HASHTAGS if aviation else HASHTAGS

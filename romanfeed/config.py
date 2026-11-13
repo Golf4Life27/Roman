@@ -104,6 +104,11 @@ class PublishSettings:
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False
+    # A one-line question put right under the opening line of every long
+    # video's description through ask_until (YYYY-MM-DD, last day included).
+    # Blank = none. Used for the Nov 12-19 paid tier demand check.
+    ask: str = ""
+    ask_until: str = ""
 
 
 # Absolute ceiling on one night's stream. YouTube only auto-archives a live
