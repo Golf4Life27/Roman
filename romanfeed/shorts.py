@@ -819,9 +819,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
-            log.info("short %s from %s (%s%s, %s) -> %s", best.asset_id, parent.slug,
+            log.info("short %s from %s (%s%s%s, %s) -> %s", best.asset_id, parent.slug,
                      ("hook style" if hooked else "narrated") if spoken else "music only",
-                     ", why" if why and spoken else "", why_mod.subject(best), vid or "(dry run)")
+                     ", why" if why and spoken else "", ", punch-in open" if punch else "",
+                     why_mod.subject(best), vid or "(dry run)")
             if is_earth(best):
                 earth_recent += 1
             # Test-only slots post to YouTube alone: the TikTok and Instagram
