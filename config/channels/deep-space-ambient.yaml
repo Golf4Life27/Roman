@@ -275,8 +275,12 @@ shorts:
   # Nov 4 15:30 UTC) the live count went 135 -> 152, about 10 a day against
   # 2 a day the week before. Analytics can only say where those came from by
   # Monday's report, which decides 8 or 4 from then on.
+  # Called Nov 9 (tests.md): 8 a day won (5.3 net subs a day vs 2.0 the week
+  # before), keep 8. The end date was never moved, so from Nov 10 the channel
+  # quietly fell back to 4 a day (found Nov 13: 3-5 Shorts in each 24 hours).
+  # Now runs through the Jan 31 goal date.
   test_per_day: 8
-  test_until: "2026-11-09"
+  test_until: "2027-01-31"
   # Deep-sky Shorts earned 3.6 subscribers per 1,000 views Oct 22-24, Earth
   # 1.6: Earth gets at most 2 Shorts in any 24 hours.
   # Test Nov 5-11: no Earth Shorts. Nov 1-4 Earth Shorts drew 48-123 views
