@@ -300,6 +300,10 @@ shorts:
   # Short after 7 days, stop.
   why_every: 8
   why_until: "2026-11-14"
+  # Punch-in opening test, Nov 13-19 (tests.md): every other pair of Shorts
+  # opens zoomed in and pulls back to the full frame in its first 1.6 seconds.
+  # Called Nov 20 on share watched and subscribers per 1,000 views.
+  punch_in_until: "2026-11-19"
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

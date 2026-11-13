@@ -458,3 +458,43 @@ def test_the_why_pool_never_asks_the_same_question_twice(ledger):
     finally:
         w.find_why = orig
     assert [a.asset_id for _, a, _ in pool] == ["nasa:A3"]
+
+
+def test_punch_in_alternates_by_pair_inside_its_window():
+    from datetime import datetime, timezone
+
+    from romanfeed.config import ShortsSettings
+    from romanfeed.shorts import punch_due
+
+    s = ShortsSettings(punch_in_until="2026-11-19")
+    inside = datetime(2026, 11, 15, 12, tzinfo=timezone.utc)
+    assert [punch_due(s, n, inside) for n in range(8)] == [False, False, True, True] * 2
+    assert not punch_due(s, 2, datetime(2026, 11, 20, 12, tzinfo=timezone.utc))
+    assert not punch_due(ShortsSettings(), 2, inside)
+
+
+def test_a_punch_in_short_is_tagged_for_the_report():
+    from romanfeed.config import load_config
+    from romanfeed.shorts import PUNCH_TAG, Parent, short_metadata
+    from romanfeed.sources.base import ImageAsset
+
+    cfg = load_config(Path(__file__).resolve().parents[1] / "config/channels/deep-space-ambient.yaml")
+    asset = ImageAsset(asset_id="nasa:x", title="Ring Nebula", url="", source="NASA", credit="NASA")
+    parent = Parent("p", "vid", 28800, "2026-11-01")
+    assert PUNCH_TAG in short_metadata(cfg, asset, parent, [], punch_in=True).tags
+    assert PUNCH_TAG not in short_metadata(cfg, asset, parent, []).tags
+
+
+def test_a_punch_in_short_opens_zoomed_and_settles_on_the_full_frame(tmp_path):
+    src = tmp_path / "wide.png"
+    Image.effect_noise((1600, 900), 50).convert("RGB").save(src)
+    a = _asset(1, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb", local_path=src)
+    audio = tmp_path / "a.m4a"
+    subprocess.run([ffmpeg_path(), "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=8",
+                    "-c:a", "aac", str(audio)], check=True)
+    cfg = _cfg(seconds=4, width=270, height=480, fps=12)
+    out = shorts.render_short(a, tmp_path / "p.mp4", cfg=cfg, audio=audio, link_label="8-hour", work_dir=tmp_path,
+                              punch_in=True)
+    assert abs(probe_duration(str(out)) - 4) < 0.5
+    probe = subprocess.run([ffmpeg_path(), "-i", str(out)], capture_output=True, text=True).stderr
+    assert "270x480" in probe

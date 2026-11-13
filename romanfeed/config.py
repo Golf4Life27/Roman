@@ -217,6 +217,11 @@ class ShortsSettings:
     # a why question its source caption answers, through why_until (Central).
     why_every: int = 0
     why_until: str = ""
+    # Punch-in opening test (Nov 13-19): every other pair of Shorts opens
+    # zoomed in and pulls back to the full frame in its first ~1.6 seconds,
+    # instead of starting on the slow pan. Through punch_in_until (Central);
+    # blank = off.
+    punch_in_until: str = ""
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
