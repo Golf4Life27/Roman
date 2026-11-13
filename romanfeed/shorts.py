@@ -24,6 +24,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Callable
 
@@ -144,6 +145,34 @@ def parents(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is_
 
 SPARE_PICKS = 3   # extra parents tried when one gives no usable image
 HOOK_TAG = "hook-style"
+PUNCH_TAG = "punch-in-open"
+
+# The punch-in opening: the first frame shows the image this much bigger and
+# eases back to the full frame over PUNCH_SECONDS, a fast pull-back where the
+# plain Short starts on its slow pan.
+PUNCH_ZOOM = 0.4
+PUNCH_SECONDS = 1.6
+
+
+def punch_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
+    """Whether Short number `n` (lifetime count) opens with the punch-in.
+
+    Pairs alternate: n // 2 odd gets it. Hook and calm alternate by n % 2,
+    so each style lands in both groups equally."""
+    if not s.punch_in_until:
+        return False
+    now = now or datetime.now(timezone.utc)
+    if now.astimezone(ZoneInfo("America/Chicago")).date().isoformat() > s.punch_in_until:
+        return False
+    return (n // 2) % 2 == 1
+
+
+def punch_filter(width: int, height: int) -> str:
+    """ffmpeg filters for the punch-in: a time-based zoom that eases out to
+    the full frame, cropped back to the Short's size around its centre."""
+    z = f"(1+{PUNCH_ZOOM}*pow(max(0\\,1-t/{PUNCH_SECONDS})\\,2))"
+    return (f"scale=w='trunc({width}*{z}/2)*2':h='trunc({height}*{z}/2)*2':eval=frame:flags=bicubic,"
+            f"crop={width}:{height}")
 
 
 def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
@@ -345,7 +374,7 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
 def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
                  cta_from: float | None = None, pointer: tuple[str, str] | None = None,
-                 max_pan: int = 900) -> Path:
+                 max_pan: int = 900, punch_in: bool = False) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
     long video waits until `cta_from`; without, it is on screen throughout.
     `pointer` (call, line under it) replaces the subscribe plate's text: the
@@ -374,7 +403,8 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     flip = int(hashlib.sha1(asset.asset_id.encode()).hexdigest(), 16) % 2
     prog = f"(1-t/{dur:.3f})" if flip else f"(t/{dur:.3f})"
     crop = f"crop={s.width * 2}:{s.height * 2}:x='{ex}*{prog}':y='{ey}*{prog}'"
-    parts, prev = [f"[0:v]{crop},scale={s.width}:{s.height}:flags=bicubic[c0]"], "[c0]"
+    zoom = f",{punch_filter(s.width, s.height)}" if punch_in else ""
+    parts, prev = [f"[0:v]{crop},scale={s.width}:{s.height}:flags=bicubic{zoom}[c0]"], "[c0]"
     inputs = ["-loop", "1", "-framerate", str(s.fps), "-i", str(frame)]
     for k, (png, enable) in enumerate(layers, start=1):
         inputs += ["-loop", "1", "-framerate", str(s.fps), "-i", str(png)]
@@ -445,7 +475,7 @@ def short_lead(asset: ImageAsset) -> str:
 
 
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
-                   hook: bool = False, why=None) -> VideoMetadata:
+                   hook: bool = False, why=None, punch_in: bool = False) -> VideoMetadata:
     lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -491,6 +521,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         tags.insert(0, HOOK_TAG)   # how the Monday report tells the two styles apart
     if why is not None:
         tags.insert(0, why_mod.WHY_TAG)
+    if punch_in:
+        tags.insert(0, PUNCH_TAG)    # how the report tells the two openings apart
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -577,7 +609,8 @@ def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: s
 
 
 def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path, label: str, work: Path,
-                duration: float, voice=None, pointer: tuple[str, str] | None = None, hook: bool = False) -> Path:
+                duration: float, voice=None, pointer: tuple[str, str] | None = None, hook: bool = False,
+                punch_in: bool = False) -> Path:
     """One cut of a Short: voice (script, wav, seconds) over the music with
     captions for the facts and the closing plate under the last line, or
     music only with the plate throughout."""
@@ -596,7 +629,7 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
         cta_from = start + body_secs
     path = render_short(asset, out, cfg=cfg, audio=audio, link_label=label, work_dir=work,
                         duration=duration, captions=captions, cta_from=cta_from, pointer=pointer,
-                        max_pan=pan if voice else 900)
+                        max_pan=pan if voice else 900, punch_in=punch_in)
     if voice:
         Path(audio).unlink(missing_ok=True)
     return path
@@ -712,6 +745,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                                        and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
             want_why = why_mod.why_due(cfg.shorts, n)
+            punch = punch_due(cfg.shorts, n)
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
@@ -779,8 +813,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             script = spoken[0] if spoken else None
             hooked = hook and bool(spoken)
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
-                               duration=dur, voice=spoken, hook=hooked)
-            md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None)
+                               duration=dur, voice=spoken, hook=hooked, punch_in=punch)
+            md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None,
+                                punch_in=punch)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)

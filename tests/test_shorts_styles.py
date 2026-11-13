@@ -84,3 +84,25 @@ def test_the_why_test_is_split_by_style_and_subject():
     assert "  standard: 1 Shorts, 200 live views each, 1 subs (1.00 per Short)" in lines
     assert any(l.startswith("  nebula why: 1 Shorts") for l in lines)
     assert ss.why_lines([rows[2]]) == []
+
+
+def test_the_opening_test_compares_punch_in_with_plain_from_its_start():
+    rows = [
+        ss.ShortNumbers("old", "2026-11-12T10:00", "Old", "calm", False, 900, views=900, subs=9),
+        ss.ShortNumbers("p1", "2026-11-13T20:00", "P1", "hook", False, 200, views=200, subs=2, punch=True,
+                        avg_view_pct=80),
+        ss.ShortNumbers("q1", "2026-11-13T21:00", "Q1", "calm", False, 100, views=100, subs=0, avg_view_pct=50),
+    ]
+    lines = ss.opening_lines(rows)
+    assert lines[1] == "  punch-in: 1 Shorts, 200 live views each, 80% watched, 2 subs (10.0 per 1,000 views)"
+    assert lines[2] == "  plain: 1 Shorts, 100 live views each, 50% watched, 0 subs (0.0 per 1,000 views)"
+    assert ss.opening_lines(rows[:1]) == []
+
+
+def test_collect_reads_the_punch_in_tag(tmp_path):
+    with Ledger(tmp_path / "state.db") as led:
+        led.record_short("chan", "nasa:A0", "p", "P1")
+        item = {"id": "P1", "snippet": {"title": "T", "tags": ["punch-in-open", "space"]},
+                "statistics": {"viewCount": "5"}}
+        rows = ss.collect(_YT([item]), _YTA([]), led, "chan", date(2026, 1, 1), date(2026, 12, 31))
+    assert rows[0].punch is True

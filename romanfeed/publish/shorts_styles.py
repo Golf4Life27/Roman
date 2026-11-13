@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from romanfeed.publish.stats import _query
-from romanfeed.shorts import HOOK_TAG, asset_from_meta, is_earth
+from romanfeed.shorts import HOOK_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
 STYLES = ("hook", "calm")
@@ -35,6 +35,8 @@ class ShortNumbers:
     subs: int = 0
     why: bool = False      # opened on a why question (romanfeed/why.py)
     subject: str = "other"  # nebula, galaxy, cluster or other
+    punch: bool = False    # opened with the punch-in zoom (Nov 13-19 test)
+    avg_view_pct: float = 0.0  # Analytics: average share of the Short watched
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -68,11 +70,12 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             earth=asset in meta and is_earth(asset_from_meta(meta[asset])),
             public_views=int(stt.get("viewCount", 0) or 0),
             why=WHY_TAG in tags,
+            punch=PUNCH_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
         chunk = [s.video_id for s in out[i:i + 200]]
-        rows = _query(yta, since, end, "views,averageViewDuration,subscribersGained",
+        rows = _query(yta, since, end, "views,averageViewDuration,subscribersGained,averageViewPercentage",
                       dimensions="video", filters="video==" + ",".join(chunk))
         for r in rows:
             s = by_id.get(r.get("video", ""))
@@ -80,6 +83,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
                 s.views = int(r.get("views", 0) or 0)
                 s.avg_view_s = float(r.get("averageViewDuration", 0) or 0)
                 s.subs = int(r.get("subscribersGained", 0) or 0)
+                s.avg_view_pct = float(r.get("averageViewPercentage", 0) or 0)
     return out
 
 
@@ -154,6 +158,34 @@ def why_lines(rows: list[ShortNumbers]) -> list[str]:
     return out
 
 
+def opening_line(label: str, pick: list[ShortNumbers]) -> str:
+    """One opening's Shorts: live views each, share watched and subscribers
+    per 1,000 views, the last two weighted by Analytics views."""
+    n = len(pick)
+    views = sum(r.views for r in pick)
+    live = sum(r.public_views for r in pick)
+    pct = sum(r.avg_view_pct * r.views for r in pick) / views if views else 0.0
+    subs = sum(r.subs for r in pick)
+    return (f"  {label}: {n} Shorts, {live / n if n else 0:,.0f} live views each, {pct:.0f}% watched, "
+            f"{subs} subs ({subs * 1000 / views if views else 0:.1f} per 1,000 views)")
+
+
+def opening_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The punch-in opening test (Nov 13-19): zoom-in opening against the plain
+    slow pan, over the Shorts posted while the test ran, split by style."""
+    if not any(r.punch for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.punch)
+    during = [r for r in rows if r.posted >= start]
+    out = ["Punch-in vs plain opening (Shorts since the first punch-in):"]
+    for label, p in (("punch-in", True), ("plain", False)):
+        out.append(opening_line(label, [r for r in during if r.punch == p]))
+    for style in STYLES:
+        for label, p in (("punch-in", True), ("plain", False)):
+            out.append(opening_line(f"{style} {label}", [r for r in during if r.punch == p and r.style == style]))
+    return out
+
+
 def _mmss(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
@@ -176,6 +208,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
         lines.append(f"  {label}: " + "; ".join(parts))
     lines.append("  Reading: " + verdict(totals(rows, "hook"), totals(rows, "calm")))
     lines += why_lines(rows)
+    lines += opening_lines(rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in rows:
         lines.append(f"    {r.posted[:16]} {r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
