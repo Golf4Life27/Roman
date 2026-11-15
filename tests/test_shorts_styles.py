@@ -117,3 +117,20 @@ def test_the_anticipation_test_gets_its_own_section():
     lines = ss.opening_lines(rows)
     assert lines[0] == "Anticipation vs plain opening (Shorts since the first anticipation):"
     assert lines[1].startswith("  anticipation: 1 Shorts, 300 live views each, 90% watched, 3 subs")
+
+
+def test_explainers_get_their_own_section_and_stay_out_of_the_opening_tests():
+    rows = [
+        ss.ShortNumbers("a1", "2026-11-21T16:00", "A1", "calm", False, 300, views=300, subs=3, antic=True,
+                        avg_view_pct=90),
+        ss.ShortNumbers("e1", "2026-11-21T17:00", "Why?", "calm", False, 500, views=500, subs=5, explainer=True,
+                        avg_view_pct=50),
+        ss.ShortNumbers("p1", "2026-11-21T18:00", "P1", "calm", False, 100, views=100, subs=0, avg_view_pct=70),
+    ]
+    opening = ss.opening_lines(rows)
+    assert opening[2].startswith("  plain: 1 Shorts, 100 live views each")
+    lines = ss.explainer_lines(rows)
+    assert lines[0] == "Explainer vs regular Shorts (Shorts since the first explainer):"
+    assert lines[1].startswith("  explainer: 1 Shorts, 500 live views each, 50% watched, 5 subs (10.0 per 1,000 views)")
+    assert lines[2].startswith("  regular: 1 Shorts, 100 live views each")
+    assert ss.explainer_lines(rows[:1]) == []

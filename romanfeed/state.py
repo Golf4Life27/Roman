@@ -65,6 +65,13 @@ CREATE TABLE IF NOT EXISTS shorts (
     created_at  TEXT NOT NULL,
     PRIMARY KEY (asset_id, channel)
 );
+CREATE TABLE IF NOT EXISTS explainers (
+    channel    TEXT NOT NULL,
+    day        TEXT NOT NULL,
+    asset_id   TEXT NOT NULL,
+    youtube_id TEXT,
+    PRIMARY KEY (channel, day)
+);
 """
 
 META_FIELDS = ("asset_id", "title", "url", "source", "credit", "description", "date", "width", "height", "licence", "keywords")
@@ -170,7 +177,7 @@ class Ledger:
 
     # -- merging -------------------------------------------------------
     MERGE_TABLES = ("assets_used", "videos", "video_assets", "asset_meta", "shorts",
-                    "channel_snapshots", "video_views")
+                    "channel_snapshots", "video_views", "explainers")
 
     def merge_from(self, other: str | Path) -> dict[str, int]:
         """Union another copy of the ledger into this one.
@@ -244,6 +251,14 @@ class Ledger:
             (asset_id, channel, parent_slug, youtube_id, _now()),
         )
         self.conn.commit()
+
+    def record_explainer(self, channel: str, day: str, asset_id: str, youtube_id: str | None) -> None:
+        """An explainer Short went up on `day` (Central), so that day gets no second one."""
+        self.conn.execute("INSERT OR REPLACE INTO explainers VALUES (?, ?, ?, ?)", (channel, day, asset_id, youtube_id))
+        self.conn.commit()
+
+    def explainer_days(self, channel: str) -> set[str]:
+        return {r[0] for r in self.conn.execute("SELECT day FROM explainers WHERE channel = ?", (channel,))}
 
     # -- videos ---------------------------------------------------------
     def record_video(self, rec: VideoRecord) -> None:

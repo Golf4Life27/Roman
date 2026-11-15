@@ -36,6 +36,7 @@ from romanfeed.audio.composer import ComposedLibrary
 from romanfeed.config import ChannelConfig, ShortsSettings
 from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
+from romanfeed import explainer as explainer_mod
 from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
@@ -490,12 +491,27 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
 
 
 def narrate(asset: ImageAsset, *, cfg: ChannelConfig, link_label: str, work: Path, stem: str, key: str,
-            hook: bool = False, why=None):
+            hook: bool = False, why=None, explain=None):
     """Script + voice for one image: (script, voice wav, voice seconds), or None.
 
     A script that runs long is retried without its size/distance sentence; a
     Short tops out at 45 s and the voice needs the music either side of it."""
     budget = 45.0 - 0.8 - 3.0
+    if explain is not None:
+        # An explainer runs up to a minute, in the calm voice; a caption that
+        # reads long loses its last sentences until it fits.
+        w, body = explain
+        budget = explainer_mod.MAX_SECONDS - 0.8 - 3.0
+        while body:
+            script = explainer_mod.explainer_script(asset, w, body, full_label=link_label)
+            wav = narration.synthesize(script, work / f"{stem}.voice.wav", api_key=key, voice=cfg.shorts.voice)
+            secs = probe_duration(str(wav))
+            if secs <= budget:
+                return script, wav, secs
+            body = body[:-1]
+            if len(" ".join([w.question, *body]).split()) < explainer_mod.WORDS[0]:
+                return None
+        return None
     if why is not None:
         # Read in the Short's own style (hook or calm), so the why test does
         # not tilt the hook vs calm one.
@@ -538,7 +554,7 @@ def short_lead(asset: ImageAsset) -> str:
 
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
                    hook: bool = False, why=None, punch_in: bool = False,
-                   anticipation: bool = False) -> VideoMetadata:
+                   anticipation: bool = False, explainer=None) -> VideoMetadata:
     lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -550,10 +566,11 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
             title_lead = f"{lead} from the Space Station"
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
-    if why is not None:
-        # The why group opens its title on the question; everything else
-        # keeps the name-first title.
-        title = _fit_title(cfg.shorts.title_template.replace("{lead_by}", "{lead}"), why.question,
+    asked = explainer if explainer is not None else why
+    if asked is not None:
+        # The why and explainer groups open their title on the question;
+        # everything else keeps the name-first title.
+        title = _fit_title(cfg.shorts.title_template.replace("{lead_by}", "{lead}"), asked.question,
                            {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     link = f"https://youtu.be/{parent.link_id}"
     label = full_label(parent.link_seconds)
@@ -571,9 +588,9 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         f"Image: {asset.credit or asset.source}",
         f"Music: {music}",
     ]
-    if why is not None:
+    if asked is not None:
         lines.insert(lines.index(f"Image: {asset.credit or asset.source}"),
-                     f"Why, in {why.source}'s own words: {why.url}")
+                     f"Why, in {asked.source}'s own words: {asked.url}")
         lines.insert(lines.index(f"Image: {asset.credit or asset.source}"), "")
     if handle:
         lines += ["", f"Subscribe for more space to fall asleep to: https://www.youtube.com/{handle}?sub_confirmation=1"]
@@ -582,8 +599,10 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
                                *(t.lower() for t in [tele] if t), "telescope", "nebula", "galaxy"]))
     if hook:
         tags.insert(0, HOOK_TAG)   # how the Monday report tells the two styles apart
-    if why is not None:
+    if why is not None and explainer is None:
         tags.insert(0, why_mod.WHY_TAG)
+    if explainer is not None:
+        tags.insert(0, explainer_mod.EXPLAINER_TAG)   # kept apart from every other test
     if punch_in:
         tags.insert(0, PUNCH_TAG)    # how the report tells the two openings apart
     if anticipation:
@@ -591,6 +610,9 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
+        # The explainer's voice is text to speech reading a full minute, so it
+        # carries YouTube's altered or synthetic content disclosure.
+        synthetic=explainer is not None,
     )
 
 
@@ -654,9 +676,10 @@ def daily_target(s: ShortsSettings, now: datetime | None = None) -> int:
     return s.test_per_day if in_test(s, now) else s.per_day
 
 
-def _length(voice_secs: float) -> float:
-    """A narrated Short's length: the voice plus music either side, 30-45 s."""
-    return min(45.0, max(30.0, voice_secs + 0.8 + 3.5))
+def _length(voice_secs: float, cap: float = 45.0) -> float:
+    """A narrated Short's length: the voice plus music either side, 30-45 s
+    (an explainer's cap is just under a minute)."""
+    return min(cap, max(30.0, voice_secs + 0.8 + 3.5))
 
 
 def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: str, key: str | None):
@@ -789,6 +812,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         # accounts set up (to watch while crosspost.mode is off), posted per mode.
         social_on = bool(cfg.crosspost.tiktok_account or cfg.crosspost.instagram_account)
         key = narration.api_key() if cfg.shorts.narration else None
+        explained = ledger.explainer_days(cfg.channel.slug)
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
@@ -812,11 +836,31 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             want_why = why_mod.why_due(cfg.shorts, n)
             antic = anticipation_due(cfg.shorts, n)
             punch = punch_due(cfg.shorts, n) and not antic
+            # One explainer on each explainer date, in a slot with no
+            # anticipation or punch-in opening, so the tests don't blur.
+            want_explainer = bool(key) and not (antic or punch) and explainer_mod.explainer_due(cfg.shorts, explained)
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
             label = full_label(parent.link_seconds)
-            best, spoken, why = ranked[0], None, None
+            best, spoken, why, explain = ranked[0], None, None, None
+            if want_explainer:
+                taken = {r.asset_id for r in results} | {a for _, ids_ in picks for a in ids_}
+                options = [(parent, c, label) for c in ranked] + [
+                    (p2, c, full_label(p2.link_seconds))
+                    for p2, c, _ in why_pool(ledger, cfg.channel.slug, public=public, skip=taken)]
+                for p2, cand, l2 in options:
+                    found = explainer_mod.find_explainer(cand, short_lead(cand))
+                    if not found or not ranked_candidates([cand], cache):
+                        continue
+                    stem = f"{cfg.channel.slug}-short-{cand.asset_id.replace(':', '_')}"
+                    spoken = narrate(cand, cfg=cfg, link_label=l2, work=work, stem=stem, key=key, explain=found)
+                    if spoken:
+                        best, explain, parent, label = cand, found, p2, l2
+                        hook, want_why = False, False
+                        break
+                if explain is None:
+                    log.info("shorts: no caption in the library makes a full explainer; a standard Short instead")
             if key and want_why:
                 # A why Short needs a caption sentence that gives the cause;
                 # the strongest frame that has one gets the slot.
@@ -848,7 +892,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                             break
                 if why is None:
                     log.info("shorts: no caption in the library answers a new why; a standard Short instead")
-            if key and why is None:
+            if key and why is None and explain is None:
                 # The strongest frame whose caption makes a script; a pretty
                 # image with nothing to say loses to one with a story.
                 for cand in ranked:
@@ -858,7 +902,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                         best = cand
                         break
             stem = f"{cfg.channel.slug}-short-{best.asset_id.replace(':', '_')}"
-            dur = _length(spoken[2]) if spoken else cfg.shorts.seconds
+            dur = (_length(spoken[2], explainer_mod.MAX_SECONDS) if explain else _length(spoken[2])) if spoken \
+                else cfg.shorts.seconds
             # The social cut (romanfeed/crosspost.py) says the same facts and
             # points at YouTube instead; voiced now so the music covers both.
             social = None
@@ -881,13 +926,17 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
                                duration=dur, voice=spoken, hook=hooked, punch_in=punch, anticipation=antic)
             md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None,
-                                punch_in=punch, anticipation=antic)
+                                punch_in=punch, anticipation=antic, explainer=explain[0] if explain else None)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
+                if explain:
+                    day = explainer_mod._central_day()
+                    ledger.record_explainer(cfg.channel.slug, day, best.asset_id, vid)
+                    explained.add(day)
             log.info("short %s from %s (%s%s%s, %s) -> %s", best.asset_id, parent.slug,
                      ("hook style" if hooked else "narrated") if spoken else "music only",
-                     ", why" if why and spoken else "",
+                     ", explainer" if explain else ", why" if why and spoken else "",
                      ", punch-in open" if punch else ", anticipation open" if antic else "",
                      why_mod.subject(best), vid or "(dry run)")
             if is_earth(best):
