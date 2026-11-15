@@ -228,6 +228,11 @@ class ShortsSettings:
     # (Central); blank until = off. Never together with the punch-in.
     anticipation_from: str = ""
     anticipation_until: str = ""
+    # Explainer test (romanfeed/explainer.py): on each of these dates
+    # (Central) one Short answers one question in under a minute, with
+    # YouTube's synthetic-content disclosure on. Never an anticipation or
+    # punch-in Short. Empty = off.
+    explainer_dates: list[str] = field(default_factory=list)
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")

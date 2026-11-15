@@ -549,3 +549,52 @@ def test_an_anticipation_short_opens_close_and_lands_on_the_full_frame(tmp_path)
     assert abs(probe_duration(str(out)) - 4) < 0.5
     probe = subprocess.run([ffmpeg_path(), "-i", str(out)], capture_output=True, text=True).stderr
     assert "270x480" in probe
+
+
+def test_one_explainer_a_day_on_its_dates_never_in_an_anticipation_slot(ledger, monkeypatch, tmp_path):
+    from romanfeed import explainer as ex
+    from romanfeed import why as why_mod
+    led_path = ledger.db_path
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
+    monkeypatch.setattr(shorts.narration, "api_key", lambda: "k")
+    calls, published, cuts = [], [], []
+    monkeypatch.setattr(shorts, "narrate", lambda cand, **kw: calls.append(kw.get("explain")) or ("Q? A.", Path("v.wav"), 50.0))
+    monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: cuts.append(kw) or Path(kw.get("work", tmp_path)) / "x.mp4")
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or f"YT{len(published)}")
+    w = why_mod.Why("Why does Object glow?", "It glows because a hot star lights it.", "NASA", "https://images.nasa.gov/details/A1")
+    monkeypatch.setattr(ex, "find_explainer", lambda a, lead="": (w, [w.answer, "More about it."]))
+    monkeypatch.setattr(ex, "_central_day", lambda now=None: "2026-11-21")
+    cfg = _cfg(enabled=True, per_day=40, narration=True, explainer_dates=["2026-11-21"],
+               anticipation_from="2000-01-01", anticipation_until="2099-01-01")
+    # n = 0, 1 are a plain pair; 2, 3 an anticipation pair
+    shorts.run_shorts(cfg, count=3, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert [ex.EXPLAINER_TAG in md.tags for md in published] == [True, False, False]
+    assert published[0].synthetic and not published[1].synthetic
+    assert cuts[0]["duration"] > 45 and not cuts[0]["anticipation"]
+    with shorts.Ledger(led_path) as led:
+        assert led.explainer_days("chan") == {"2026-11-21"}
+    # the day's explainer is up: the next run on the same day posts a regular Short
+    published.clear()
+    shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert published and ex.EXPLAINER_TAG not in published[0].tags
+
+
+def test_a_regular_short_skips_an_image_kept_for_an_explainer(ledger, monkeypatch, tmp_path):
+    from romanfeed import explainer as ex
+    from romanfeed import why as why_mod
+    led_path = ledger.db_path
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
+    published = []
+    monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
+    w = why_mod.Why("Why?", "Because.", "NASA", "u")
+    monkeypatch.setattr(shorts, "plan", lambda *a, **k: [(shorts.parents(shorts.Ledger(led_path), "chan", public=lambda v: True)[0], ["nasa:A15", "nasa:A16"])])
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: list(cands))
+    monkeypatch.setattr(ex, "find_explainer", lambda a, lead="": (w, ["x"]) if a.asset_id == "nasa:A15" else None)
+    cfg = _cfg(enabled=True, per_day=40, explainer_dates=["2099-01-01"])
+    res = shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert res[0].asset_id == "nasa:A16"

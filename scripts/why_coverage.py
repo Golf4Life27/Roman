@@ -13,9 +13,14 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from romanfeed import why
+from romanfeed import explainer, why
 from romanfeed.shorts import asset_from_meta, short_lead
 from romanfeed.state import Ledger
+
+
+def asked(question: str, rows: list[dict], used: set[str]) -> bool:
+    """A question an earlier Short already asked (the why pool never repeats one)."""
+    return any(r["why"] == question and r["id"] in used for r in rows)
 
 
 def main(db: str, out: str) -> None:
@@ -24,6 +29,7 @@ def main(db: str, out: str) -> None:
             "SELECT DISTINCT video_slug FROM video_assets WHERE video_slug LIKE 'deep-space-ambient-%'")]
         ids = sorted({a for s in slugs for a in led.assets_of_video(s)})
         meta = led.asset_meta(ids)
+        used = led.shorts_asset_ids("deep-space-ambient")
     rows, tally = [], Counter()
     for a in ids:
         if a not in meta:
@@ -40,6 +46,13 @@ def main(db: str, out: str) -> None:
             tally["empty caption"] += 1
         if found:
             tally["why found"] += 1
+            ex = explainer.find_explainer(asset, lead)
+            if ex:
+                tally["explainer found"] += 1
+                if a not in used and not asked(found.question, rows, used):
+                    tally["explainer unused"] += 1
+                    words = len(" ".join([found.question, *ex[1]]).split())
+                    print(f"EXPLAINER {a}: {found.question} | {words} words | {len(ex[1])} sentences")
         rows.append({"id": a, "title": asset.title, "source": asset.source, "lead": lead,
                      "description": asset.description, "why": found.question if found else None,
                      "answer": found.answer if found else None})

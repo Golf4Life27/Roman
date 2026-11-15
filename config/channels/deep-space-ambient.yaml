@@ -314,6 +314,11 @@ shorts:
   # Called Nov 28 on share watched and subscribers per 1,000 views.
   anticipation_from: "2026-11-21"
   anticipation_until: "2026-11-27"
+  # Explainer test (tests.md): one Short on each date answers one question
+  # about the pictured object in under a minute, in the caption's own words,
+  # with YouTube's synthetic-content disclosure (the voice is text to speech).
+  # Never in an anticipation slot. Called Nov 30 on views and subs per 1,000.
+  explainer_dates: ["2026-11-21", "2026-11-22", "2026-11-23"]
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

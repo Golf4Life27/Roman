@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from romanfeed.explainer import EXPLAINER_TAG
 from romanfeed.publish.stats import _query
 from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
@@ -38,6 +39,7 @@ class ShortNumbers:
     punch: bool = False    # opened with the punch-in zoom (Nov 13-19 test)
     antic: bool = False    # opened with the anticipation reveal (Nov 21-27 test)
     avg_view_pct: float = 0.0  # Analytics: average share of the Short watched
+    explainer: bool = False  # one question answered in under a minute (Nov 21-23 test)
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -73,6 +75,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             why=WHY_TAG in tags,
             punch=PUNCH_TAG in tags,
             antic=ANTIC_TAG in tags,
+            explainer=EXPLAINER_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -178,7 +181,9 @@ def _opening_test(rows: list[ShortNumbers], flag: str, name: str) -> list[str]:
     if not any(getattr(r, flag) for r in rows):
         return []
     start = min(r.posted for r in rows if getattr(r, flag))
-    during = [r for r in rows if r.posted >= start]
+    # Explainers run a minute and never take an opening test's slot, so
+    # they stay out of the plain group too.
+    during = [r for r in rows if r.posted >= start and not r.explainer]
     out = [f"{name.capitalize()} vs plain opening (Shorts since the first {name}):"]
     for label, p in ((name, True), ("plain", False)):
         out.append(opening_line(label, [r for r in during if getattr(r, flag) == p]))
@@ -193,6 +198,18 @@ def opening_lines(rows: list[ShortNumbers]) -> list[str]:
     """The opening tests: punch-in (Nov 13-19) and anticipation (Nov 21-27),
     each against the plain opening over the Shorts posted while it ran."""
     return _opening_test(rows, "punch", "punch-in") + _opening_test(rows, "antic", "anticipation")
+
+
+def explainer_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The explainer test (Nov 21-23): explainers against the regular Shorts
+    posted since the first one, on live views and subscribers per 1,000 views."""
+    if not any(r.explainer for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.explainer)
+    during = [r for r in rows if r.posted >= start]
+    return ["Explainer vs regular Shorts (Shorts since the first explainer):",
+            opening_line("explainer", [r for r in during if r.explainer]),
+            opening_line("regular", [r for r in during if not r.explainer])]
 
 
 def _mmss(s: float) -> str:
@@ -218,6 +235,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines.append("  Reading: " + verdict(totals(rows, "hook"), totals(rows, "calm")))
     lines += why_lines(rows)
     lines += opening_lines(rows)
+    lines += explainer_lines(rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in rows:
         lines.append(f"    {r.posted[:16]} {r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "

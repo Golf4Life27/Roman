@@ -22,3 +22,12 @@ def test_reset_can_forget_only_some_assets(tmp_path):
         l.mark_assets_used("c", ["space1", "space2", "earth1"], "v1")
         assert l.reset_assets("c", ["space1", "space2"]) == 2
         assert l.used_asset_ids("c") == {"earth1"}
+
+
+def test_explainer_days_survive_a_ledger_merge(tmp_path):
+    from romanfeed.state import Ledger
+    with Ledger(tmp_path / "a.db") as a, Ledger(tmp_path / "b.db") as b:
+        a.record_explainer("chan", "2026-11-21", "esa:x", "YT1")
+        b.record_explainer("chan", "2026-11-22", "esa:y", "YT2")
+        b.merge_from(tmp_path / "a.db")
+        assert b.explainer_days("chan") == {"2026-11-21", "2026-11-22"}
