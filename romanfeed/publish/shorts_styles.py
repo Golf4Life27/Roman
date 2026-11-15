@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from romanfeed.publish.stats import _query
-from romanfeed.shorts import HOOK_TAG, PUNCH_TAG, asset_from_meta, is_earth
+from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
 STYLES = ("hook", "calm")
@@ -36,6 +36,7 @@ class ShortNumbers:
     why: bool = False      # opened on a why question (romanfeed/why.py)
     subject: str = "other"  # nebula, galaxy, cluster or other
     punch: bool = False    # opened with the punch-in zoom (Nov 13-19 test)
+    antic: bool = False    # opened with the anticipation reveal (Nov 21-27 test)
     avg_view_pct: float = 0.0  # Analytics: average share of the Short watched
 
 
@@ -71,6 +72,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             public_views=int(stt.get("viewCount", 0) or 0),
             why=WHY_TAG in tags,
             punch=PUNCH_TAG in tags,
+            antic=ANTIC_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -170,20 +172,27 @@ def opening_line(label: str, pick: list[ShortNumbers]) -> str:
             f"{subs} subs ({subs * 1000 / views if views else 0:.1f} per 1,000 views)")
 
 
-def opening_lines(rows: list[ShortNumbers]) -> list[str]:
-    """The punch-in opening test (Nov 13-19): zoom-in opening against the plain
-    slow pan, over the Shorts posted while the test ran, split by style."""
-    if not any(r.punch for r in rows):
+def _opening_test(rows: list[ShortNumbers], flag: str, name: str) -> list[str]:
+    """One opening test: its Shorts against the rest posted since its first
+    one, overall and by style."""
+    if not any(getattr(r, flag) for r in rows):
         return []
-    start = min(r.posted for r in rows if r.punch)
+    start = min(r.posted for r in rows if getattr(r, flag))
     during = [r for r in rows if r.posted >= start]
-    out = ["Punch-in vs plain opening (Shorts since the first punch-in):"]
-    for label, p in (("punch-in", True), ("plain", False)):
-        out.append(opening_line(label, [r for r in during if r.punch == p]))
+    out = [f"{name.capitalize()} vs plain opening (Shorts since the first {name}):"]
+    for label, p in ((name, True), ("plain", False)):
+        out.append(opening_line(label, [r for r in during if getattr(r, flag) == p]))
     for style in STYLES:
-        for label, p in (("punch-in", True), ("plain", False)):
-            out.append(opening_line(f"{style} {label}", [r for r in during if r.punch == p and r.style == style]))
+        for label, p in ((name, True), ("plain", False)):
+            out.append(opening_line(f"{style} {label}",
+                                    [r for r in during if getattr(r, flag) == p and r.style == style]))
     return out
+
+
+def opening_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The opening tests: punch-in (Nov 13-19) and anticipation (Nov 21-27),
+    each against the plain opening over the Shorts posted while it ran."""
+    return _opening_test(rows, "punch", "punch-in") + _opening_test(rows, "antic", "anticipation")
 
 
 def _mmss(s: float) -> str:

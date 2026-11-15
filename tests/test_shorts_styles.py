@@ -106,3 +106,14 @@ def test_collect_reads_the_punch_in_tag(tmp_path):
                 "statistics": {"viewCount": "5"}}
         rows = ss.collect(_YT([item]), _YTA([]), led, "chan", date(2026, 1, 1), date(2026, 12, 31))
     assert rows[0].punch is True
+
+
+def test_the_anticipation_test_gets_its_own_section():
+    rows = [
+        ss.ShortNumbers("a1", "2026-11-21T20:00", "A1", "hook", False, 300, views=300, subs=3, antic=True,
+                        avg_view_pct=90),
+        ss.ShortNumbers("b1", "2026-11-21T22:00", "B1", "calm", False, 100, views=100, subs=0, avg_view_pct=60),
+    ]
+    lines = ss.opening_lines(rows)
+    assert lines[0] == "Anticipation vs plain opening (Shorts since the first anticipation):"
+    assert lines[1].startswith("  anticipation: 1 Shorts, 300 live views each, 90% watched, 3 subs")

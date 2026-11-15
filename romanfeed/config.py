@@ -222,6 +222,12 @@ class ShortsSettings:
     # instead of starting on the slow pan. Through punch_in_until (Central);
     # blank = off.
     punch_in_until: str = ""
+    # Anticipation opening test (Nov 21-27): every other pair of Shorts opens
+    # close on the dark beside the picture's brightest thing, then sweeps it in
+    # and pulls back to the full frame by ~2.4 s. Between the two dates
+    # (Central); blank until = off. Never together with the punch-in.
+    anticipation_from: str = ""
+    anticipation_until: str = ""
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
