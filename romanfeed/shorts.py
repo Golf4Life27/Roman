@@ -839,6 +839,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             # One explainer on each explainer date, in a slot with no
             # anticipation or punch-in opening, so the tests don't blur.
             want_explainer = bool(key) and not (antic or punch) and explainer_mod.explainer_due(cfg.shorts, explained)
+            if not want_explainer and explainer_mod.reserving(cfg.shorts):
+                # Keep the few explainer-length captions for the explainer slots.
+                spare = [a for a in ranked if not explainer_mod.find_explainer(a, short_lead(a))]
+                ranked = spare or ranked
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue

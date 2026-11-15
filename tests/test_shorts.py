@@ -579,3 +579,22 @@ def test_one_explainer_a_day_on_its_dates_never_in_an_anticipation_slot(ledger, 
     published.clear()
     shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
     assert published and ex.EXPLAINER_TAG not in published[0].tags
+
+
+def test_a_regular_short_skips_an_image_kept_for_an_explainer(ledger, monkeypatch, tmp_path):
+    from romanfeed import explainer as ex
+    from romanfeed import why as why_mod
+    led_path = ledger.db_path
+    ledger.close()
+    _quiet_run(monkeypatch)
+    monkeypatch.setattr(shorts, "recent_shorts", lambda *a, **k: [])
+    published = []
+    monkeypatch.setattr(shorts, "_render_cut", lambda *a, **kw: Path(kw.get("work", tmp_path)) / "x.mp4")
+    monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
+    w = why_mod.Why("Why?", "Because.", "NASA", "u")
+    monkeypatch.setattr(shorts, "plan", lambda *a, **k: [(shorts.parents(shorts.Ledger(led_path), "chan", public=lambda v: True)[0], ["nasa:A15", "nasa:A16"])])
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: list(cands))
+    monkeypatch.setattr(ex, "find_explainer", lambda a, lead="": (w, ["x"]) if a.asset_id == "nasa:A15" else None)
+    cfg = _cfg(enabled=True, per_day=40, explainer_dates=["2099-01-01"])
+    res = shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
+    assert res[0].asset_id == "nasa:A16"

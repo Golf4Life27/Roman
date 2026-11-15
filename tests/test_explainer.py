@@ -64,3 +64,11 @@ def test_explainer_upload_is_tagged_apart_and_carries_the_synthetic_disclosure()
 def test_an_explainer_runs_under_a_minute():
     assert _length(70.0, explainer.MAX_SECONDS) == explainer.MAX_SECONDS < 60
     assert _length(70.0) == 45.0
+
+
+def test_regular_shorts_leave_explainer_images_alone_until_the_test_is_done():
+    s = ShortsSettings(explainer_dates=["2026-11-21", "2026-11-23"])
+    assert explainer.reserving(s, datetime(2026, 11, 15, 18, tzinfo=timezone.utc))
+    assert explainer.reserving(s, datetime(2026, 11, 23, 18, tzinfo=timezone.utc))
+    assert not explainer.reserving(s, datetime(2026, 11, 24, 18, tzinfo=timezone.utc))
+    assert not explainer.reserving(ShortsSettings())

@@ -41,6 +41,14 @@ def explainer_due(s, posted_days: set[str], now: datetime | None = None) -> bool
     return day in (s.explainer_dates or []) and day not in posted_days
 
 
+def reserving(s, now: datetime | None = None) -> bool:
+    """True while an explainer date is today or still ahead: the library holds
+    only a few captions long enough (Nov 15 coverage run: 3 unasked), so
+    regular Shorts leave those images alone until the test is done."""
+    day = _central_day(now)
+    return any(d >= day for d in (s.explainer_dates or []))
+
+
 def explanation(asset, w: "why_mod.Why") -> list[str] | None:
     """The caption's answer and the sentences after it, word for word, within WORDS.
 
