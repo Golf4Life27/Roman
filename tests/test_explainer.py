@@ -49,7 +49,12 @@ def test_one_explainer_on_each_date_and_none_on_other_days():
 
 
 def test_explainer_upload_is_tagged_apart_and_carries_the_synthetic_disclosure():
-    from tests.test_shorts import _cfg
+    from romanfeed.config import AudioSettings, ChannelConfig, ChannelInfo, PublishSettings, VideoSettings
+
+    def _cfg():
+        return ChannelConfig(channel=ChannelInfo(slug="chan", name="Space Screens", handle="@SpaceScreens"),
+                             video=VideoSettings(), sources=[], audio=AudioSettings(allow_placeholder=True),
+                             publish=PublishSettings(mode="upload", privacy="public"), shorts=ShortsSettings())
 
     sample_cfg, sample_parent = _cfg(), Parent("p", "VID8h", 28800, "")
     w, body = explainer.find_explainer(_horse())
