@@ -175,6 +175,64 @@ def punch_filter(width: int, height: int) -> str:
             f"crop={width}:{height}")
 
 
+ANTIC_TAG = "anticipation-open"
+
+# The anticipation opening (test Nov 21-27): the first frame is a close-up of
+# the dark beside the brightest thing in the picture, with its glow at the
+# edge. It holds ANTIC_HOLD seconds, then sweeps the subject into the middle
+# and pulls back to the full frame by ANTIC_SECONDS, so the payoff lands
+# before second 3. Our own image only: nothing is added to it.
+ANTIC_ZOOM = 2.2
+ANTIC_HOLD = 0.6
+ANTIC_SECONDS = 2.4
+ANTIC_OFFSET = 0.62   # subject starts this many frame widths from the centre
+
+
+def _in_window(s_from: str, s_until: str, now: datetime | None) -> bool:
+    if not s_until:
+        return False
+    now = now or datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo("America/Chicago")).date().isoformat()
+    return (not s_from or day >= s_from) and day <= s_until
+
+
+def anticipation_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
+    """Whether Short number `n` opens with the anticipation reveal: every other
+    pair (n // 2 odd), between anticipation_from and anticipation_until
+    (Central), so hook and calm land in both groups equally."""
+    return _in_window(s.anticipation_from, s.anticipation_until, now) and (n // 2) % 2 == 1
+
+
+def subject_point(frame: Path, box: tuple[int, int, int, int]) -> tuple[float, float]:
+    """Where the brightest region sits in `box` of `frame`, as (x, y) shares
+    of the box: a heavy blur first, so one hot star does not win over a
+    nebula's glow."""
+    with Image.open(frame) as im:
+        small = im.crop(box).convert("L").resize((36, 64), Image.BILINEAR).filter(ImageFilter.GaussianBlur(4))
+    px = list(small.getdata())
+    i = max(range(len(px)), key=px.__getitem__)
+    if px[i] < sum(px) / len(px) + 12:   # nothing stands out: sweep in on the middle
+        return 0.5, 0.5
+    return ((i % 36) + 0.5) / 36, ((i // 36) + 0.5) / 64
+
+
+def anticipation_filter(width: int, height: int, fps: int, u: float, v: float) -> str:
+    """ffmpeg zoompan for the anticipation reveal around subject (u, v): a
+    close-up beside it with its glow at the edge, then the subject eased into
+    the middle as the view pulls back to the full frame. The window is
+    clipped to the picture, which lands it on the full frame as the zoom
+    reaches 1; zoompan keeps the output size fixed throughout."""
+    t = f"(in/{fps})"
+    p = f"clip(({t}-{ANTIC_HOLD})/{ANTIC_SECONDS - ANTIC_HOLD:.3f}\\,0\\,1)"
+    e = f"(1-pow({p}\\,2)*(3-2*{p}))"
+    z = f"(1+{ANTIC_ZOOM - 1:.3f}*{e})"
+    side = -1 if u >= 0.5 else 1   # start on the side with more room
+    cx = f"({u:.4f}*iw{side * ANTIC_OFFSET:+.3f}*iw/{z}*{e})"
+    x = f"clip({cx}-iw/{z}/2\\,0\\,iw-iw/{z})"
+    y = f"clip({v:.4f}*ih-ih/{z}/2\\,0\\,ih-ih/{z})"
+    return f"zoompan=z='{z}':x='{x}':y='{y}':d=1:s={width}x{height}:fps={fps}"
+
+
 def plan(ledger: Ledger, channel: str, count: int, *, per_short: int = 6,
          public: Callable[[str], bool] = is_public,
          keep: Callable[[list[str]], list[str]] | None = None) -> list[tuple[Parent, list[str]]]:
@@ -374,7 +432,7 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
 def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
                  cta_from: float | None = None, pointer: tuple[str, str] | None = None,
-                 max_pan: int = 900, punch_in: bool = False) -> Path:
+                 max_pan: int = 900, punch_in: bool = False, anticipation: bool = False) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
     long video waits until `cta_from`; without, it is on screen throughout.
     `pointer` (call, line under it) replaces the subscribe plate's text: the
@@ -404,6 +462,10 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     prog = f"(1-t/{dur:.3f})" if flip else f"(t/{dur:.3f})"
     crop = f"crop={s.width * 2}:{s.height * 2}:x='{ex}*{prog}':y='{ey}*{prog}'"
     zoom = f",{punch_filter(s.width, s.height)}" if punch_in else ""
+    if anticipation:
+        x0, y0 = (ex, ey) if flip else (0, 0)    # where the pan starts
+        u, v = subject_point(frame, (x0, y0, x0 + s.width * 2, y0 + s.height * 2))
+        zoom = f",{anticipation_filter(s.width, s.height, s.fps, u, v)}"
     parts, prev = [f"[0:v]{crop},scale={s.width}:{s.height}:flags=bicubic{zoom}[c0]"], "[c0]"
     inputs = ["-loop", "1", "-framerate", str(s.fps), "-i", str(frame)]
     for k, (png, enable) in enumerate(layers, start=1):
@@ -475,7 +537,8 @@ def short_lead(asset: ImageAsset) -> str:
 
 
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
-                   hook: bool = False, why=None, punch_in: bool = False) -> VideoMetadata:
+                   hook: bool = False, why=None, punch_in: bool = False,
+                   anticipation: bool = False) -> VideoMetadata:
     lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -523,6 +586,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         tags.insert(0, why_mod.WHY_TAG)
     if punch_in:
         tags.insert(0, PUNCH_TAG)    # how the report tells the two openings apart
+    if anticipation:
+        tags.insert(0, ANTIC_TAG)
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -610,7 +675,7 @@ def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: s
 
 def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path, label: str, work: Path,
                 duration: float, voice=None, pointer: tuple[str, str] | None = None, hook: bool = False,
-                punch_in: bool = False) -> Path:
+                punch_in: bool = False, anticipation: bool = False) -> Path:
     """One cut of a Short: voice (script, wav, seconds) over the music with
     captions for the facts and the closing plate under the last line, or
     music only with the plate throughout."""
@@ -629,7 +694,7 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
         cta_from = start + body_secs
     path = render_short(asset, out, cfg=cfg, audio=audio, link_label=label, work_dir=work,
                         duration=duration, captions=captions, cta_from=cta_from, pointer=pointer,
-                        max_pan=pan if voice else 900, punch_in=punch_in)
+                        max_pan=pan if voice else 900, punch_in=punch_in, anticipation=anticipation)
     if voice:
         Path(audio).unlink(missing_ok=True)
     return path
@@ -745,7 +810,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                                        and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
             ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
             want_why = why_mod.why_due(cfg.shorts, n)
-            punch = punch_due(cfg.shorts, n)
+            antic = anticipation_due(cfg.shorts, n)
+            punch = punch_due(cfg.shorts, n) and not antic
             if not ranked:
                 log.warning("shorts: nothing usable among %d candidates from %s", len(cands), parent.slug)
                 continue
@@ -813,15 +879,16 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             script = spoken[0] if spoken else None
             hooked = hook and bool(spoken)
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
-                               duration=dur, voice=spoken, hook=hooked, punch_in=punch)
+                               duration=dur, voice=spoken, hook=hooked, punch_in=punch, anticipation=antic)
             md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None,
-                                punch_in=punch)
+                                punch_in=punch, anticipation=antic)
             vid = publish(path, md, mode=mode)
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
             log.info("short %s from %s (%s%s%s, %s) -> %s", best.asset_id, parent.slug,
                      ("hook style" if hooked else "narrated") if spoken else "music only",
-                     ", why" if why and spoken else "", ", punch-in open" if punch else "",
+                     ", why" if why and spoken else "",
+                     ", punch-in open" if punch else ", anticipation open" if antic else "",
                      why_mod.subject(best), vid or "(dry run)")
             if is_earth(best):
                 earth_recent += 1

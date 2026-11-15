@@ -308,6 +308,12 @@ shorts:
   # opens zoomed in and pulls back to the full frame in its first 1.6 seconds.
   # Called Nov 20 on share watched and subscribers per 1,000 views.
   punch_in_until: "2026-11-19"
+  # Anticipation opening test, Nov 21-27 (tests.md): every other pair opens
+  # close on the dark beside the brightest thing in the picture, holds, then
+  # sweeps it in and pulls back to the full frame by about 2.4 seconds.
+  # Called Nov 28 on share watched and subscribers per 1,000 views.
+  anticipation_from: "2026-11-21"
+  anticipation_until: "2026-11-27"
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

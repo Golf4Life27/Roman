@@ -498,3 +498,54 @@ def test_a_punch_in_short_opens_zoomed_and_settles_on_the_full_frame(tmp_path):
     assert abs(probe_duration(str(out)) - 4) < 0.5
     probe = subprocess.run([ffmpeg_path(), "-i", str(out)], capture_output=True, text=True).stderr
     assert "270x480" in probe
+
+
+def test_anticipation_alternates_by_pair_between_its_dates():
+    from datetime import datetime, timezone
+
+    from romanfeed.shorts import anticipation_due
+    s = ShortsSettings(anticipation_from="2026-11-21", anticipation_until="2026-11-27")
+    inside = datetime(2026, 11, 22, 18, tzinfo=timezone.utc)
+    assert [anticipation_due(s, n, inside) for n in range(8)] == [False, False, True, True] * 2
+    assert not anticipation_due(s, 2, datetime(2026, 11, 20, 18, tzinfo=timezone.utc))
+    assert not anticipation_due(s, 2, datetime(2026, 11, 28, 18, tzinfo=timezone.utc))
+    assert not anticipation_due(ShortsSettings(), 2, inside)
+
+
+def test_an_anticipation_short_is_tagged_for_the_report():
+    from romanfeed.shorts import ANTIC_TAG, short_metadata
+    cfg = _cfg()
+    asset = _asset(1, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb")
+    parent = shorts.Parent("p", "VID8h", 28800, "")
+    assert ANTIC_TAG in short_metadata(cfg, asset, parent, [], anticipation=True).tags
+    assert ANTIC_TAG not in short_metadata(cfg, asset, parent, []).tags
+
+
+def test_subject_point_finds_the_glow_and_falls_back_to_the_middle(tmp_path):
+    from PIL import ImageDraw, ImageFilter
+    from romanfeed.shorts import subject_point
+    im = Image.new("RGB", (360, 640), (5, 5, 10))
+    ImageDraw.Draw(im).ellipse((220, 120, 320, 220), fill=(255, 160, 100))
+    im.filter(ImageFilter.GaussianBlur(20)).save(tmp_path / "glow.png")
+    u, v = subject_point(tmp_path / "glow.png", (0, 0, 360, 640))
+    assert 0.6 < u < 0.85 and 0.15 < v < 0.35
+    Image.new("RGB", (360, 640), (5, 5, 10)).save(tmp_path / "flat.png")
+    assert subject_point(tmp_path / "flat.png", (0, 0, 360, 640)) == (0.5, 0.5)
+
+
+def test_an_anticipation_short_opens_close_and_lands_on_the_full_frame(tmp_path):
+    from PIL import ImageDraw, ImageFilter
+    src = tmp_path / "glow.png"
+    im = Image.new("RGB", (900, 1600), (5, 5, 10))
+    ImageDraw.Draw(im).ellipse((500, 400, 800, 700), fill=(255, 160, 100))
+    im.filter(ImageFilter.GaussianBlur(40)).save(src)
+    a = _asset(1, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb", local_path=src)
+    audio = tmp_path / "a.m4a"
+    subprocess.run([ffmpeg_path(), "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=8",
+                    "-c:a", "aac", str(audio)], check=True)
+    cfg = _cfg(seconds=4, width=270, height=480, fps=12)
+    out = shorts.render_short(a, tmp_path / "x.mp4", cfg=cfg, audio=audio, link_label="8-hour", work_dir=tmp_path,
+                              anticipation=True)
+    assert abs(probe_duration(str(out)) - 4) < 0.5
+    probe = subprocess.run([ffmpeg_path(), "-i", str(out)], capture_output=True, text=True).stderr
+    assert "270x480" in probe
