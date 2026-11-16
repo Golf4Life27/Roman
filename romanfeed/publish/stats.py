@@ -115,6 +115,7 @@ class ChannelStats:
     # permission): then the week's change comes from ledger snapshots.
     has_analytics: bool = True
     title_test: list[tuple[str, str]] = field(default_factory=list)
+    feel_test: list[tuple[str, str]] = field(default_factory=list)
     week_ago: tuple[str, int, int, int] | None = None   # (date, subscribers, views, videos)
     # Where the week's new subscribers came from: (format, gained, views) per
     # format, and (title, gained, views) for the videos that earned the most.
@@ -410,6 +411,48 @@ def title_test_rows(yt_public, ledger, today: date, path: str = TITLE_TEST) -> l
     return rows
 
 
+def feel_test_rows(yt_public, ledger, today: date, config_path: str) -> list[tuple[str, str]]:
+    """Test 10: long videos with the feeling-first title against the
+    name-first ones rendered in the same window, as views per video per day
+    since upload, so older videos are not favoured. Earth and other lanes
+    are left out: only titles from the two templates count."""
+    from romanfeed.config import load_config
+
+    pub = load_config(config_path).publish
+    if not (pub.feel_title_template and pub.feel_title_until):
+        return []
+    start = pub.feel_title_from or "0000"
+    feel_head = pub.feel_title_template.split("{", 1)[0]
+    name_tail = pub.title_template.rsplit("}", 1)[-1]
+    groups: dict[str, list] = {"feel": [], "name": []}
+    for v in ledger.videos(load_config(config_path).channel.slug):
+        day = (v.rendered_at or "")[:10]
+        if not (v.youtube_id and v.title and v.published_at) or day < start or day > pub.feel_title_until:
+            continue
+        if feel_head and v.title.startswith(feel_head):
+            groups["feel"].append(v)
+        elif name_tail and v.title.endswith(name_tail.strip()):
+            groups["name"].append(v)
+    if not (groups["feel"] or groups["name"]):
+        return [("Status", f"no test videos published yet (window {start} to {pub.feel_title_until})")]
+    views = video_views(yt_public, [v.youtube_id for g in groups.values() for v in g])
+    rows, rates = [], {}
+    for key, label in (("feel", "Feeling-first titles"), ("name", "Name-first titles")):
+        vids = groups[key]
+        per_day = [views.get(v.youtube_id, 0) / max((today - date.fromisoformat(v.published_at[:10])).days, 1) for v in vids]
+        rates[key] = sum(per_day) / len(per_day) if per_day else 0.0
+        rows.append((f"{label} ({len(vids)} videos)", f"{sum(views.get(v.youtube_id, 0) for v in vids):,} views = {rates[key]:,.2f} per video per day"))
+    a, b = rates["feel"], rates["name"]
+    if not (groups["feel"] and groups["name"]):
+        verdict = "one side has no videos yet"
+    elif b == 0:
+        verdict = "no views on the name-first side yet" if a == 0 else "feeling-first ahead (name-first got none)"
+    else:
+        verdict = f"feeling-first at {a / b:,.2f}x name-first"
+    rows.append(("Reading", verdict + ". Call ~Dec 3: under 0.9x reverts, 1.3x or better switches all long videos."))
+    return rows
+
+
 def live_trigger(stats: ChannelStats) -> tuple[bool, str]:
     """Is it time to switch on the nightly live stream? And the measured why."""
     if not stats.has_analytics:
@@ -474,6 +517,8 @@ def _public_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[t
 def _sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     """The report as (heading, [(label, value)]) -- shared by text and HTML."""
     tail = [("Title split test", stats.title_test)] if stats.title_test else []
+    if stats.feel_test:
+        tail.append(("Feeling-first title test (test 10)", stats.feel_test))
     if not stats.has_analytics:
         return _public_sections(stats, today) + tail
     return _analytics_sections(stats, today) + tail

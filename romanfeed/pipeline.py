@@ -177,7 +177,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         duration = probe_duration(str(video_path))
 
         # 5. metadata + publish guard
-        meta = build_metadata(cfg, assets, tracks, seconds_per_image=spi)
+        meta = build_metadata(cfg, assets, tracks, seconds_per_image=spi, when=date.fromisoformat(today))
         if opts.private_test:
             meta.privacy = "private"
             meta.title = ("[TEST] " + meta.title)[:100]
@@ -222,6 +222,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             mux_audio(silent_cut, cut_audio, cut_path, faststart=False)
             silent_cut.unlink(missing_ok=True)  # freed before the next cut starts
             cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets),
+                                      when=date.fromisoformat(today),
                                       total_seconds=cut_total, sleep=True,
                                       dark_after=spi * n_shown if n_shown < len(order) else None)
             cut_thumb = build_thumbnail(cut_assets, cut_total, out_dir / f"{cut_slug}.thumb.jpg",

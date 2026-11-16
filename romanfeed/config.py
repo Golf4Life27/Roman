@@ -101,6 +101,13 @@ class PublishSettings:
     title_template: str = "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
     # Title for the extra-length sleep cuts; blank = title_template.
     sleep_title_template: str = ""
+    # Feeling-first title test (tests.md test 10): between feel_title_from and
+    # feel_title_until (render day, inclusive), deep-space renders on odd days
+    # of the year use this template for both cuts and carry the tag
+    # "title-feel"; even days keep title_template. Blank = off.
+    feel_title_template: str = ""
+    feel_title_from: str = ""
+    feel_title_until: str = ""
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False
