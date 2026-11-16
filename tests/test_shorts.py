@@ -121,7 +121,7 @@ def test_switch_off_renders_but_never_uploads(ledger, monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: sent.append(mode) or ("YT" if mode == "upload" else None))
     monkeypatch.setattr(shorts, "is_public", lambda vid: True)
-    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache, *w: cands)
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
     monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
     monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
@@ -185,7 +185,7 @@ def test_a_video_with_nothing_usable_hands_its_turn_on(ledger, monkeypatch, tmp_
     monkeypatch.setattr(shorts, "is_public", lambda vid: True)
     # The newest video's images are all unusable (as an Earth video's were).
     monkeypatch.setattr(shorts, "ranked_candidates",
-                        lambda cands, cache: [a for a in cands if int(a.asset_id.split("A")[1]) < 10])
+                        lambda cands, cache, *w: [a for a in cands if int(a.asset_id.split("A")[1]) < 10])
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
     monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
     monkeypatch.delenv("GOOGLE_TTS_API_KEY", raising=False)
@@ -293,7 +293,7 @@ def test_earth_shorts_stop_at_their_cap(ledger, monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: sent.append(md.tags[0]) or "YT")
     monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
-    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache, *w: cands)
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
     monkeypatch.setattr(shorts, "render_short", lambda a, out, **kw: out)
     monkeypatch.setattr(shorts, "is_earth", lambda a: True)
@@ -318,7 +318,7 @@ def test_capped_earth_sets_do_not_crowd_out_deep_sky(ledger, monkeypatch, tmp_pa
     ledger.close()
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: "YT")
     monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
-    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache, *w: cands)
     monkeypatch.setattr(shorts, "already_posted", lambda a, posted: False)
     monkeypatch.setattr(shorts, "recent_upload_titles", lambda channel_id: [])
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
@@ -333,7 +333,7 @@ def test_capped_earth_sets_do_not_crowd_out_deep_sky(ledger, monkeypatch, tmp_pa
 def _quiet_run(monkeypatch):
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: "YT")
     monkeypatch.setattr(shorts, "_snapshot", lambda *a, **k: None)
-    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: cands)
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache, *w: cands)
     monkeypatch.setattr(shorts, "already_posted", lambda a, posted: False)
     monkeypatch.setattr(shorts, "recent_upload_titles", lambda channel_id: [])
     monkeypatch.setattr(shorts, "build_soundtrack", lambda lib, **kw: (Path(kw["out_path"]), []))
@@ -593,8 +593,31 @@ def test_a_regular_short_skips_an_image_kept_for_an_explainer(ledger, monkeypatc
     monkeypatch.setattr(shorts, "publish", lambda path, md, mode: published.append(md) or "YT")
     w = why_mod.Why("Why?", "Because.", "NASA", "u")
     monkeypatch.setattr(shorts, "plan", lambda *a, **k: [(shorts.parents(shorts.Ledger(led_path), "chan", public=lambda v: True)[0], ["nasa:A15", "nasa:A16"])])
-    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache: list(cands))
+    monkeypatch.setattr(shorts, "ranked_candidates", lambda cands, cache, *w: list(cands))
     monkeypatch.setattr(ex, "find_explainer", lambda a, lead="": (w, ["x"]) if a.asset_id == "nasa:A15" else None)
     cfg = _cfg(enabled=True, per_day=40, explainer_dates=["2099-01-01"])
     res = shorts.run_shorts(cfg, count=1, data_dir=led_path.parent, output_dir=tmp_path / "out", public=lambda v: True)
     assert res[0].asset_id == "nasa:A16"
+
+
+def test_hook_slots_give_hook_two_of_eight_one_in_each_pair_group():
+    s = ShortsSettings(hook_every=2, hook_slots=[1, 3])
+    hooks = [n for n in range(16) if shorts.is_hook(s, n)]
+    assert hooks == [1, 3, 9, 11]
+    # one hook in the plain pairs ((n // 2) % 2 == 0), one in the test pairs
+    assert [(n // 2) % 2 for n in hooks[:2]] == [0, 1]
+    assert [n for n in range(4) if shorts.is_hook(ShortsSettings(hook_every=2), n)] == [1, 3]
+
+
+def test_the_subject_weight_lifts_a_galaxy_over_a_slightly_better_nebula(monkeypatch, tmp_path):
+    from romanfeed.sources.base import ImageAsset
+    gal = ImageAsset(asset_id="esa:g", title="Spiral galaxy NGC 1", url="u", source="ESA", description="", keywords=[])
+    neb = ImageAsset(asset_id="esa:n", title="Orion Nebula", url="u", source="ESA", description="", keywords=[])
+    for a in (gal, neb):
+        a.local_path = tmp_path / a.asset_id
+    monkeypatch.setattr(shorts, "looks_unsuitable", lambda a, kind: False)
+    monkeypatch.setattr(ImageAsset, "download", lambda self, d: None)
+    monkeypatch.setattr(shorts, "flat_black_fraction", lambda a: 0.0)
+    monkeypatch.setattr(shorts, "image_score", lambda p: 0.55 if "n" in p.name else 0.50)
+    assert shorts.ranked_candidates([gal, neb], tmp_path)[0] is neb
+    assert shorts.ranked_candidates([gal, neb], tmp_path, {"galaxy": 0.1})[0] is gal

@@ -378,8 +378,17 @@ def pick_best(candidates: list[ImageAsset], cache_dir: Path) -> ImageAsset | Non
     return ranked[0] if ranked else None
 
 
-def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[ImageAsset]:
-    """Usable candidates, strongest first: frame quality plus the deep-sky bonus."""
+def is_hook(s, n: int) -> bool:
+    """Whether the n-th Short (counted over every Short posted) is hook style."""
+    if s.hook_slots:
+        return n % 8 in s.hook_slots
+    return s.hook_every > 0 and n % s.hook_every == s.hook_every - 1
+
+
+def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path,
+                      weights: dict[str, float] | None = None) -> list[ImageAsset]:
+    """Usable candidates, strongest first: frame quality plus the deep-sky
+    bonus, plus any subject weight (the subject test's winner)."""
     scored = []
     for a in candidates:
         # An Earth-from-orbit photo is judged as one (it was failing the
@@ -391,7 +400,8 @@ def ranked_candidates(candidates: list[ImageAsset], cache_dir: Path) -> list[Ima
             a.download(cache_dir)
             if flat_black_fraction(a) > 0.02:
                 continue
-            scored.append((image_score(a.local_path) + subject_bonus(a), a))
+            extra = (weights or {}).get(why_mod.subject(a), 0.0) if not is_earth(a) else 0.0
+            scored.append((image_score(a.local_path) + subject_bonus(a) + extra, a))
         except Exception as exc:  # gone from the archive, corrupt file
             log.warning("skipping %s: %s", a.asset_id, exc)
     if not scored:
@@ -830,9 +840,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             # same at the cap (one in, one aged out), so every run got the same
             # style (Nov 4-5: six calm in a row).
             n = posted_total + len(results)
-            hook = style == "hook" or (style == "auto" and cfg.shorts.hook_every > 0
-                                       and n % cfg.shorts.hook_every == cfg.shorts.hook_every - 1)
-            ranked = [a for a in ranked_candidates(cands, cache) if not already_posted(a, posted)]
+            hook = style == "hook" or (style == "auto" and is_hook(cfg.shorts, n))
+            ranked = [a for a in ranked_candidates(cands, cache, cfg.shorts.subject_weights)
+                      if not already_posted(a, posted)]
             want_why = why_mod.why_due(cfg.shorts, n)
             antic = anticipation_due(cfg.shorts, n)
             punch = punch_due(cfg.shorts, n) and not antic

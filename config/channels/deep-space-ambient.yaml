@@ -286,12 +286,25 @@ shorts:
   # Test Nov 5-11: no Earth Shorts. Nov 1-4 Earth Shorts drew 48-123 views
   # each and 0 subscribers; deep sky 231-267 and all 3. Kill rule: if Shorts
   # average under 200 views each over the week, Earth comes back at 2 a day.
+  # Nov 16 call: the kill rule's line was met on paper (deep-sky Shorts
+  # averaged 79-89 views, under 200), but Earth drew 48-123 views and 0
+  # subscribers Nov 1-4, so bringing it back would not lift views and would
+  # cost subscribers. Earth stays off.
   earth_per_day: -1
   # Every other Short in the hook style (owner: the calm read is "educational,
   # but might not be crazy engaging"), tagged hook-style so the Monday report
   # can compare the two. Nov 4: 21 Shorts in, still inside noise (3
   # subscribers between both styles, all calm), so it keeps alternating.
   hook_every: 2
+  # Nov 16 call (tests.md): over Nov 5-15, calm earned 4.3 subscribers per
+  # 1,000 Shorts views and hook 2.9 (18 subscribers, 83 Shorts), a lead of
+  # more than a third, so calm takes 6 of every 8 Shorts. The two hook slots
+  # sit one in each pair group so the opening tests stay fair.
+  hook_slots: [1, 3]
+  # Nov 16 call (tests.md): galaxies won the subject test, 0.36 subscribers
+  # per Short (13 from 36) against nebulae 0.12 and clusters 0.22, so a
+  # galaxy image gets a lift when a Short picks its picture.
+  subject_weights: {galaxy: 0.10}
   hook_voice: en-US-Chirp3-HD-Puck
   hook_rate: 1.12
   # "Why" test (main chat, under the owner's Nov 4 order to test daily): some
