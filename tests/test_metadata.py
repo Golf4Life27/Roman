@@ -196,3 +196,37 @@ def test_sleep_cut_title_and_dark_screen_chapter():
     # long chapter titles give way so the CC BY credits and hashtags survive
     assert len(meta.description) <= 5000
     assert "IMAGE CREDITS" in meta.description and meta.description.rstrip().endswith("#deepsleep")
+
+
+def test_feel_title_on_odd_days_inside_the_window():
+    from romanfeed.publish.metadata import FEEL_TAG, feel_due
+
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
+    odd, even = date(2026, 11, 17), date(2026, 11, 18)   # day 321 and 322 of the year
+    assert feel_due(cfg.publish, odd) and not feel_due(cfg.publish, even)
+    assert not feel_due(cfg.publish, date(2026, 11, 15))   # before the window
+    assert not feel_due(cfg.publish, date(2026, 12, 1))    # after it
+    feel = build_metadata(cfg, assets, [], seconds_per_image=45, when=odd)
+    name = build_metadata(cfg, assets, [], seconds_per_image=45, when=even)
+    assert feel.title == "Drift Off Beside Carina Nebula 0 by Webb | 1 Hour of Space Ambient for Sleep | Real Telescope Images"
+    assert FEEL_TAG in feel.tags and FEEL_TAG not in name.tags
+    assert name.title.endswith("Telescope Screensaver")
+    sleep = build_metadata(cfg, assets, [], seconds_per_image=45, when=odd, total_seconds=8 * 3600, sleep=True, dark_after=2700)
+    assert sleep.title.startswith("Drift Off Beside") and len(sleep.title) <= 100
+
+
+def test_feel_title_off_without_a_template():
+    from dataclasses import replace
+
+    from romanfeed.publish.metadata import feel_due
+
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assert not feel_due(replace(cfg.publish, feel_title_template=""), date(2026, 11, 17))
+
+
+def test_composed_music_is_named_original():
+    cfg = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
+    assets = [_asset(i, f"Carina Nebula {i}", ["nebula"]) for i in range(80)]
+    meta = build_metadata(cfg, assets, [], seconds_per_image=45, when=date(2026, 9, 5))
+    assert "Original music composed for Space Screens. Not stock or library music." in meta.description

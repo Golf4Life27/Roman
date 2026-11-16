@@ -426,3 +426,40 @@ def test_reached_on_gives_the_date_at_the_current_pace():
     assert Pace(1800, 4000, 98, 70).reached_on(today) == "Nov 26, 2026 (32 days)"
     assert Pace(4100, 4000, 98, 70).reached_on(today) == "reached"
     assert Pace(111, 1000, 98, 0).reached_on(today) == "never at this pace"
+
+
+def test_feel_test_rows_compare_views_per_video_per_day(tmp_path):
+    from datetime import date
+
+    from romanfeed.publish import stats as st
+    from romanfeed.state import Ledger, VideoRecord
+
+    cfg = "config/channels/deep-space-ambient.yaml"
+    views = {"F1": 200, "F2": 100, "N1": 100, "E1": 9999, "OLD": 9999}
+
+    class Pub:
+        def videos(self):
+            return self
+
+        def list(self, part, id):
+            items = [{"id": v, "statistics": {"viewCount": str(views[v])}} for v in id.split(",")]
+            return type("R", (), {"execute": lambda self: {"items": items}})()
+
+    with Ledger(tmp_path / "s.db") as led:
+        assert st.feel_test_rows(Pub(), led, date(2026, 11, 20), cfg)[0][0] == "Status"
+        rows_in = [
+            ("F1", "2026-11-17", "Drift Off Beside Orion Nebula by Hubble | 1 Hour of Space Ambient for Sleep | Real Telescope Images"),
+            ("F2", "2026-11-19", "Drift Off Beside Ring Nebula by Webb | 8 Hours of Space Ambient for Sleep | Real Telescope Images"),
+            ("N1", "2026-11-18", "Crab Nebula by Hubble | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"),
+            ("E1", "2026-11-18", "Night Lights | Earth from Space | 1 Hour Relaxing Space Video for Sleep | Space Station Screensaver"),
+            ("OLD", "2026-11-10", "Old Nebula by Hubble | Nebulae | 1 Hour Relaxing Space Video for Sleep | Telescope Screensaver"),
+        ]
+        for vid, day, title in rows_in:
+            led.record_video(VideoRecord(vid, "deep-space-ambient", f"{vid}.mp4", 3600, f"{day}T06:00:00+00:00"))
+            led.mark_published(vid, vid, title)
+            led.conn.execute("UPDATE videos SET published_at=? WHERE video_slug=?", (f"{day}T07:00:00+00:00", vid))
+        rows = dict(st.feel_test_rows(Pub(), led, date(2026, 11, 21), cfg))
+    # F1: 200 views / 4 days = 50; F2: 100 / 2 = 50; N1: 100 / 3 = 33.33
+    assert rows["Feeling-first titles (2 videos)"] == "300 views = 50.00 per video per day"
+    assert rows["Name-first titles (1 videos)"] == "100 views = 33.33 per video per day"
+    assert rows["Reading"].startswith("feeling-first at 1.50x name-first")

@@ -39,6 +39,26 @@ Not affiliated with or endorsed by NASA or ESA.
 {hashtags}
 """
 
+# Tag on long videos that carry the feeling-first title (test 10), so the
+# weekly report can compare them with the name-first ones.
+FEEL_TAG = "title-feel"
+
+# Said under MUSIC when the soundtrack is composed by romanfeed/audio/composer.py.
+COMPOSED_LINE = "Original music composed for {channel}. Not stock or library music."
+
+
+def feel_due(settings, when: date) -> bool:
+    """True when a render on `when` takes the feeling-first title: inside the
+    test window, on odd days of the year (both cuts of one render match)."""
+    s = settings
+    if not (s.feel_title_template and s.feel_title_until):
+        return False
+    day = when.isoformat()
+    if (s.feel_title_from and day < s.feel_title_from) or day > s.feel_title_until:
+        return False
+    return when.timetuple().tm_yday % 2 == 1
+
+
 # The first two lines are what search shows under the title, so they carry the
 # phrases sleep-searchers type, in a sentence a person would write.
 HOOK_SLEEP = (
@@ -439,7 +459,8 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
             lines.append(f"(then the sequence continues to {_hms(total)})")
         return "\n".join(lines)
     credits = "\n".join(sorted({f"- {a.credit or a.source}" for a in assets}))
-    music = "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
+    composed = COMPOSED_LINE.format(channel=cfg.channel.name) + "\n" if cfg.audio.source == "composed" else ""
+    music = composed + "\n".join(f"- {t.title or t.id}" + (f" — {t.artist}" if t.artist else "") for t in {t.id: t for t in tracks}.values()) or "- (none)"
 
     # The first chapter names the video: the same set of images with a different
     # opener gets a different title, so runs do not stack up identical uploads.
@@ -458,6 +479,9 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         template = (cfg.earth.sleep_title_template if sleep else "") or cfg.earth.title_template
     else:
         template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
+    feel = not (photos or earth) and feel_due(cfg.publish, when)
+    if feel:
+        template = cfg.publish.feel_title_template
     if not dark_after:
         template = drop_segment(template, "{dark_after}")
     title_lead = lead
@@ -531,7 +555,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         tail = ["aviation", "airplane", "relaxing music", "ambient"]
     else:
         tail = ["space", "sleep screen", "ambient"]
-    tags = list(dict.fromkeys(base_tags + extra + [subject.lower()] + tail))[:30]
+    tags = list(dict.fromkeys(([FEEL_TAG] if feel else []) + base_tags + extra + [subject.lower()] + tail))[:30]
     return VideoMetadata(
         title=title[:100], description=description[:5000], tags=tags, category_id=cfg.publish.category_id,
         privacy=cfg.publish.privacy, made_for_kids=cfg.publish.made_for_kids, chapters=chapters,

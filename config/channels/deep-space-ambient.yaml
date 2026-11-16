@@ -237,6 +237,15 @@ publish:
   # extra-length sleep cuts use the same shape (blank sleep_title_template).
   title_template: "{lead_by} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
   sleep_title_template: ""
+  # Test 10 (tests.md), from the Nov 16 competitor study: the fast-growing
+  # space-ambient channels lead with a feeling, not the object's name. Renders
+  # on odd days of the year in this window use this title on both cuts and
+  # carry the tag "title-feel"; even days keep title_template. Weekly report
+  # compares views per video per day. Called ~Dec 3: under 0.9x reverts,
+  # 1.3x or better switches all long videos over.
+  feel_title_template: "Drift Off Beside {lead_by} | {length} of Space Ambient for Sleep | Real Telescope Images"
+  feel_title_from: "2026-11-17"
+  feel_title_until: "2026-11-30"
   tags:
     - space
     - space video

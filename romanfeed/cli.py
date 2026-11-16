@@ -296,6 +296,14 @@ def _smtp_settings() -> tuple[dict | None, list[str]]:
     }, []
 
 
+def _feel_rows(st, yt_public, ledger, today, config_path) -> list[tuple[str, str]]:
+    """Test 10's report rows; a failure here must not stop the weekly report."""
+    try:
+        return st.feel_test_rows(yt_public, ledger, today, config_path)
+    except Exception as exc:  # noqa: BLE001
+        return [("Status", f"could not read: {str(exc)[:120]}")]
+
+
 def _cmd_stats(args) -> int:
     """Print the weekly report; with --email, also mail it.
 
@@ -335,6 +343,7 @@ def _cmd_stats(args) -> int:
             with Ledger(Path(args.data_dir) / "state.db") as ledger:
                 data = st.fetch_public_stats(today, yt_public=public_client(key), ledger=ledger, handle=handle)
                 data.title_test = st.title_test_rows(public_client(key), ledger, today)
+                data.feel_test = _feel_rows(st, public_client(key), ledger, today, args.config)
             subject, text, html = st.report(data, today)
             print(f"Subject: {subject}\n")
             print(text)
@@ -356,6 +365,7 @@ def _cmd_stats(args) -> int:
 
         with Ledger(Path(args.data_dir) / "state.db") as ledger:
             data.title_test = st.title_test_rows(public_client(key), ledger, today)
+            data.feel_test = _feel_rows(st, public_client(key), ledger, today, args.config)
     subject, text, html = st.report(data, today)
     print(f"Subject: {subject}\n")
     print(text)
