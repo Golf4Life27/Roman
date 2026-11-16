@@ -240,6 +240,17 @@ class ShortsSettings:
     # YouTube's synthetic-content disclosure on. Never an anticipation or
     # punch-in Short. Empty = off.
     explainer_dates: list[str] = field(default_factory=list)
+    # Plain-title test (Nov 16-22): every other run of four Shorts goes out
+    # titled with the picture's name alone ("Horsehead Nebula by Webb"),
+    # without the " | Calm Space for Sleep" every other Short carries. Between
+    # the two dates (Central); blank until = off. Why and explainer Shorts keep
+    # their question titles.
+    plain_title_from: str = ""
+    plain_title_until: str = ""
+    # Never the same object twice in this many days (0 = no check). The upload
+    # feed only shows the last 15 uploads (about two days at 8 a day), so the
+    # Horsehead Nebula went up on Nov 6, 9 and 11.
+    repeat_days: int = 0
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")

@@ -197,6 +197,56 @@ def _in_window(s_from: str, s_until: str, now: datetime | None) -> bool:
     return (not s_from or day >= s_from) and day <= s_until
 
 
+PLAIN_TITLE_TAG = "plain-title"
+
+
+def plain_title_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
+    """Whether Short number `n` goes out with the picture's name alone as its
+    title: every other run of four (n // 4 odd), between plain_title_from and
+    plain_title_until (Central). Runs of four split hook and calm (n % 2) and
+    punch-in and plain openings (n // 2) evenly, so neither test leans."""
+    return _in_window(s.plain_title_from, s.plain_title_until, now) and (n // 4) % 2 == 1
+
+
+# A catalogue number names one object however the headline around it reads.
+_CATALOGUE = re.compile(r"\b(NGC|IC|Messier|M|Abell|MACS\s*J?|Arp|UGC|RCW|Westerlund|Terzan|Sh\s*2)\s*-?\s*(\d+)",
+                        re.I)
+# Words a headline wraps around the name: who took it and how it is shown.
+_FILLER = {"by", "the", "of", "a", "an", "and", "in", "new", "view", "views", "image", "images", "picture",
+           "annotated", "wide", "field", "widefield", "close", "up", "closeup", "nasa", "esa", "nasas", "esas",
+           "hubble", "hubbles", "webb", "webbs", "spitzer", "spitzers", "wise", "galex", "chandra", "nustar",
+           "roman", "telescope", "space", "sees", "spies", "eyes", "captures", "portrays", "reveals", "shows",
+           "visible", "infrared", "light", "detail", "details", "location", "from", "station"}
+
+
+def object_key(asset: ImageAsset) -> str:
+    """One spelling per object, so "Horsehead Nebula by Webb" and "Hubble's
+    view of the Horsehead Nebula" match: the first catalogue number in the
+    title (NGC 6302, MACS J0416), else the title's first part without the
+    telescope and framing words, lower case, letters and digits only."""
+    title = asset.title or ""
+    m = _CATALOGUE.search(title)
+    if m:
+        kind = m.group(1).lower().replace(" ", "")
+        kind = {"m": "messier", "macsj": "macs", "sh2": "sh2"}.get(kind, kind)
+        return f"{kind}{int(m.group(2))}"
+    first = re.split(r"\s*(?::|\(|\s-\s|\swith\s|\|)", title, maxsplit=1)[0]
+    words = [w for w in re.findall(r"[a-z0-9]+", first.lower().replace("'", "").replace("\u2019", ""))
+             if w not in _FILLER]
+    return "".join(words)
+
+
+def recent_short_objects(ledger: Ledger, channel: str, days: int, now: datetime | None = None) -> set[str]:
+    """The objects of every Short posted in the last `days` days."""
+    if days <= 0:
+        return set()
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+    ids = [r[0] for r in ledger.conn.execute(
+        "SELECT asset_id FROM shorts WHERE channel = ? AND created_at >= ?", (channel, since))]
+    return {object_key(asset_from_meta(m)) for m in ledger.asset_meta(ids).values()} - {""}
+
+
 def anticipation_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
     """Whether Short number `n` opens with the anticipation reveal: every other
     pair (n // 2 odd), between anticipation_from and anticipation_until
@@ -564,7 +614,7 @@ def short_lead(asset: ImageAsset) -> str:
 
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
                    hook: bool = False, why=None, punch_in: bool = False,
-                   anticipation: bool = False, explainer=None) -> VideoMetadata:
+                   anticipation: bool = False, explainer=None, plain_title: bool = False) -> VideoMetadata:
     lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -577,6 +627,10 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
     title = _fit_title(template, title_lead, {"telescope": tele or "Telescope", "channel": cfg.channel.name})
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     asked = explainer if explainer is not None else why
+    plain_title = plain_title and asked is None
+    if plain_title:
+        # The plain-title test: the picture's name alone, no channel tagline.
+        title = re.sub(r"\s+by$", "", _fit_title("{lead}", title_lead, {}))
     if asked is not None:
         # The why and explainer groups open their title on the question;
         # everything else keeps the name-first title.
@@ -617,6 +671,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         tags.insert(0, PUNCH_TAG)    # how the report tells the two openings apart
     if anticipation:
         tags.insert(0, ANTIC_TAG)
+    if plain_title:
+        tags.insert(0, PLAIN_TITLE_TAG)
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -823,6 +879,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         social_on = bool(cfg.crosspost.tiktok_account or cfg.crosspost.instagram_account)
         key = narration.api_key() if cfg.shorts.narration else None
         explained = ledger.explainer_days(cfg.channel.slug)
+        seen_objects = recent_short_objects(ledger, cfg.channel.slug, cfg.shorts.repeat_days)
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
@@ -843,6 +900,13 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             hook = style == "hook" or (style == "auto" and is_hook(cfg.shorts, n))
             ranked = [a for a in ranked_candidates(cands, cache, cfg.shorts.subject_weights)
                       if not already_posted(a, posted)]
+            # An object posted in the last repeat_days days drew 33-51 views
+            # and no subscribers the second time (Nov 1-15), so it waits.
+            fresh = [a for a in ranked if object_key(a) not in seen_objects]
+            if ranked and not fresh:
+                log.info("shorts: every pick from %s repeats a recent Short's object", parent.slug)
+                continue
+            ranked = fresh
             want_why = why_mod.why_due(cfg.shorts, n)
             antic = anticipation_due(cfg.shorts, n)
             punch = punch_due(cfg.shorts, n) and not antic
@@ -940,8 +1004,10 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
                                duration=dur, voice=spoken, hook=hooked, punch_in=punch, anticipation=antic)
             md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None,
-                                punch_in=punch, anticipation=antic, explainer=explain[0] if explain else None)
+                                punch_in=punch, anticipation=antic, explainer=explain[0] if explain else None,
+                                plain_title=plain_title_due(cfg.shorts, n))
             vid = publish(path, md, mode=mode)
+            seen_objects.add(object_key(best))
             if upload:
                 ledger.record_short(cfg.channel.slug, best.asset_id, parent.slug, vid)
                 if explain:
@@ -953,6 +1019,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                      ", explainer" if explain else ", why" if why and spoken else "",
                      ", punch-in open" if punch else ", anticipation open" if antic else "",
                      why_mod.subject(best), vid or "(dry run)")
+            if PLAIN_TITLE_TAG in md.tags:
+                log.info("short %s goes out with the plain title: %s", best.asset_id, md.title)
             if is_earth(best):
                 earth_recent += 1
             # Test-only slots post to YouTube alone: the TikTok and Instagram

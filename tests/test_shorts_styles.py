@@ -134,3 +134,19 @@ def test_explainers_get_their_own_section_and_stay_out_of_the_opening_tests():
     assert lines[1].startswith("  explainer: 1 Shorts, 500 live views each, 50% watched, 5 subs (10.0 per 1,000 views)")
     assert lines[2].startswith("  regular: 1 Shorts, 100 live views each")
     assert ss.explainer_lines(rows[:1]) == []
+
+
+def test_the_plain_title_test_gets_its_own_section_without_question_titles():
+    rows = [
+        ss.ShortNumbers("u0", "2026-11-16T10:00", "U0 | Calm Space for Sleep", "calm", False, 900, views=900),
+        ss.ShortNumbers("p1", "2026-11-16T18:00", "P1", "hook", False, 200, views=200, subs=2, plain_title=True,
+                        avg_view_pct=80),
+        ss.ShortNumbers("u1", "2026-11-16T20:00", "U1 | Calm Space for Sleep", "calm", False, 100, views=100,
+                        avg_view_pct=60),
+        ss.ShortNumbers("e1", "2026-11-21T17:00", "Why?", "calm", False, 500, views=500, explainer=True),
+    ]
+    lines = ss.title_lines(rows)
+    assert lines[0] == "Plain vs usual title (Shorts since the first plain title):"
+    assert lines[1].startswith("  plain title: 1 Shorts, 200 live views each, 80% watched, 2 subs (10.0 per 1,000 views)")
+    assert lines[2].startswith("  usual title: 1 Shorts, 100 live views each")
+    assert ss.title_lines(rows[:1]) == []

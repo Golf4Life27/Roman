@@ -17,7 +17,7 @@ from datetime import date
 
 from romanfeed.explainer import EXPLAINER_TAG
 from romanfeed.publish.stats import _query
-from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PUNCH_TAG, asset_from_meta, is_earth
+from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PLAIN_TITLE_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
 STYLES = ("hook", "calm")
@@ -40,6 +40,7 @@ class ShortNumbers:
     antic: bool = False    # opened with the anticipation reveal (Nov 21-27 test)
     avg_view_pct: float = 0.0  # Analytics: average share of the Short watched
     explainer: bool = False  # one question answered in under a minute (Nov 21-23 test)
+    plain_title: bool = False  # titled with the picture's name alone (Nov 16-22 test)
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -76,6 +77,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             punch=PUNCH_TAG in tags,
             antic=ANTIC_TAG in tags,
             explainer=EXPLAINER_TAG in tags,
+            plain_title=PLAIN_TITLE_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -212,6 +214,20 @@ def explainer_lines(rows: list[ShortNumbers]) -> list[str]:
             opening_line("regular", [r for r in during if not r.explainer])]
 
 
+def title_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The plain-title test (Nov 16-22): Shorts titled with the picture's name
+    alone against the usual "| Calm Space for Sleep" titles posted since the
+    first one. Why and explainer Shorts open on a question, so they sit out."""
+    if not any(r.plain_title for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.plain_title)
+    during = [r for r in rows if r.posted >= start and not (r.why or r.explainer)]
+    out = ["Plain vs usual title (Shorts since the first plain title):"]
+    for label, p in (("plain title", True), ("usual title", False)):
+        out.append(opening_line(label, [r for r in during if r.plain_title == p]))
+    return out
+
+
 def _mmss(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
@@ -236,6 +252,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines += why_lines(rows)
     lines += opening_lines(rows)
     lines += explainer_lines(rows)
+    lines += title_lines(rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in rows:
         lines.append(f"    {r.posted[:16]} {r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
