@@ -213,6 +213,13 @@ class ShortsSettings:
     hook_every: int = 0
     hook_voice: str = "en-US-Chirp3-HD-Puck"
     hook_rate: float = 1.12
+    # When set, overrides hook_every: the positions (0-7) in every run of 8
+    # Shorts read in the hook style. Nov 16 call: calm won, so hook keeps 2 of
+    # 8, one in each pair group of the opening tests ([1, 3]).
+    hook_slots: list[int] = field(default_factory=list)
+    # Extra ranking score by subject (nebula, galaxy, cluster, other) when a
+    # Short picks its image. Nov 16 call: galaxies won the subject test.
+    subject_weights: dict[str, float] = field(default_factory=dict)
     # "Why" Shorts (romanfeed/why.py): every why_every-th pair of Shorts opens on
     # a why question its source caption answers, through why_until (Central).
     why_every: int = 0
