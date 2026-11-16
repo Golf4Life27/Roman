@@ -331,6 +331,16 @@ shorts:
   # with YouTube's synthetic-content disclosure (the voice is text to speech).
   # Never in an anticipation slot. Called Nov 30 on views and subs per 1,000.
   explainer_dates: ["2026-11-21", "2026-11-22", "2026-11-23"]
+  # Plain-title test, Nov 16-22 (tests.md): every other run of four Shorts is
+  # titled with the picture's name alone, without " | Calm Space for Sleep".
+  # Views per Short halved week on week (148 -> 73 for first-time objects,
+  # Nov 1-7 vs 8-14) while every Short carried the same tagline. Called Nov 23
+  # on live views per Short and subscribers per 1,000 views.
+  plain_title_from: "2026-11-16"
+  plain_title_until: "2026-11-22"
+  # No object twice within 30 days: the 13 repeats Nov 1-15 drew 33-51 views
+  # each and no subscribers.
+  repeat_days: 30
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

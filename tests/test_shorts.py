@@ -621,3 +621,50 @@ def test_the_subject_weight_lifts_a_galaxy_over_a_slightly_better_nebula(monkeyp
     monkeypatch.setattr(shorts, "image_score", lambda p: 0.55 if "n" in p.name else 0.50)
     assert shorts.ranked_candidates([gal, neb], tmp_path)[0] is neb
     assert shorts.ranked_candidates([gal, neb], tmp_path, {"galaxy": 0.1})[0] is gal
+
+
+def test_plain_title_runs_in_fours_inside_its_window():
+    from datetime import datetime, timezone
+
+    from romanfeed.shorts import plain_title_due
+    s = ShortsSettings(plain_title_from="2026-11-16", plain_title_until="2026-11-22")
+    inside = datetime(2026, 11, 17, 12, tzinfo=timezone.utc)
+    assert [plain_title_due(s, n, inside) for n in range(16)] == ([False] * 4 + [True] * 4) * 2
+    assert not plain_title_due(s, 5, datetime(2026, 11, 23, 12, tzinfo=timezone.utc))
+    assert not plain_title_due(s, 5, datetime(2026, 11, 15, 12, tzinfo=timezone.utc))
+    assert not plain_title_due(ShortsSettings(), 5, inside)
+
+
+def test_plain_title_drops_the_tagline_but_question_titles_stay():
+    a = _asset(1, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb", description="Star birth in Carina.")
+    md = shorts.short_metadata(_cfg(), a, shorts.Parent("p", "VID8h", 28800, ""), [], plain_title=True)
+    assert md.title == "Cosmic Cliffs by Webb"
+    assert shorts.PLAIN_TITLE_TAG in md.tags
+    bare = shorts.short_metadata(_cfg(), _asset(2, title="Faint Smudge"), shorts.Parent("p", "V", 3600, ""), [],
+                                 plain_title=True)
+    assert bare.title == "Faint Smudge"
+    why = shorts.why_mod.Why("Why is it red?", "Dust.", "NASA", "https://example/x")
+    asked = shorts.short_metadata(_cfg(), a, shorts.Parent("p", "V", 3600, ""), [], why=why, plain_title=True)
+    assert asked.title.startswith("Why is it red?") and shorts.PLAIN_TITLE_TAG not in asked.tags
+
+
+def test_object_key_matches_two_pictures_of_one_object():
+    k = shorts.object_key
+    assert k(_asset(1, title="Horsehead Nebula by Webb")) == k(_asset(2, title="The Horsehead Nebula"))
+    assert k(_asset(3, title="Hubble's view of the Crab Nebula")) == k(_asset(4, title="Crab Nebula"))
+    assert k(_asset(5, title="Horsehead Nebula")) != k(_asset(6, title="Orion Nebula"))
+
+
+def test_an_object_posted_recently_waits(ledger, monkeypatch, tmp_path):
+    led_path = ledger.db_path
+    ledger.record_video_assets("chan-2026-09-30", [_asset(i, title="Horsehead Nebula" if i < 15 else f"Object {i}")
+                                                    for i in range(10, 20)])
+    ledger.record_video_assets("chan-2026-09-28", [_asset(i, title="Horsehead Nebula") for i in range(0, 10)])
+    ledger.record_short("chan", "nasa:A0", "chan-2026-09-28", "S0")
+    assert shorts.recent_short_objects(ledger, "chan", 30) == {"horseheadnebula"}
+    assert shorts.recent_short_objects(ledger, "chan", 0) == set()
+    ledger.close()
+    _quiet_run(monkeypatch)
+    res = shorts.run_shorts(_cfg(enabled=True, per_day=8, repeat_days=30), count=1, data_dir=led_path.parent,
+                            output_dir=tmp_path / "out", public=lambda v: True)
+    assert [r.asset_id for r in res] and all(int(r.asset_id[6:]) >= 15 for r in res)
