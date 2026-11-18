@@ -349,7 +349,7 @@ def lead_name(title: str, limit: int = 40) -> str:
     return _shorten(text, limit)
 
 
-def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
+def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100, *, keep_tail: bool = False) -> str:
     """Render the title, shrinking {lead} until it fits.
 
     YouTube cuts titles at 100 characters. The search phrases live at the tail,
@@ -361,8 +361,9 @@ def _fit_title(template: str, lead: str, tokens: dict, limit: int = 100) -> str:
     # that carries no token ("| Telescope Screensaver") before cutting the name.
     # If the name is still too long without it, the name is cut in the shorter
     # title: the sleep phrase stays and the name keeps more of its words.
+    # keep_tail: the winner format keeps every segment and shortens the name.
     parts = re.split(r"(\s+[·|]\s+)", template)
-    if len(parts) >= 3 and "{" not in parts[-1]:
+    if not keep_tail and len(parts) >= 3 and "{" not in parts[-1]:
         template = "".join(parts[:-2])
         title = template.format(lead=lead, **tokens)
         if len(title) <= limit:
@@ -408,9 +409,12 @@ def telescope_names(assets: list[ImageAsset]) -> str:
 
 def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Track], *, seconds_per_image: float,
                    when: date | None = None, chapter_limit: int | None = None, total_seconds: float | None = None,
-                   sleep: bool = False, dark_after: float | None = None) -> VideoMetadata:
+                   sleep: bool = False, dark_after: float | None = None,
+                   winner=None) -> VideoMetadata:
     """`total_seconds` is the running time when it is longer than the images
-    shown (a sleep cut that goes dark); `dark_after` is when it goes dark."""
+    shown (a sleep cut that goes dark); `dark_after` is when it goes dark.
+    `winner` (romanfeed.winner.DayPlan) sets the title's template, subject and,
+    for a remake, its name."""
     when = when or date.today()
     total = total_seconds or seconds_per_image * len(assets)
     length = length_text(total)
@@ -422,7 +426,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     elif aviation:
         subject = pick_aviation_subject(assets)
     else:
-        subject = pick_subject(assets)
+        subject = winner.subject if winner else pick_subject(assets)
 
     chapters = [(i * seconds_per_image, _clip_title(a.title)) for i, a in enumerate(assets)]
     # An 8-hour cut has hundreds of chapters; the description caps at 5000
@@ -456,8 +460,12 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
     earth = not photos and bool(assets) and all(is_earth(a) for a in assets)
     if earth:
         template = (cfg.earth.sleep_title_template if sleep else "") or cfg.earth.title_template
+    elif winner:
+        template = winner.title_template
     else:
         template = (cfg.publish.sleep_title_template if sleep else "") or cfg.publish.title_template
+    if winner and winner.lead:
+        lead = winner.lead
     if not dark_after:
         template = drop_segment(template, "{dark_after}")
     title_lead = lead
@@ -472,6 +480,7 @@ def build_metadata(cfg: ChannelConfig, assets: list[ImageAsset], tracks: list[Tr
         template, title_lead,
         {"length": length, "subject": subject, "date": when.isoformat(), "channel": cfg.channel.name,
          "telescope": tele or "Telescope", "dark_after": dark_label},
+        keep_tail=winner is not None,
     )
     title = re.sub(r"\s+by(?=\s*(?:[|·]|$))", "", title)
     telescopes = telescope_names(assets)

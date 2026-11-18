@@ -139,9 +139,26 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
 
         # 2. curate
         min_width = min((s.min_width for s in cfg.enabled_sources), default=1600)
-        subject = todays_subject(cfg, candidates, ledger, n_images)
+        from romanfeed import winner as winner_mod
+
+        plan = winner_mod.plan_for(cfg, date.today()) if cfg.channel.subject == "space" else None
+        pool = candidates
+        if plan:
+            # Winner format: deep space only, one subject (romanfeed/winner.py).
+            subject = "space"
+            themed = winner_mod.narrow(candidates, plan.theme, ledger.used_asset_ids(cfg.channel.slug), n_images)
+            if themed is None:
+                log.warning("WINNER FORMAT: too few never-shown %s pictures for a whole video; "
+                            "making the usual mixed video today", plan.theme)
+                plan = None
+            else:
+                pool = themed
+                log.info("winner format today: %s only (%d candidates)%s", plan.theme, len(themed),
+                         f", titled {plan.lead!r}" if plan.lead else "")
+        else:
+            subject = todays_subject(cfg, candidates, ledger, n_images)
         assets = select_assets(
-            candidates, channel=cfg.channel.slug, ledger=ledger, count=n_images,
+            pool, channel=cfg.channel.slug, ledger=ledger, count=n_images,
             min_width=min_width, cache_dir=str(cache), seed=opts.seed or today,
             # Night-side Earth photos have real black sky, not a mosaic hole.
             max_flat_black=cfg.video.max_flat_black if subject == "space" else 0,
@@ -177,7 +194,7 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         duration = probe_duration(str(video_path))
 
         # 5. metadata + publish guard
-        meta = build_metadata(cfg, assets, tracks, seconds_per_image=spi)
+        meta = build_metadata(cfg, assets, tracks, seconds_per_image=spi, winner=plan)
         if opts.private_test:
             meta.privacy = "private"
             meta.title = ("[TEST] " + meta.title)[:100]
@@ -223,7 +240,8 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
             silent_cut.unlink(missing_ok=True)  # freed before the next cut starts
             cut_meta = build_metadata(cfg, cut_assets, cut_tracks, seconds_per_image=spi, chapter_limit=len(assets),
                                       total_seconds=cut_total, sleep=True,
-                                      dark_after=spi * n_shown if n_shown < len(order) else None)
+                                      dark_after=spi * n_shown if n_shown < len(order) else None,
+                                      winner=plan)
             cut_thumb = build_thumbnail(cut_assets, cut_total, out_dir / f"{cut_slug}.thumb.jpg",
                                         subject=SLEEP_THUMB_LINE if n_shown < len(order) else (cfg.video.thumbnail_line or None),
                                         plate_rgb=plate)
