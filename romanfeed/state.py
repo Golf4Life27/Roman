@@ -72,6 +72,15 @@ CREATE TABLE IF NOT EXISTS explainers (
     youtube_id TEXT,
     PRIMARY KEY (channel, day)
 );
+-- Sky-event Shorts (romanfeed/sky_events.py): which event each one showed.
+CREATE TABLE IF NOT EXISTS sky_events (
+    channel    TEXT NOT NULL,
+    asset_id   TEXT NOT NULL,
+    event_id   TEXT NOT NULL,
+    youtube_id TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (channel, asset_id)
+);
 """
 
 META_FIELDS = ("asset_id", "title", "url", "source", "credit", "description", "date", "width", "height", "licence", "keywords")
@@ -177,7 +186,7 @@ class Ledger:
 
     # -- merging -------------------------------------------------------
     MERGE_TABLES = ("assets_used", "videos", "video_assets", "asset_meta", "shorts",
-                    "channel_snapshots", "video_views", "explainers")
+                    "channel_snapshots", "video_views", "explainers", "sky_events")
 
     def merge_from(self, other: str | Path) -> dict[str, int]:
         """Union another copy of the ledger into this one.
@@ -259,6 +268,19 @@ class Ledger:
 
     def explainer_days(self, channel: str) -> set[str]:
         return {r[0] for r in self.conn.execute("SELECT day FROM explainers WHERE channel = ?", (channel,))}
+
+    def record_sky_event(self, channel: str, asset_id: str, event_id: str, youtube_id: str | None) -> None:
+        """A sky-event Short went up showing `event_id`."""
+        self.conn.execute("INSERT OR REPLACE INTO sky_events VALUES (?, ?, ?, ?, ?)",
+                          (channel, asset_id, event_id, youtube_id, _now()))
+        self.conn.commit()
+
+    def sky_events_since(self, channel: str, since: str) -> list[tuple[str, str]]:
+        """(event_id, created_at) of every uploaded sky-event Short after `since` (UTC ISO)."""
+        rows = self.conn.execute(
+            "SELECT event_id, created_at FROM sky_events WHERE channel = ? AND youtube_id IS NOT NULL"
+            " AND created_at > ? ORDER BY created_at", (channel, since)).fetchall()
+        return [(r[0], r[1]) for r in rows]
 
     # -- videos ---------------------------------------------------------
     def record_video(self, rec: VideoRecord) -> None:

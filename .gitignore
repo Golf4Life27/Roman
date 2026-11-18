@@ -11,6 +11,8 @@ dist/
 data/*
 output/*
 !data/.gitkeep
+# Hand-verified sky-event dates (romanfeed/sky_events.py) are code, not runtime data.
+!data/sky_events.yaml
 !output/.gitkeep
 
 # OAuth tokens for YouTube upload

@@ -37,6 +37,7 @@ from romanfeed.config import ChannelConfig, ShortsSettings
 from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed import explainer as explainer_mod
+from romanfeed import sky_events as sky_mod
 from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
@@ -493,11 +494,14 @@ def vertical_frame(src: Path, out: Path, *, width: int, height: int, max_pan: in
 def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio: Path, link_label: str, work_dir: Path,
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
                  cta_from: float | None = None, pointer: tuple[str, str] | None = None,
-                 max_pan: int = 900, punch_in: bool = False, anticipation: bool = False) -> Path:
+                 max_pan: int = 900, punch_in: bool = False, anticipation: bool = False,
+                 overlay: Image.Image | None = None) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
     long video waits until `cta_from`; without, it is on screen throughout.
     `pointer` (call, line under it) replaces the subscribe plate's text: the
-    social cut's "Full 8-hour version on YouTube / @SpaceScreens"."""
+    social cut's "Full 8-hour version on YouTube / @SpaceScreens". `overlay`
+    replaces the standing name-and-telescope layer (a sky-event Short's photo
+    credit), and a caption may be a ready-made card instead of text."""
     s = cfg.shorts
     dur = duration or s.seconds
     handle = cfg.channel.handle or cfg.channel.name
@@ -507,13 +511,17 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
     base = work_dir / "short_overlay.png"
 
     call, sub = pointer if pointer else (narration.subscribe_call(asset.asset_id, earth=is_earth(asset))[1], None)
-    short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call,
-                  sub=sub).save(base, "PNG")
+    if overlay is not None:
+        overlay.save(base, "PNG")
+    else:
+        short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=not narrated, call=call,
+                      sub=sub).save(base, "PNG")
     layers.append((base, None))
     if narrated:
         for i, (t0, t1, text) in enumerate(captions):
             png = work_dir / f"short_cap_{i:02d}.png"
-            caption_card(text, s.width, s.height).save(png, "PNG")
+            # A caption is text, or a ready card (a sky-event Short's event card).
+            (caption_card(text, s.width, s.height) if isinstance(text, str) else text).save(png, "PNG")
             layers.append((png, f"between(t,{t0:.3f},{t1:.3f})"))
         cta = work_dir / "short_cta.png"
         short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call, sub=sub).save(cta, "PNG")
@@ -789,6 +797,76 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
     return path
 
 
+def _sky_short(cfg: ChannelConfig, ledger: Ledger, parent: Parent | None, *, now: datetime, cache: Path, work: Path,
+               out_dir: Path, mode: str, upload: bool, manifest, key: str | None) -> tuple[ShortResult | None, str]:
+    """One sky-event Short (romanfeed/sky_events.py), or (None, why not).
+
+    The event, its date and the page confirming it come from the hand-checked
+    data file; the picture is an unused NASA photo that fits it. Read in the
+    calm voice when there is a voice at all, never in the hook style or with a
+    test opening, and posted to YouTube only (no social cut)."""
+    s, slug = cfg.shorts, cfg.channel.slug
+    posted = ledger.sky_events_since(slug, "")
+    recent = [p for p in posted if p[1] > _since(now)]
+    if len(recent) >= s.sky_event_per_day:
+        return None, f"{len(recent)} sky-event Shorts in the last 24 hours, the cap of {s.sky_event_per_day}"
+    try:
+        cat = sky_mod.load()
+    except Exception as exc:  # a bad edit to the data file must not cost the Short
+        return None, f"the sky event file could not be read: {exc}"
+    choice, why = sky_mod.pick(cat, posted, now, ledger.shorts_asset_ids(slug), cache)
+    if choice is None:
+        return None, why
+    ev, pic, asset = choice.event, choice.picture, choice.asset
+    label = full_label(parent.link_seconds) if parent else "8-hour"
+    stem = f"{slug}-short-{asset.asset_id.replace(':', '_')}"
+    spoken = None
+    if key:
+        text = sky_mod.script(ev, asset.asset_id)
+        try:
+            wav = narration.synthesize(text, work / f"{stem}.voice.wav", api_key=key, voice=s.voice)
+            secs = probe_duration(str(wav))
+            if secs <= 45.0 - 0.8 - 3.0:
+                spoken = (text, wav, secs)
+            else:
+                log.info("sky-event voice for %s runs %.1fs; music only", ev.id, secs)
+        except Exception as exc:  # no voice is better than no Short
+            log.warning("sky-event voice failed for %s: %s", ev.id, exc)
+    dur = _length(spoken[2]) if spoken else s.seconds
+    library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=dur + 4, seed=asset.asset_id)
+               if cfg.audio.source == "composed" else manifest)
+    music, tracks = build_soundtrack(
+        library, genre=cfg.audio.genre, duration=dur, out_path=work / f"{stem}.m4a", fade=1.5, crossfade=0.0,
+        gain_db=0.0, allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run", seed=asset.asset_id)
+    if upload and any(not t.publishable for t in tracks):
+        raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
+    audio = music
+    cta_from = max(dur - 6.0, 4.0)
+    if spoken:
+        text, wav, secs = spoken
+        audio = narration.mix_voice(wav, music, work / f"{stem}.mix.m4a", voice_start=0.8, duration=dur,
+                                    music_gain=0.22)
+        body = " ".join(ev.say.split())
+        cta_from = 0.8 + secs * len(body) / max(len(text), 1)
+    # The event card (what, when, where to look) is up from the first frame
+    # until the subscribe plate takes over; the photo credit stays throughout.
+    # It sits low when the picture's bright subject is high, so it never
+    # covers the Moon.
+    card = sky_mod.event_card(ev, s.width, s.height, low=sky_mod.subject_high(asset.local_path))
+    path = render_short(asset, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio, link_label=label, work_dir=work,
+                        duration=dur, captions=[(0.0, cta_from, card)], cta_from=cta_from,
+                        overlay=sky_mod.credit_layer(pic, s.width, s.height))
+    if spoken:
+        Path(audio).unlink(missing_ok=True)
+    md = sky_mod.metadata(cfg, ev, pic, link_id=parent.link_id if parent else None, link_label=label, tracks=tracks)
+    vid = publish(path, md, mode=mode)
+    if upload:
+        ledger.record_short(slug, asset.asset_id, sky_mod.SKY_PARENT, vid)
+        ledger.record_sky_event(slug, asset.asset_id, ev.id, vid)
+    log.info("short %s: sky event %s (%s) -> %s", asset.asset_id, ev.id, ev.when, vid or "(dry run)")
+    return ShortResult(asset.asset_id, sky_mod.SKY_PARENT, path, vid, md.title), ""
+
+
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
@@ -897,6 +975,15 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             # same at the cap (one in, one aged out), so every run got the same
             # style (Nov 4-5: six calm in a row).
             n = posted_total + len(results)
+            if sky_mod.slot_due(cfg.shorts, n):
+                # Sky-event slots sit where every other test keeps its two
+                # sides even (romanfeed/sky_events.py), and take none of them.
+                done, why = _sky_short(cfg, ledger, parent, now=datetime.now(timezone.utc), cache=cache, work=work,
+                                       out_dir=out_dir, mode=mode, upload=upload, manifest=manifest, key=key)
+                if done:
+                    results.append(done)
+                    continue
+                log.info("shorts: sky-event slot (Short %d) falls back to a normal Short: %s", n, why)
             hook = style == "hook" or (style == "auto" and is_hook(cfg.shorts, n))
             ranked = [a for a in ranked_candidates(cands, cache, cfg.shorts.subject_weights)
                       if not already_posted(a, posted)]

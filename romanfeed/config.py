@@ -251,6 +251,17 @@ class ShortsSettings:
     # feed only shows the last 15 uploads (about two days at 8 a day), so the
     # Horsehead Nebula went up on Nov 6, 9 and 11.
     repeat_days: int = 0
+    # Sky-event Shorts (romanfeed/sky_events.py), Nov 18-25 test: up to
+    # sky_event_per_day Shorts in any 24 hours point at a sky event in the
+    # next 7 days (data/sky_events.yaml, every date read at an official
+    # source). They take the positions in sky_event_slots of every run of 16
+    # Shorts; [0, 6, 11, 13] takes one of each hook/calm x opening pair and
+    # one of each opening x title pair, so the other tests stay balanced.
+    # Between the two dates (Central); blank until = off.
+    sky_event_from: str = ""
+    sky_event_until: str = ""
+    sky_event_per_day: int = 0
+    sky_event_slots: list[int] = field(default_factory=lambda: [0, 6, 11, 13])
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
