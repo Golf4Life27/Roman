@@ -156,6 +156,9 @@ class _Plan:
     # Aviation style only: a steady airplane cabin hum (shaped noise).
     hum_kernel: np.ndarray | None = None
     hum_env: Callable[[np.ndarray], np.ndarray] | None = None
+    # Each chord's start (seconds) and pitch classes; the journey style
+    # builds its arpeggios on them.
+    chords: list[tuple[float, list[int]]] | None = None
 
 
 def _seed_int(seed: str) -> int:
@@ -345,7 +348,7 @@ def _plan(seconds: float, seed: str, sr: int) -> _Plan:
     fade_in = min(6.0, seconds / 4)
     fade_out = min(8.0, seconds / 4)
     return _Plan(seconds, sr, n_samples, title, key, mode_name, voices, ir, kern, air_swell,
-                 seed_int, fade_in, fade_out)
+                 seed_int, fade_in, fade_out, chords=list(zip(starts, chord_pcs)))
 
 # --- ocean style -------------------------------------------------------------
 # The ocean channel's own sound, so its videos are not Space Screens with new
@@ -702,11 +705,100 @@ def _plan_aviation(seconds: float, seed: str, sr: int) -> _Plan:
                  seed_int, fade_in, fade_out, hum_kernel=hum, hum_env=hum_env)
 
 
-def _make_plan(seconds: float, seed: str, sr: int, style: str = "space") -> _Plan:
+# --- journey style -------------------------------------------------------------
+# For the fly-into journeys: it opens lively and settles into the plain space
+# style by `calm_at` seconds, so the same soundtrack still works for sleep.
+# On top of the space piece (pads, drone, bells, air, room) it adds, scaled by
+# an energy curve that falls from 1 to 0 over the first `calm_at` seconds:
+#   - a plucked arpeggio over the sounding chord, eighth notes at a tempo that
+#     eases from ~100 to ~70 BPM as it fades,
+#   - a soft sub pulse on the chord root, one per beat (a swell, not a hit),
+#   - extra bells, closer together.
+# Past `calm_at` nothing is added: the rest is the space style unchanged.
+JOURNEY_CALM_AT = 1200.0
+
+
+def journey_energy(t: np.ndarray | float, calm_at: float = JOURNEY_CALM_AT):
+    """1 at the start, 0 from `calm_at` on, eased at both ends."""
+    if calm_at <= 0:
+        return np.zeros_like(np.asarray(t, dtype=np.float64))
+    return 1.0 - _smooth(np.asarray(t, dtype=np.float64) / calm_at)
+
+
+def _plan_journey(seconds: float, seed: str, sr: int, calm_at: float = JOURNEY_CALM_AT) -> _Plan:
+    plan = _plan(seconds, "journey:" + seed, sr)
+    rng = np.random.default_rng(plan.seed_int ^ 0x10BE)
+    chords = plan.chords or [(0.0, [0, 4, 7])]
+    starts = [c[0] for c in chords]
+    sine = _wavetable([1.0])
+    pluck = _wavetable([1.0, 0.35, 0.12, 0.05])
+    n = plan.n_samples
+
+    def add(t0: float, t1: float, freq: float, table, pan: float, env, bus: int, amp: float) -> None:
+        s0, s1 = max(_snap(t0, sr), 0), min(_snap(t1, sr) + _CTRL, n)
+        if s1 <= s0 or freq * 2 >= sr or amp <= 0:
+            return
+        gl, gr = _pan(pan)
+        plan.voices.append(_Voice(s0, s1, freq / sr, float(rng.random()), table, gl * amp, gr * amp, env, bus))
+
+    def chord_at(t: float) -> list[int]:
+        return chords[max(0, int(np.searchsorted(starts, t, side="right")) - 1)][1]
+
+    end = min(seconds, calm_at)
+    # Arpeggio: up-and-down through the chord in octaves 4-5.
+    t = float(rng.uniform(0.5, 1.5))
+    step, pan = 0, -0.35
+    pattern = [0, 1, 2, 3, 2, 1]
+    while t < end:
+        e = float(journey_energy(t, calm_at))
+        if e < 0.03:
+            break
+        bpm = 70.0 + 30.0 * e
+        pcs = chord_at(t)
+        tones = sorted({60 + (pc - 60) % 12 for pc in pcs} | {72 + (pcs[0] - 72) % 12})
+        m = tones[pattern[step % len(pattern)] % len(tones)]
+        decay = 0.45 + 0.5 * (1 - e)
+        vel = (0.070 if step % 4 == 0 else 0.050) * e * float(rng.uniform(0.85, 1.0))
+        add(t, t + decay * 7, _midi_hz(m), pluck, pan, _bell_env(t, decay), 1, vel)
+        pan = -pan
+        step += 1
+        t += 30.0 / bpm   # eighth notes
+    # Sub pulse: the root, an octave down, swelling once per beat.
+    t = 2.0
+    while t < end:
+        e = float(journey_energy(t, calm_at))
+        if e < 0.05:
+            break
+        beat = 60.0 / (70.0 + 30.0 * e)
+        root = chord_at(t)[0]
+        f = _midi_hz(36 + root % 12)
+        add(t, t + beat * 1.6, f, sine, 0.0, _pad_env(t, beat * 0.25, t + beat * 0.5, beat * 0.9, 0.05, 0.0, 0.0), 0,
+            0.05 * e)
+        t += beat
+    # Extra bells while it is lively.
+    penta = [72 + (chord_at(0)[0] + iv) % 12 for iv in (0, 3, 5, 7, 10)]
+    t = float(rng.uniform(3.0, 6.0))
+    while t < end:
+        e = float(journey_energy(t, calm_at))
+        if e < 0.1:
+            break
+        f0 = _midi_hz(int(rng.choice(penta)) + (12 if rng.random() < 0.3 else 0))
+        for ratio, a, dk in ((1.0, 1.0, 1.0), (2.0, 0.3, 0.5), (2.76, 0.1, 0.3)):
+            add(t, t + 2.5 * dk * 7, f0 * ratio, sine, float(rng.uniform(-0.6, 0.6)), _bell_env(t, 2.5 * dk), 1,
+                0.05 * e * a)
+        t += float(rng.uniform(2.0, 5.0)) / max(0.3, e)
+    plan.voices.sort(key=lambda v: v.start)
+    plan.title = plan.title.replace(" in ", " Rising in ", 1) if " in " in plan.title else plan.title
+    return plan
+
+
+def _make_plan(seconds: float, seed: str, sr: int, style: str = "space", *, calm_at: float = JOURNEY_CALM_AT) -> _Plan:
     if style == "ocean":
         return _plan_ocean(seconds, seed, sr)
     if style == "aviation":
         return _plan_aviation(seconds, seed, sr)
+    if style == "journey":
+        return _plan_journey(seconds, seed, sr, calm_at)
     return _plan(seconds, seed, sr)
 
 
@@ -806,19 +898,21 @@ def _render(plan: _Plan) -> Iterator[np.ndarray]:
         yield mix
 
 
-def render_pcm(seconds: float, seed: str, sample_rate: int = 44100, *, style: str = "space") -> np.ndarray:
+def render_pcm(seconds: float, seed: str, sample_rate: int = 44100, *, style: str = "space",
+               calm_at: float = JOURNEY_CALM_AT) -> np.ndarray:
     """The whole piece as float32 (n, 2). For tests and short previews; long
     pieces should stream through compose_piece instead."""
-    plan = _make_plan(seconds, seed, sample_rate, style)
+    plan = _make_plan(seconds, seed, sample_rate, style, calm_at=calm_at)
     return np.concatenate(list(_render(plan)), axis=1).T.copy()
 
 
 def compose_piece(out_path: Path, *, seconds: float, seed: str, sample_rate: int = 44100,
-                  style: str = "space", artist: str = "Space Screens") -> Track:
-    """Compose one piece to `out_path` (.m4a, AAC 192k stereo, TARGET_LUFS)."""
+                  style: str = "space", artist: str = "Space Screens", calm_at: float = JOURNEY_CALM_AT) -> Track:
+    """Compose one piece to `out_path` (.m4a, AAC 192k stereo, TARGET_LUFS).
+    `calm_at` only matters for style "journey": when it has settled."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    plan = _make_plan(seconds, seed, sample_rate, style)
+    plan = _make_plan(seconds, seed, sample_rate, style, calm_at=calm_at)
     wav = out_path.with_name(f".{out_path.stem}.{os.getpid()}.{threading.get_ident()}.wav")
     peak = 0.0
     try:
@@ -921,4 +1015,4 @@ def open_library(audio, *, work_dir: Path, seed: str, artist: str = "Space Scree
     return MusicLibrary(audio.library)
 
 
-__all__ = ["ComposedLibrary", "compose_piece", "measure_loudness", "open_library", "render_pcm"]
+__all__ = ["ComposedLibrary", "compose_piece", "journey_energy", "measure_loudness", "open_library", "render_pcm"]

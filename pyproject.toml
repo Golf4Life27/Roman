@@ -24,6 +24,10 @@ youtube = [
 # The history channel's script writer (romanfeed/history/script.py); without
 # it, or without ANTHROPIC_API_KEY, scripts come from a plain template.
 history = ["anthropic>=0.70"]
+# Fly-into journeys (romanfeed/journey): OpenCV resamples the frames (~25x
+# faster than the numpy fallback) and onnxruntime runs the depth model
+# (Depth Anything V2 Small, Apache-2.0, fetched at run time). Both MIT/Apache.
+journey = ["opencv-python-headless>=4.8", "onnxruntime>=1.17"]
 dev = ["pytest>=7"]
 
 [project.scripts]
