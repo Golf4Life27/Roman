@@ -978,8 +978,13 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             if sky_mod.slot_due(cfg.shorts, n):
                 # Sky-event slots sit where every other test keeps its two
                 # sides even (romanfeed/sky_events.py), and take none of them.
-                done, why = _sky_short(cfg, ledger, parent, now=datetime.now(timezone.utc), cache=cache, work=work,
-                                       out_dir=out_dir, mode=mode, upload=upload, manifest=manifest, key=key)
+                try:
+                    done, why = _sky_short(cfg, ledger, parent, now=datetime.now(timezone.utc), cache=cache,
+                                           work=work, out_dir=out_dir, mode=mode, upload=upload,
+                                           manifest=manifest, key=key)
+                except Exception as exc:  # a new kind of Short must never cost the slot
+                    log.exception("sky-event Short failed")
+                    done, why = None, f"it failed ({exc})"
                 if done:
                     results.append(done)
                     continue
