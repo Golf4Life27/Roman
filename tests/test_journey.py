@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from datetime import date
 from pathlib import Path
 
@@ -348,7 +349,10 @@ def test_bad_journey_config_is_rejected(tmp_path):
     p.write_text(text)
     with pytest.raises(ValueError, match="journey.depth"):
         load_config(p)
-    p.write_text(CONFIG.read_text().replace("  dates: []\n", "  dates: [tomorrow]\n", 1))
+    # Swap whatever dates the live config lists for a bad one.
+    bad = re.sub(r"(?m)^(journey:\n(?:  .*\n|\s*\n)*?)  dates: .*\n", r"\1  dates: [tomorrow]\n", CONFIG.read_text(), count=1)
+    assert "dates: [tomorrow]" in bad
+    p.write_text(bad)
     with pytest.raises(ValueError, match="journey.dates"):
         load_config(p)
 
