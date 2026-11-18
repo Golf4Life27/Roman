@@ -105,6 +105,19 @@ class PublishSettings:
     description_template: str = ""
     tags: list[str] = field(default_factory=list)
     made_for_kids: bool = False
+    # Winner-format test (romanfeed/winner.py): from winner_from to winner_until
+    # (UTC run dates, inclusive) each daily pair is one subject only, taking
+    # winner_themes in turn by day, titled with winner_title_template, whose
+    # tail is never dropped (the lead is shortened instead). No Earth days.
+    winner_from: str = ""
+    winner_until: str = ""
+    winner_themes: list[str] = field(default_factory=list)
+    winner_title_template: str = ""
+    # One remake of a past winner on remake_date: same format, fresh photos of
+    # remake_theme, the title led by remake_lead.
+    remake_date: str = ""
+    remake_lead: str = ""
+    remake_theme: str = ""
 
 
 # Absolute ceiling on one night's stream. YouTube only auto-archives a live
