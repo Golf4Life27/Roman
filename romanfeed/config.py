@@ -8,6 +8,7 @@ genre, a different pacing) is a config change, not a code change.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,16 @@ class LiveSettings:
     lanes: list = field(default_factory=list)
     # Streams that never end (AlwaysSettings).
     always: list = field(default_factory=list)
+    # A pause of the nightly stream only (dates inclusive, local nights,
+    # "YYYY-MM-DD"): no broadcast is made and the server's nightly start
+    # exits quietly. The 24/7 stream and the lanes are untouched.
+    night_off_from: str = ""
+    night_off_until: str = ""
+
+    def night_paused(self, night: date) -> bool:
+        if not (self.night_off_from and self.night_off_until):
+            return False
+        return date.fromisoformat(self.night_off_from) <= night <= date.fromisoformat(self.night_off_until)
 
 
 @dataclass

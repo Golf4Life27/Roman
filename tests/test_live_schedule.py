@@ -244,3 +244,21 @@ def test_dry_run_never_dresses_an_existing_broadcast(cfg):
     yt = FakeYT(upcoming=[_b("tonight", TONIGHT, "2026-10-14T02:00:00Z")])
     schedule.run(cfg, yt, key=KEY, now=NOON, dry_run=True)
     assert "videos.list" not in yt.names() and "videos.update" not in yt.names()
+
+
+def test_a_paused_night_makes_no_broadcast_and_drops_the_one_made_earlier(cfg):
+    cfg.live.night_off_from, cfg.live.night_off_until = "2026-10-13", "2026-10-19"
+    yt = FakeYT(upcoming=[
+        _b("tonight", TONIGHT, "2026-10-14T02:00:00Z"),
+        _b("someone-elses", "Q&A with the channel", "2026-10-14T02:00:00Z"),
+    ])
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "paused" in out and "insert" not in yt.names()
+    assert [kw["id"] for n, kw in yt.calls if n == "delete"] == ["tonight"]
+
+
+def test_the_night_after_the_pause_streams_again(cfg):
+    cfg.live.night_off_from, cfg.live.night_off_until = "2026-10-06", "2026-10-12"
+    yt = FakeYT()
+    out = schedule.run(cfg, yt, key=KEY, now=NOON)
+    assert "created" in out and "paused" not in out

@@ -357,6 +357,13 @@ live:
                             # "Preparing stream" is diagnosed (`romanfeed live doctor`); back
                             # to alternate once a regular night streams again
   music_minutes: 60         # composed on the server before the stream; 60 min starts ~5 min sooner
+  # Nightly pause test, Nov 18-24 (tests.md): 42 streams drew ~100k impressions
+  # at ~1% click-through and 5 subscribers; the Nov 13 Launch Night stream got
+  # 40,599 impressions at 0.53%. The 24/7 cozy stream keeps running. Called
+  # Nov 25: if channel watch hours per day fall more than 15% against
+  # Nov 11-17 (30.6 a day), the nightly stream comes back.
+  night_off_from: "2026-11-18"
+  night_off_until: "2026-11-24"
   # The live network (romanfeed/live/lanes.py, owner approved 2026-10-20): two
   # more cozy streams beside the 21:00 one, each nearly round the clock as two
   # 11.5 h sessions a day (each ends < 12 h and is saved as a replay), each on

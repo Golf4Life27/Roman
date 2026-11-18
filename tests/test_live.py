@@ -52,6 +52,8 @@ def _cfg(enabled: bool = False, hours: float = 10.0):
     # Scene nights have their own tests (test_cozy.py); these test the
     # playlist path, whatever the shipped live.scenes says tonight.
     cfg.live.scenes = "off"
+    # The shipped pause window is tested below; these tests stream any day.
+    cfg.live.night_off_from = cfg.live.night_off_until = ""
     return cfg
 
 
@@ -364,6 +366,15 @@ def test_ensure_stream_creates_once_and_caches(tmp_path):
 
 
 # --- start ------------------------------------------------------------------
+
+def test_start_sits_out_a_paused_night(tmp_path, fake_api, monkeypatch, capsys):
+    fake_api(types.SimpleNamespace())  # any attribute access would fail
+    monkeypatch.setattr(run, "run_stream", lambda *a, **k: pytest.fail("streamed on a paused night"))
+    cfg = _cfg(enabled=True)
+    cfg.live.night_off_from, cfg.live.night_off_until = "2000-01-01", "2999-12-31"
+    assert run.cmd_start(cfg, _library(tmp_path, 12)) == 0
+    assert "paused" in capsys.readouterr().out
+
 
 def test_start_refuses_when_disabled(tmp_path, fake_api, monkeypatch, capsys):
     fake_api(types.SimpleNamespace())  # any attribute access would fail
