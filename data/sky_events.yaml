@@ -1,0 +1,167 @@
+# Sky events for the sky-event Shorts (romanfeed/sky_events.py), Nov 18-30, 2026.
+#
+# THE RULE: an entry goes in only after its date and time were read, by hand,
+# at an official source (NASA, NASA Science, USNO, IMO, AMS, or the launch
+# provider's own page). Each entry names the page (`sources[].url`), the day it
+# was read (`verified_on`) and what the page said (`read`). Nothing here is
+# computed or remembered. A Short states only what is in its entry.
+#
+# Times are Central (America/Chicago), converted by hand from the time zone
+# the source gave (noted in `read`). `start` is when the event begins (or the
+# launch window opens); `end` closes a viewing or launch window.
+#
+# Launch dates slip, so a launch entry is used for at most `max_age_days`
+# after it was read; past that it needs reading again before it can post.
+#
+# Left out on purpose (Nov 18 reading): Moon-planet conjunctions (no official
+# page found listing them for these dates), the Leonids (NASA's best mornings
+# were Nov 17-18, already past), ISS passes (they depend on where you are).
+#
+# Images are from the NASA Image and Video Library (public domain), the same
+# library the channel already draws from, credited as the library credits them.
+# `note` says what the picture really shows when it is not the event itself.
+
+events:
+  - id: falcon9-ussf-317
+    kind: launch
+    title: "SpaceX Falcon 9 launch: USSF-317"
+    kicker: "LAUNCH THIS WEEK"
+    when: "Thu, Nov 19 · 8:46 PM - 12:46 AM CT window"
+    look: "From Vandenberg, California. SpaceX lists a live webcast on its launches page."
+    say: >-
+      A SpaceX Falcon 9 is set to launch the USSF-317 mission from Vandenberg, California.
+      The launch window opens Thursday, November 19th, at 8:46 PM Central time, and runs to 12:46 AM.
+    start: "2026-11-19T20:46:00-06:00"
+    end: "2026-11-20T00:46:00-06:00"
+    verified_on: "2026-11-18"
+    max_age_days: 5
+    sources:
+      - name: "SpaceX"
+        url: "https://www.spacex.com/launches/"
+        read: "Upcoming launches: USSF-317 Mission | Falcon 9 | SLC-4E, California | Droneship | November 20, 2026 02:46 - 06:46 GMT+0 (a WATCH link is shown for this mission)"
+    images: [launch_night, launch_day]
+
+  - id: falcon9-nrol-136
+    kind: launch
+    title: "SpaceX Falcon 9 launch: NROL-136"
+    kicker: "LAUNCH THIS WEEK"
+    when: "Sat, Nov 21 · 6:30 AM CT"
+    look: "From Vandenberg, California. Launch times can slip: check the link below."
+    say: >-
+      A SpaceX Falcon 9 is set to launch the NROL-136 mission from Vandenberg, California,
+      on Saturday, November 21st, at 6:30 AM Central time.
+    start: "2026-11-21T06:30:00-06:00"
+    verified_on: "2026-11-18"
+    max_age_days: 5
+    sources:
+      - name: "SpaceX"
+        url: "https://www.spacex.com/launches/"
+        read: "Upcoming launches: NROL-136 Mission | Falcon 9 | SLC-4E, California | Landing Zone | November 21, 2026 04:30 PT"
+    images: [launch_night, launch_day]
+
+  - id: falcon9-ussf-266
+    kind: launch
+    title: "SpaceX Falcon 9 launch: USSF-266"
+    kicker: "LAUNCH THIS WEEK"
+    when: "Mon, Nov 23 · 10:04 AM - 2:04 PM CT window"
+    look: "From Vandenberg, California. Launch times can slip: check the link below."
+    say: >-
+      A SpaceX Falcon 9 is set to launch the USSF-266 mission from Vandenberg, California.
+      The launch window opens Monday, November 23rd, at 10:04 AM Central time, and runs to 2:04 PM.
+    start: "2026-11-23T10:04:00-06:00"
+    end: "2026-11-23T14:04:00-06:00"
+    verified_on: "2026-11-18"
+    max_age_days: 5
+    sources:
+      - name: "SpaceX"
+        url: "https://www.spacex.com/launches/"
+        read: "Upcoming launches: USSF-266 Mission | Falcon 9 | SLC-4E, California | Droneship | November 23, 2026 16:04 - 20:04 GMT+0"
+    images: [launch_day, launch_night]
+
+  - id: full-supermoon-2026-11-24
+    kind: moon
+    title: "Full supermoon"
+    kicker: "LOOK UP THIS WEEK"
+    when: "Tue, Nov 24 · rises at sunset, look east"
+    look: "The first of three supermoons in a row: November, December and January. Exactly full at 8:53 AM CT."
+    say: >-
+      On Tuesday, November 24th, the full Moon is a supermoon, the first of three in a row.
+      Look east around sunset to watch it rise.
+    start: "2026-11-24T08:53:00-06:00"
+    end: "2026-11-25T06:00:00-06:00"
+    verified_on: "2026-11-18"
+    sources:
+      - name: "NASA Science: What's Up, November 2026"
+        url: "https://science.nasa.gov/solar-system/skywatching/whats-up-november-2026-skywatching-tips-from-nasa/"
+        read: "Nov. 24: Full supermoon; first in a series of three consecutive supermoons. On November 24th, the evening sky will be lit by a supermoon ... series of three consecutive supermoons in November, December, and January. Look east around sunset to watch it rise."
+      - name: "US Naval Observatory, Moon phases"
+        url: "https://aa.usno.navy.mil/api/moon/phases/date?date=2026-11-01&nump=8"
+        read: "Full Moon, 2026-11-24, 14:53 (UT) = 8:53 AM CST"
+    images: [moon]
+
+  - id: ng-crs-25-launch
+    kind: launch
+    title: "Cargo launch to the Space Station: NG CRS-25"
+    kicker: "LAUNCH NEXT WEEKEND"
+    when: "No earlier than Sun, Nov 29 · 9:47 AM CT"
+    look: "Northrop Grumman's Cygnus carries supplies and science to the International Space Station."
+    say: >-
+      NASA's Northrop Grumman CRS-25 cargo mission is set to launch no earlier than Sunday, November 29th,
+      at 9:47 AM Central time, with supplies and science for the International Space Station.
+    start: "2026-11-29T09:47:00-06:00"
+    verified_on: "2026-11-18"
+    max_age_days: 5
+    sources:
+      - name: "NASA launch schedule"
+        url: "https://www.nasa.gov/event/nasas-northrop-grumman-crs-25/"
+        read: "No Earlier Than November 29, 2026, 10:47 am (page time zone: New York, so 9:47 AM CST). NASA's Northrop Grumman CRS-25 cargo resupply mission will deliver supplies and science to the International Space Station."
+    images: [cygnus]
+
+  - id: last-quarter-moon-2026-12-01
+    kind: moon
+    title: "Last quarter Moon"
+    kicker: "LOOK UP THIS WEEK"
+    when: "Tue, Dec 1 · 12:08 AM CT"
+    look: "The Moon is exactly half lit at 12:08 AM CT, Monday night into Tuesday."
+    say: >-
+      The Moon reaches last quarter, exactly half lit, at 12:08 AM Central time on Tuesday, December 1st,
+      just after midnight on Monday night.
+    start: "2026-12-01T00:08:00-06:00"
+    end: "2026-12-01T06:00:00-06:00"
+    verified_on: "2026-11-18"
+    sources:
+      - name: "US Naval Observatory, Moon phases"
+        url: "https://aa.usno.navy.mil/api/moon/phases/date?date=2026-11-01&nump=8"
+        read: "Last Quarter, 2026-12-01, 06:08 (UT) = 12:08 AM CST Dec 1"
+      - name: "NASA Science: What's Up, November 2026"
+        url: "https://science.nasa.gov/solar-system/skywatching/whats-up-november-2026-skywatching-tips-from-nasa/"
+        read: "Moon phases (Pacific Time): Third Quarter Nov 30"
+    images: [moon]
+
+# Picture pools. Each id is a NASA Image and Video Library record (nasa_id),
+# public domain; the file is that record's ~large.jpg. Each picture goes into
+# at most one Short (the ledger's shorts table), so the pools run deep.
+images:
+  moon:
+    - {id: NHQ202003090004, title: "Supermoon over St. Dominic Church, Washington", credit: "NASA/Joel Kowsky"}
+    - {id: 201306230003HQ, title: "Supermoon behind the Washington Monument", credit: "NASA/Bill Ingalls"}
+    - {id: 201408100003HQ, title: "Supermoon over the Old Post Office tower, Washington", credit: "NASA/Bill Ingalls"}
+    - {id: GRC-2024-C-10125, title: "Supermoon over Cleveland's Guardians of Traffic", credit: "NASA/Sara Lowthian-Hanna"}
+    - {id: 201408100006HQ, title: "Supermoon over the US Marine Corps War Memorial", credit: "NASA/Joel Kowsky"}
+    - {id: 201408100002HQ, title: "Perigee full Moon, Washington", credit: "NASA/Bill Ingalls"}
+    - {id: NHQ201712030003, title: "Airliner crossing the rising supermoon", credit: "NASA/Bill Ingalls"}
+    - {id: MAF_20240819_SuperBlueMoon01, title: "Supermoon rising over Huntsville, Alabama", credit: "NASA/Michael DeMocker"}
+  launch_night:
+    - {id: NHQ202111230021, title: "Falcon 9 night launch from Vandenberg", credit: "NASA/Bill Ingalls", note: "a 2021 Falcon 9 launch from the same California pad (NASA's DART mission)"}
+    - {id: NHQ202111230024, title: "Falcon 9 night launch from Vandenberg", credit: "NASA/Bill Ingalls", note: "a 2021 Falcon 9 launch from the same California pad (NASA's DART mission)"}
+    - {id: NHQ202111230026, title: "Falcon 9 night launch from Vandenberg", credit: "NASA/Bill Ingalls", note: "a 2021 Falcon 9 launch from the same California pad (NASA's DART mission)"}
+    - {id: NHQ202111230027, title: "Falcon 9 night launch from Vandenberg", credit: "NASA/Bill Ingalls", note: "a 2021 Falcon 9 launch from the same California pad (NASA's DART mission)"}
+  launch_day:
+    - {id: KSC-20201121-PH-ILW01_0066, title: "Falcon 9 launch from Vandenberg", credit: "NASA/Isaac Watson", note: "a 2020 Falcon 9 launch from the same California pad (Sentinel-6)"}
+    - {id: KSC-20201121-PH-ILW01_0052, title: "Falcon 9 launch from Vandenberg", credit: "NASA/Isaac Watson", note: "a 2020 Falcon 9 launch from the same California pad (Sentinel-6)"}
+    - {id: KSC-20201121-PH-ILW01_0098, title: "Falcon 9 climbing after liftoff from Vandenberg", credit: "NASA/Isaac Watson", note: "a 2020 Falcon 9 launch from the same California pad (Sentinel-6)"}
+  cygnus:
+    - {id: iss071e416851, title: "Cygnus approaching the Space Station", credit: "NASA", note: "an earlier Cygnus arriving at the station"}
+    - {id: iss071e417237, title: "Cygnus in the grip of the station's robotic arm", credit: "NASA", note: "an earlier Cygnus at the station"}
+    - {id: iss069e004909, title: "Cygnus held by the station's robotic arm", credit: "NASA", note: "an earlier Cygnus at the station"}
+    - {id: iss047e021586, title: "The station's robotic arm capturing Cygnus", credit: "NASA/Jeff Williams", note: "an earlier Cygnus at the station"}

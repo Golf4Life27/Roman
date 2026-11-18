@@ -360,6 +360,19 @@ shorts:
   # No object twice within 30 days: the 13 repeats Nov 1-15 drew 33-51 views
   # each and no subscribers.
   repeat_days: 30
+  # Sky-event Shorts, Nov 18-25 (romanfeed/sky_events.py): 2 of the 8 a day
+  # point at something in the next 7 days' sky a viewer can go and see (a
+  # full Moon, a launch), with the date in big type from the first frame and
+  # the official page that confirms it in the description. Every date is in
+  # data/sky_events.yaml, read by hand at NASA, USNO or the launch provider.
+  # They take Shorts 0, 6, 11 and 13 of every 16 (shorts.sky_event_slots):
+  # one of each hook/calm x opening pair and one of each opening x title
+  # pair, so the other tests lose the same number on both sides. Tagged
+  # sky-event and kept out of those tests' numbers; called on views per Short
+  # and subscribers per 1,000 views against calm-style Shorts.
+  sky_event_from: "2026-11-18"
+  sky_event_until: "2026-11-25"
+  sky_event_per_day: 2
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
