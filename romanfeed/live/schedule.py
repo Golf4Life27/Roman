@@ -243,7 +243,11 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
         work = Path(tmp)
         slots: list[Slot] = []
         start = start_time(cfg, night)
-        if start > now:
+        paused = cfg.live.night_paused(night)
+        if paused:
+            lines.append(f"tonight: the nightly stream is paused {cfg.live.night_off_from} to "
+                         f"{cfg.live.night_off_until} (live.night_off_*); no broadcast")
+        if start > now and not paused:
             night_stream = bc.find_stream_id(yt, key, work / "studio-stream.json")
             def make_tonight():
                 picked = tonight_scene(cfg, night, work)
@@ -263,6 +267,8 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
                       if abs(when - sl.start) < MATCH and bound in (None, sl.stream_id)), None)
             if i is not None:
                 groups[i].append(b)
+            elif paused and abs(when - start) < MATCH:
+                doomed.append((b["id"], "tonight's nightly stream is paused"))
             elif when < now - STALE:
                 doomed.append((b["id"], "a stream start that never went live"))
         for sl, group in zip(slots, groups):

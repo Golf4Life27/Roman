@@ -331,6 +331,11 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
         print("refusing to start: live.enabled is false in the channel config "
               "(switch it on at 100 subscribers or 15 watch hours/day; see docs/LIVE_STREAM.md)")
         return 2
+    night = datetime.now(ZoneInfo(cfg.live.timezone)).date()
+    if cfg.live.night_paused(night) and not dry_run:
+        print(f"nightly stream paused {cfg.live.night_off_from} to {cfg.live.night_off_until} "
+              "(live.night_off_*): nothing to stream tonight")
+        return 0
     plan = plan_night(cfg, lib)
     state = lib / "stream.json"
     timeout = plan.duration_s + WATCHDOG_GRACE_S
