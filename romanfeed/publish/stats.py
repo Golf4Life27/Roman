@@ -504,6 +504,16 @@ def _cadence_sections(stats: ChannelStats) -> list[tuple[str, list[tuple[str, st
     return [(head, [before, ("Since (daily)", f"{anet / ad:,.1f} net subscribers/day over {ad} days")])]
 
 
+def hours_trend(this_week: float, last_week: float) -> str:
+    """Watch hours this week against last, flagged when they fell: the goal
+    date above moves with the 7-day pace, so a falling week pushes it out."""
+    if last_week <= 0:
+        return f"{this_week:,.1f} h (no hours the week before)"
+    change = (this_week - last_week) / last_week
+    line = f"{this_week:,.1f} h vs {last_week:,.1f} h ({change:+.0%})"
+    return f"SLIPPING: {line}; the goal date moved out" if change < 0 else line
+
+
 def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, list[tuple[str, str]]]]:
     left = days_left(today)
     l7, p7 = stats.last7, stats.prev7
@@ -531,6 +541,7 @@ def _analytics_sections(stats: ChannelStats, today: date) -> list[tuple[str, lis
             ("Actual (7 days)", f"{hours.actual_per_day:,.1f}/day"),
             ("Pace", hours.verdict("hours")),
             ("Reached at this pace", hours.reached_on(today)),
+            ("Week on week", hours_trend(l7.watch_hours, p7.watch_hours)),
             ("Note", "All watch time. YPP counts only public long-form hours (not Shorts), "
                      "so Studio's YPP figure may be slightly lower."),
         ]),
