@@ -14,6 +14,7 @@
   romanfeed retitle --all [--dry-run]                               # sleep-search titles on videos already up
   romanfeed stats [--email] [--dry-run]                             # weekly subscriber / watch-hour report
   romanfeed compose piece.m4a --seconds 120 --seed foo              # compose one original ambient piece
+  romanfeed journey config/... [--minutes 1 --image x.jpg --dry-run] # fly-into journey (uploads only when journey.enabled)
   romanfeed live sync|plan|start [--dry-run]                        # nightly 10 h live stream (server only)
   romanfeed live lane ID [--dry-run]                                # one ~11.5 h session of a live lane (server)
 """
@@ -367,6 +368,29 @@ def _cmd_stats(args) -> int:
     return 0
 
 
+def _cmd_journey(args) -> int:
+    from romanfeed.journey.run import JourneyOptions, publish_gate, run_journey
+
+    cfg = load_config(args.config)
+    if args.gate:
+        ok, why = publish_gate(cfg)
+        print(json.dumps({"publish": ok, "why": why}))
+        return 0
+    res = run_journey(cfg, JourneyOptions(
+        minutes=args.minutes, image=Path(args.image) if args.image else None, title=args.title, credit=args.credit,
+        source_label=args.source_label, dry_run=args.dry_run, cuts=not args.no_cuts, short=not args.no_short,
+        seed=args.seed, data_dir=Path(args.data_dir), output_dir=Path(args.output_dir), keep_work=args.keep_work,
+        workers=args.workers, depth=args.depth,
+    ))
+    print(json.dumps({
+        "video": str(res.video_path), "title": res.title, "image": res.asset.title, "depth": res.depth_source,
+        "passes": len(res.legs), "render_seconds": round(res.render_seconds, 1), "youtube_id": res.youtube_id,
+        "short": str(res.short_path) if res.short_path else None,
+        "extra_cuts": [{"hours": h, "path": str(p), "youtube_id": i} for h, p, i in res.extra_cuts],
+    }, indent=2))
+    return 0
+
+
 def _cmd_compose(args) -> int:
     import secrets
 
@@ -684,6 +708,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="also email it (env STATS_EMAIL_TO, SMTP_USER, SMTP_PASSWORD; SMTP_HOST, SMTP_PORT optional)")
     st.add_argument("--dry-run", action="store_true", help="print the report and send nothing")
     st.set_defaults(fn=_cmd_stats)
+
+    jo = sub.add_parser("journey", help="fly-into journey from one image (uploads only when journey.enabled)")
+    jo.add_argument("config")
+    jo.add_argument("--minutes", type=float, default=None, help="main cut length (default journey.hours)")
+    jo.add_argument("--image", default=None, help="a local image instead of fetching one")
+    jo.add_argument("--title", default="", help="with --image: the object's name")
+    jo.add_argument("--credit", default="", help="with --image: the credit line")
+    jo.add_argument("--source-label", default="Local file")
+    jo.add_argument("--dry-run", action="store_true", help="never upload, whatever the config says")
+    jo.add_argument("--no-cuts", action="store_true", help="skip the extra-length cuts")
+    jo.add_argument("--no-short", action="store_true", help="skip the vertical Short")
+    jo.add_argument("--gate", action="store_true", help="only print whether today's run may upload")
+    jo.add_argument("--depth", choices=["auto", "model", "brightness"], default=None)
+    jo.add_argument("--workers", type=int, default=None)
+    jo.add_argument("--seed", default=None)
+    jo.add_argument("--output-dir", default="output")
+    jo.add_argument("--keep-work", action="store_true")
+    jo.set_defaults(fn=_cmd_journey)
 
     co = sub.add_parser("compose", help="compose one original ambient piece (licence: owned)")
     co.add_argument("out", help="output .m4a")

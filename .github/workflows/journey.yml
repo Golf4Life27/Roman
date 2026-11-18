@@ -1,0 +1,134 @@
+# Fly-into journeys: one real nebula or galaxy image, flown into with depth
+# parallax, as a 1-hour video plus the extra lengths (romanfeed/journey).
+# Separate from the daily render, which this never touches.
+#
+# THE PUBLISH SWITCH is journey.enabled in config/channels/deep-space-ambient.yaml
+# (with journey.dates: the days it may upload; empty = every day). While it is
+# false:
+#   * the scheduled run stops at the gate job and renders nothing;
+#   * "Run workflow" still renders, as a dry run: nothing is uploaded, and the
+#     files are kept as an artifact for three days so they can be watched.
+# Turning it on is the owner's call. Even then, "preview" never uploads.
+#
+# Cost, measured on a 4-core machine: about 41 s of rendering per minute of
+# 1080p24 video, so the 1-hour cut is ~40-45 minutes here; the 8-hour cut
+# reuses the same clips (a stream copy) and adds only its music.
+name: Journey render
+on:
+  schedule:
+    # Checked daily; renders only when the gate says today may upload.
+    # Away from the daily render (03:00 UTC) and the Shorts slots.
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: preview (a short dry run) or full (1 h + extra cuts; uploads only when journey.enabled and today is a journey date)
+        type: choice
+        options: [preview, full]
+        default: preview
+      minutes:
+        description: preview length in minutes
+        default: "3"
+concurrency:
+  group: journey
+  cancel-in-progress: false
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Publish gate
+        id: gate
+        run: |
+          out=$(python -m romanfeed journey config/channels/deep-space-ambient.yaml --gate)
+          echo "$out"
+          pub=$(printf '%s' "$out" | python -c "import json,sys; print('true' if json.load(sys.stdin)['publish'] else 'false')")
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.mode }}" != "full" ]; then pub=false; fi
+          echo "publish=$pub" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: gate
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.gate.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      PUBLISH: ${{ needs.gate.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg fonts-dejavu-core
+      - run: pip install -e ".[youtube,journey]"
+      # The depth model (~99 MB, hash-pinned in romanfeed/journey/depth.py) is
+      # downloaded once and kept in the cache.
+      - name: Depth model cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache/models
+          key: journey-depth-anything-v2-small-onnx-v1
+      - name: Restore ledger
+        if: env.PUBLISH == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/state.db
+          key: ledger-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Write OAuth token
+        if: env.PUBLISH == 'true'
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then echo "::warning::YOUTUBE_TOKEN_JSON secret not set; uploads will fail"; fi
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Render
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+        run: |
+          args=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.mode }}" = "preview" ]; then
+            args="--minutes ${{ inputs.minutes || 3 }} --no-cuts"
+          fi
+          [ "$PUBLISH" = "true" ] || args="$args --dry-run"
+          echo "publish=$PUBLISH args=$args"
+          python -m romanfeed -v journey config/channels/deep-space-ambient.yaml $args
+      # Parallel jobs each save the ledger they restored plus their own rows;
+      # merge with the newest saved copy first so nobody erases anybody.
+      - name: Ledger merge (move ours aside)
+        if: env.PUBLISH == 'true'
+        run: mv data/state.db data/mine.db
+      - name: Ledger merge (restore newest)
+        if: env.PUBLISH == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: data/state.db
+          key: ledger-merge-${{ github.run_id }}
+          restore-keys: ledger-
+      - name: Ledger merge (union)
+        if: env.PUBLISH == 'true'
+        run: |
+          if [ -f data/state.db ]; then python -m romanfeed ledger-merge data/mine.db --into data/state.db
+          else mv data/mine.db data/state.db; fi
+      - name: Disk report
+        if: always()
+        run: df -h / && du -sh output data/work 2>/dev/null || true
+      # The main cut, the Short, sidecars and thumbnails; never the long cuts
+      # (`-<n>h.mp4`), which are several GB.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: journey-${{ github.run_id }}
+          path: |
+            output/**/*journey*.mp4
+            !output/**/*-*h.mp4
+            output/**/*journey*.upload.json
+            output/**/*journey*.thumb.jpg
+          retention-days: 3
+          if-no-files-found: ignore

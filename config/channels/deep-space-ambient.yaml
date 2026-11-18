@@ -449,6 +449,25 @@ crosspost:
   queue_profile: 6ac84031c233ad918cb14a88
   queue_id: 6ac9233fd55ed1bd5e450dc6
 
+# Fly-into journeys (romanfeed/journey, .github/workflows/journey.yml): one
+# real nebula or galaxy image, flown into with depth parallax (a per-pixel
+# depth estimate from a small open model; brightness layering if it cannot
+# run), a new region revealed every few minutes, music that opens lively and
+# settles by calm_minutes. A 1-hour cut plus the extra lengths, which go dark
+# after sleep_dark_after_minutes like the daily sleep cuts.
+# enabled is the PUBLISH SWITCH and is the owner's call: false, the workflow
+# renders previews only and nothing uploads. With it on, the scheduled run
+# uploads on each date listed in dates (YYYY-MM-DD, UTC); an empty list means
+# every day. Privacy follows publish.privacy.
+journey:
+  enabled: false
+  dates: []
+  hours: 1
+  extra_lengths_hours: [8]
+  calm_minutes: 20
+  sleep_dark_after_minutes: 45
+  depth: auto
+
 # Earth-from-orbit videos inside Space Screens (owner approved 2026-10-13).
 # On these days the daily render uses only the space-station photos above,
 # with Earth titles and narration; every other day stays deep space. If

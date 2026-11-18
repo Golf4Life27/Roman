@@ -381,6 +381,29 @@ class CrosspostSettings:
 
 
 @dataclass
+class JourneySettings:
+    """Fly-into journeys (romanfeed/journey, .github/workflows/journey.yml):
+    one real telescope image, flown into with depth parallax, as a long video.
+
+    `enabled` is the PUBLISH SWITCH, the owner's call: false, the workflow
+    renders previews only and nothing uploads. With it on, the scheduled run
+    uploads on each date in `dates` (YYYY-MM-DD, UTC), or every day if
+    `dates` is empty. Privacy follows publish.privacy like everything else."""
+    enabled: bool = False
+    dates: list[str] = field(default_factory=list)
+    hours: float = 1.0
+    extra_lengths_hours: list[float] = field(default_factory=lambda: [8.0])
+    calm_minutes: float = 20.0                # lively start, settled by then (music and camera)
+    sleep_dark_after_minutes: float = 45.0    # long cuts go dark after this; 0 = loop calm passes instead
+    depth: str = "auto"                       # auto | model | brightness
+    min_width: int = 3000                     # flying in needs pixels to spare
+    title_template: str = "{verb} Into {lead} | Real {telescope} Image | Space Ambient"
+    sleep_title_template: str = "{verb} Into {lead} | Real {telescope} Image | {length} Space Ambient for Sleep"
+    short_seconds: float = 24.0
+    workers: int = 0                          # render processes; 0 = one per core, less one
+
+
+@dataclass
 class ChannelConfig:
     channel: ChannelInfo
     video: VideoSettings
@@ -394,6 +417,7 @@ class ChannelConfig:
     crosspost: CrosspostSettings = field(default_factory=CrosspostSettings)
     earth: EarthSettings = field(default_factory=EarthSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
+    journey: JourneySettings = field(default_factory=JourneySettings)
 
     @property
     def enabled_sources(self) -> list[SourceSettings]:
@@ -436,6 +460,7 @@ def load_config(path: str | Path) -> ChannelConfig:
         crosspost=_build(CrosspostSettings, raw.get("crosspost")),
         earth=_build(EarthSettings, raw.get("earth")),
         history=_build(HistorySettings, raw.get("history")),
+        journey=_build(JourneySettings, raw.get("journey")),
     )
     if cfg.publish.mode not in {"dry-run", "upload"}:
         raise ValueError("publish.mode must be 'dry-run' or 'upload'")
@@ -467,7 +492,26 @@ def load_config(path: str | Path) -> ChannelConfig:
         raise ValueError(f"earth.weekdays: {bad_days} are not among {list(WEEKDAYS)}")
     if not 0.5 <= cfg.cozy.hours <= 11.5:
         raise ValueError("cozy.hours must be between 0.5 and 11.5")
+    _check_journey(cfg.journey)
     return cfg
+
+
+def _check_journey(j: JourneySettings) -> None:
+    from datetime import date as _date
+
+    if j.depth not in {"auto", "model", "brightness"}:
+        raise ValueError("journey.depth must be auto, model or brightness")
+    if not 0.05 <= j.hours <= 11.5:
+        raise ValueError("journey.hours must be between 0.05 and 11.5")
+    if any(not 0 < h <= 11.5 for h in j.extra_lengths_hours):
+        raise ValueError("journey.extra_lengths_hours must each be > 0 and <= 11.5")
+    if not 20 <= j.short_seconds <= 30:
+        raise ValueError("journey.short_seconds must be between 20 and 30")
+    for d in j.dates:
+        try:
+            _date.fromisoformat(str(d))
+        except ValueError:
+            raise ValueError(f"journey.dates: {d!r} is not YYYY-MM-DD") from None
 
 
 def _check_live(live: LiveSettings) -> None:
