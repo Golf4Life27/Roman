@@ -460,8 +460,12 @@ crosspost:
 # uploads on each date listed in dates (YYYY-MM-DD, UTC); an empty list means
 # every day. Privacy follows publish.privacy.
 journey:
-  enabled: false
-  dates: []
+  # Test 15 (Nov 18): first 2 fly-into journeys go out on these UTC dates,
+  # from the 06:15 UTC run (about 1.5 h to render a 1 h + 8 h pair).
+  # Win: click rate 3%+ and 2x the views a day of flat-pan uploads.
+  # Kill: under 1x at 14 days.
+  enabled: true
+  dates: ["2026-11-20", "2026-11-22"]
   hours: 1
   extra_lengths_hours: [8]
   calm_minutes: 20
