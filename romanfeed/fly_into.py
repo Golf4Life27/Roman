@@ -50,7 +50,7 @@ NAME_FADE = 0.5
 _NOT_THE_OBJECT = re.compile(
     r"ground[- ]based|sky around|around the|surroundings|wide[- ]?field|digiti[sz]ed sky survey|\bDSS\b|"
     r"finder|chart|location of|annotated|compass|compared|comparison|side by side|illustration|artist|"
-    r"impression|animation|zoom|mosaic of the sky|wide view|"
+    r"impression|animation|zoom|mosaic of the sky|wide view|map\b|diagram|overlay|label+ed|scale bar|"
     # a headline about the picture rather than its name (fourth dry run: "NASA's
     # Hubble Finds Life is Too Fast, Too Furious for This Runaway Galaxy")
     r"\b(?:finds|found|reveals|captures|spots|sees|snaps|shows|catches|probes|peers|spies|uncovers|discovers|"

@@ -135,6 +135,7 @@ def test_pictures_of_the_surroundings_or_from_the_ground_are_left_out_and_size_s
     assert not fly.is_the_object(twin)
     for t in ("Wide-field view of the Lagoon Nebula", "Location of the Crab Nebula in Taurus",
               "NASA's Hubble Finds Life is Too Fast, Too Furious for This Runaway Galaxy",
+              "Galaxy cluster Abell 2744 with dark matter map",          # the fifth dry run's pick (Nov 20)
               "Annotated image of the Orion Nebula", "Artist's impression of a galaxy"):
         assert not fly.is_the_object(_galaxy(title=t))
     assert fly.is_the_object(_galaxy()) and fly.is_the_object(_galaxy(title="Pillars of Creation (NIRCam Image)"))
