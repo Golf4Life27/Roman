@@ -917,8 +917,8 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
                     posted: list[str]) -> tuple[ShortResult | None, str]:
     """One fly-into Short (romanfeed/fly_into.py), or (None, why not).
 
-    The picture is the first unused nebula or galaxy in the library
-    (fly_into_pool's order) that downloads cleanly and is big enough for a vertical flight; the journey
+    The picture is the strongest of a shortlist of unused nebulae and
+    galaxies from the library (fly_into_pool's order) that downloads cleanly and is big enough for a vertical flight; the journey
     code estimates its depth, builds the scene and renders 20-30 s with its
     own composed music. Never in the hook style or with a test opening or
     title, and posted to YouTube only (no social cut). The object it shows
@@ -942,9 +942,10 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
     log.info("fly-into: %d unused nebula or galaxy pictures in the library could be flown into; first up: %s",
              len(pool), "; ".join(a.title for _, a in pool[:fly_mod.TRIES]))
     choice = None
-    for parent, cand in pool[:fly_mod.TRIES]:
-        if not ranked_candidates([cand], cache):
-            continue
+    shortlist = pool[:fly_mod.TRIES]
+    parent_of = {a.asset_id: p for p, a in shortlist}
+    for cand in ranked_candidates([a for _, a in shortlist], cache, s.subject_weights):
+        parent = parent_of[cand.asset_id]
         with Image.open(cand.local_path) as im:
             w, h = ImageOps.exif_transpose(im).size
         if fly_mod.fits(w, h, s.width, s.height):

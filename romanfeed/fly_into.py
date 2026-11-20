@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 FLY_TAG = "fly-into"
 FLY_PARENT = "fly-into"   # shorts.parent_slug: keeps them out of the long videos' rotation
 CENTRAL = ZoneInfo("America/Chicago")
-TRIES = 4                 # pictures downloaded and checked before the slot gives up
+TRIES = 6                 # the shortlist: downloaded, scored like any Short's picture, best first
 MAX_UPSCALE = 1.12        # the widest view may enlarge the picture at most this much
 SIZE_CAP = 30_000_000     # pixels: past this a picture ranks as big as any (survey plates are 150 MP)
 NAME_FADE = 0.5
@@ -81,12 +81,31 @@ def is_the_object(asset: ImageAsset) -> bool:
     return not _NOT_THE_OBJECT.search(f"{asset.title} {asset.credit}")
 
 
-def rank_key(asset: ImageAsset, weights: dict[str, float] | None = None) -> tuple[float, int]:
-    """Bigger is better, up to SIZE_CAP; the subject test's winner (galaxies,
-    shorts.subject_weights) first."""
+_NAMED = re.compile(r"\b(?:nebula|galaxy|cluster|remnant|pillars of creation|cosmic cliffs|quintet|sextet|"
+                    r"triplet|pair)$", re.I)
+
+
+def named(asset: ImageAsset) -> bool:
+    """Whether the picture's name is an object's name ("Whirlpool Galaxy",
+    "NGC 602", "Pillars of Creation") rather than a phrase about part of one
+    ("Stars in the Andromeda Galaxy's giant stellar stream", the second dry
+    run's pick, Nov 20), which reads badly after "Flying into"."""
+    from romanfeed.journey.metadata import _CATALOGUE
+    from romanfeed.publish.metadata import display_name, lead_name
+
+    n = (lead_name(display_name(asset), limit=60) or asset.title).strip()
+    n = re.sub(r"^the\s+", "", n, flags=re.I)
+    return bool(_NAMED.search(n) or _CATALOGUE.match(n))
+
+
+def rank_key(asset: ImageAsset, weights: dict[str, float] | None = None) -> tuple[bool, float, int]:
+    """For the shortlist: a named object first, then the subject test's
+    winner (galaxies, shorts.subject_weights), then bigger, up to SIZE_CAP.
+    The shortlist is then ordered by how strong the picture looks, like any
+    Short's (shorts.ranked_candidates)."""
     from romanfeed.why import subject
 
-    return (weights or {}).get(subject(asset), 0.0), min(asset.width * asset.height, SIZE_CAP)
+    return named(asset), (weights or {}).get(subject(asset), 0.0), min(asset.width * asset.height, SIZE_CAP)
 
 
 def fits(width: int, height: int, out_w: int, out_h: int) -> bool:

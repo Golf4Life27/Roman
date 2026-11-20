@@ -144,6 +144,18 @@ def test_pictures_of_the_surroundings_or_from_the_ground_are_left_out_and_size_s
     assert fly.title(_galaxy(title="The Cat's Paw Nebula")) == "Flying into the Cat's Paw Nebula"
 
 
+def test_a_named_object_goes_ahead_of_a_phrase_about_part_of_one():
+    # The second dry run (Nov 20) picked "Stars in the Andromeda Galaxy's giant stellar stream".
+    stream = _galaxy(5, title="Stars in the Andromeda Galaxy’s giant stellar stream", width=6000, height=5000)
+    for t in ("Whirlpool Galaxy (M51)", "NGC 602", "Pillars of Creation (NIRCam Image)", "The Cat's Paw Nebula",
+              "Stephan's Quintet"):
+        assert fly.named(_galaxy(title=t)), t
+    for t in (stream.title, "Galaxies in Hiding", "Stars in the Andromeda Galaxy’s disc"):
+        assert not fly.named(_galaxy(title=t)), t
+    small_named = _galaxy(6, title="Sombrero Galaxy", width=2000, height=2000)
+    assert fly.rank_key(small_named, {"galaxy": 0.1}) > fly.rank_key(stream, {"galaxy": 0.1})
+
+
 def test_fits_needs_the_picture_to_cover_a_vertical_screen():
     assert fly.fits(4000, 3000, 1080, 1920)
     assert fly.fits(1000, 1750, 1080, 1920)
