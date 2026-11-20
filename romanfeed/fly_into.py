@@ -24,6 +24,7 @@ cannot be made the slot is a normal Short and the log says why
 (romanfeed/shorts.py run_shorts)."""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 from datetime import datetime, timezone
@@ -221,7 +222,10 @@ def overlay(cfg, asset: ImageAsset, *, seconds: float, link_label: str):
     s = cfg.shorts
     handle = cfg.channel.handle or cfg.channel.name
     call = narration.subscribe_call(asset.asset_id, earth=is_earth(asset))[1]
-    named = short_overlay(asset, s.width, s.height, full_label=link_label, handle=handle, cta=False)
+    # On screen, the same name as the title ("Antennae Galaxies", not the
+    # archive's "Antennae Galaxies reloaded").
+    shown = dataclasses.replace(asset, title=object_name(asset) or asset.title)
+    named = short_overlay(shown, s.width, s.height, full_label=link_label, handle=handle, cta=False)
     plate = short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call)
     return chain(
         alpha_overlay(named, PAYOFF_BY, seconds - REVEAL_FOR, NAME_FADE),

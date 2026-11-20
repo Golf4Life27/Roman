@@ -171,6 +171,22 @@ def test_a_title_that_names_no_one_object_is_left_out(archive_title, ledger):
     assert shorts.fly_into_pool(ledger, _cfg(), public=lambda v: True) == []
 
 
+def test_the_cards_name_the_object_and_stay_off_the_opening(monkeypatch):
+    import romanfeed.render.cards as cards
+
+    shown = []
+    real = cards.short_overlay
+    monkeypatch.setattr(cards, "short_overlay", lambda a, *x, **k: shown.append(a.title) or real(a, *x, **k))
+    cfg = _cfg(width=108, height=192)
+    ov = fly.overlay(cfg, _galaxy(title="Antennae Galaxies reloaded"), seconds=24, link_label="8-hour")
+    assert shown == ["Antennae Galaxies"]
+    blank = np.zeros((192, 108, 3), dtype=np.uint8)
+    top = (slice(0, 60), slice(None))
+    assert not ov(1.0, blank)[top].any()                 # first seconds: no name card over the flight
+    assert ov(10.0, blank)[top].any()                    # after the payoff: the name
+    assert ov(1.0, blank)[130:160].any() and not ov(1.0, blank)[160:].any()   # the credit, above the player's fifth
+
+
 def test_fits_needs_the_picture_to_cover_a_vertical_screen():
     assert fly.fits(4000, 3000, 1080, 1920)
     assert fly.fits(1000, 1750, 1080, 1920)
