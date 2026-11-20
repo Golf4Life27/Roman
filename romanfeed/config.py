@@ -180,6 +180,11 @@ class WorkshopSettings:
     release_tag: str = "workshop-scenes"
     made_for_kids: bool = True
     scene_repeats: int = 10
+    # Kids Shorts (romanfeed/workshop/shorts.py): this many a day go up from
+    # first_day to shorts_until, and the regular Shorts give up as many slots,
+    # so the channel's day stays at shorts.test_per_day.
+    shorts_per_day: int = 0
+    shorts_until: str = ""
 
 
 @dataclass

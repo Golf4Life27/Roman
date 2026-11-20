@@ -411,6 +411,13 @@ live:
     first_day: "2026-11-20"
     last_day: "2026-12-26"
     made_for_kids: true
+    # One kids Short a day (an elf room in 30 s with the sleeps-until-Christmas
+    # count), Nov 20 - Dec 25, made for kids. The regular Shorts drop from 8
+    # to 7 a day over the same dates, so the channel still posts 8. The first
+    # one is the launch Short (the assembly line, "Santa's Workshop is LIVE").
+    # Day-7 report (Nov 28) compares their views and watch hours to the rest.
+    shorts_per_day: 1
+    shorts_until: "2026-12-25"
   # The live network (romanfeed/live/lanes.py, owner approved 2026-10-20): two
   # more cozy streams beside the 21:00 one, each nearly round the clock as two
   # 11.5 h sessions a day (each ends < 12 h and is saved as a replay), each on

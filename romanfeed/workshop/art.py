@@ -1715,9 +1715,10 @@ def encode_command(dst: Path, *, width: int = W, height: int = H, fps: int = FPS
 
 
 def render(draw: Callable, dst: Path, seconds: int = LOOP_S, *, fps: int = FPS, crf: int | None = None,
-           vertical: bool = False) -> Path:
+           vertical: bool = False, overlay: Callable | None = None) -> Path:
     """Render `seconds` of a scene to dst. vertical: a 1080x1920 crop for Shorts
-    (the middle of the frame, scaled up so the elves fill it)."""
+    (the middle of the frame, scaled up so the elves fill it). overlay(cr, t, w, h)
+    draws on top in output coordinates (a Short's captions)."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     out_w, out_h = (1080, 1920) if vertical else (W, H)
     proc = subprocess.Popen(encode_command(dst, width=out_w, height=out_h, fps=fps, crf=crf), stdin=subprocess.PIPE)
@@ -1737,6 +1738,8 @@ def render(draw: Callable, dst: Path, seconds: int = LOOP_S, *, fps: int = FPS, 
                 oc.scale(k, k)
                 oc.set_source_surface(surf, 0, 0)
                 oc.paint()
+            if overlay:
+                overlay(cairo.Context(out), i / fps, out_w, out_h)
             out.flush()
             proc.stdin.write(bytes(out.get_data()))
         proc.stdin.close()

@@ -1,0 +1,67 @@
+# Kids Shorts from Santa's workshop (romanfeed/workshop/shorts.py): one a day,
+# an elf room in 30 seconds with the sleeps-until-Christmas count, made for
+# kids, from the workshop's first day to workshop.shorts_until. The first is
+# the launch Short. The regular Shorts give up the same number of slots over
+# the same dates, so the channel's day stays at 8.
+#
+# A day already posted is read from the channel's public upload feed, so a
+# re-run or a backup run posts nothing. shorts.enabled is the publish switch.
+name: Workshop Shorts
+on:
+  schedule:
+    - cron: "30 0 * * *"    # 18:30 CST, after school and before bed
+    - cron: "30 2 * * *"    # backup: posts only if 00:30 did not
+  workflow_dispatch:
+    inputs:
+      day:
+        description: Central date to make (default today)
+        default: ""
+      dry_run:
+        description: render and write metadata, upload nothing
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: workshop-shorts
+  cancel-in-progress: false
+jobs:
+  short:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ROMANFEED_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cairo, ffmpeg and the font
+        run: |
+          sudo apt-get update -q
+          timeout 300 sudo apt-get install -y -q libcairo2-dev pkg-config fonts-dejavu-core ffmpeg
+      - run: pip install -e ".[youtube]" pycairo
+      - name: Write OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p secrets
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > secrets/youtube.token.json
+      - name: Kids Short
+        env:
+          YOUTUBE_TOKEN_PATH: secrets/youtube.token.json
+          DAY: ${{ inputs.day }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=""
+          [ -n "$DAY" ] && args="$args --day $DAY"
+          [ "$DRY_RUN" = "true" ] && args="$args --dry-run"
+          python -m romanfeed.workshop.shorts config/channels/deep-space-ambient.yaml $args
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workshop-short-${{ github.run_id }}
+          path: |
+            output/workshop-shorts/*.mp4
+            output/workshop-shorts/*.upload.json
+          retention-days: 3
+          if-no-files-found: ignore
