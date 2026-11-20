@@ -1758,6 +1758,7 @@ def still(draw: Callable, dst: Path, t: float = 4.0) -> Path:
 
 def thumbnail(dst: Path) -> Path:
     """The live thumbnail: the assembly line with a big title, 1280x720 JPEG."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
     surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
     cr = cairo.Context(surf)
     assembly(cr, 6.0)
