@@ -316,4 +316,14 @@ def run(cfg: ChannelConfig, yt, *, key: str, now: datetime | None = None, dry_ru
             except Exception as exc:
                 log.exception("24/7 %s: could not check its broadcast", x.id)
                 lines.append(f"24/7 {x.id}: could not check its broadcast ({exc})")
+
+        # The holiday workshop stream (live/workshop.py): a broadcast for the
+        # session on now and the next one. Its descriptions carry no MARK and
+        # its titles match nothing above, so nothing above touches them.
+        from romanfeed.live import workshop
+        try:
+            lines += workshop.ensure_sessions(cfg, yt, key, now, work, dry_run=dry_run)
+        except Exception as exc:
+            log.exception("workshop: could not check its broadcasts")
+            lines.append(f"workshop: could not check its broadcasts ({exc})")
     return "\n".join(lines) or "nothing to schedule"

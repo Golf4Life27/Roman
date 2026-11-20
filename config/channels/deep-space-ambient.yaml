@@ -395,7 +395,22 @@ live:
   # Nov 25: if channel watch hours per day fall more than 15% against
   # Nov 11-17 (30.6 a day), the nightly stream comes back.
   night_off_from: "2026-11-18"
-  night_off_until: "2026-11-24"
+  # Extended Nov 20 to Dec 27: the Santa's Workshop stream below uses the
+  # nightly key until Dec 26. The Nov 25 call now weighs the workshop's hours
+  # too; if the night has to come back sooner, it needs a lane key first.
+  night_off_until: "2026-12-27"
+  # Santa's Workshop (romanfeed/live/workshop.py), Alex's idea on Nov 20: our
+  # own animated workshop rooms with a Christmas countdown and original
+  # music, made for kids, in two sessions a day of 11.8 h (each saved as a
+  # replay). Test 18 in tests.md: called Nov 28.
+  workshop:
+    enabled: true
+    key_env: YOUTUBE_STREAM_KEY
+    starts: ["06:00", "18:00"]
+    hours: 11.8
+    first_day: "2026-11-20"
+    last_day: "2026-12-26"
+    made_for_kids: true
   # The live network (romanfeed/live/lanes.py, owner approved 2026-10-20): two
   # more cozy streams beside the 21:00 one, each nearly round the clock as two
   # 11.5 h sessions a day (each ends < 12 h and is saved as a replay), each on
