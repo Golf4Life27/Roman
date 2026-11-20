@@ -58,13 +58,18 @@ def _settings(cfg: ChannelConfig):
     return ws
 
 
+def _from(ws) -> date:
+    """The first kids Short's day: the launch Short, once the stream is up."""
+    return date.fromisoformat(ws.shorts_from or ws.first_day)
+
+
 def _until(ws) -> date:
     return date.fromisoformat(ws.shorts_until or ws.last_day)
 
 
 def season(cfg: ChannelConfig, day: date) -> bool:
     ws = _settings(cfg)
-    return bool(ws) and date.fromisoformat(ws.first_day) <= day <= _until(ws)
+    return bool(ws) and _from(ws) <= day <= _until(ws)
 
 
 def central_day(now: datetime | None = None) -> date:
@@ -78,7 +83,7 @@ def reserved(cfg: ChannelConfig, now: datetime | None = None) -> int:
 
 def room(cfg: ChannelConfig, day: date) -> str:
     """The launch room on the first day, then the rooms in turn."""
-    first = date.fromisoformat(_settings(cfg).first_day)
+    first = _from(_settings(cfg))
     n = (day - first).days
     return LAUNCH if n <= 0 else ORDER[n % len(ORDER)]
 
@@ -93,7 +98,7 @@ def title(cfg: ChannelConfig, day: date) -> str:
     n = sleeps(day)
     if n <= 0:
         return "Merry Christmas from Santa's Elves! 🎅🎄"
-    lead = "Santa's Workshop is LIVE" if day <= date.fromisoformat(_settings(cfg).first_day) \
+    lead = "Santa's Workshop is LIVE" if day <= _from(_settings(cfg)) \
         else LINES[room(cfg, day)][1]
     return f"{lead}! 🎅 {count_line(n)}"
 
@@ -128,7 +133,7 @@ def _overlay(cfg: ChannelConfig, day: date):
     from romanfeed.workshop import art
 
     n = sleeps(day)
-    launch = day <= date.fromisoformat(_settings(cfg).first_day)
+    launch = day <= _from(_settings(cfg))
     top = ("SANTA'S WORKSHOP", "IS LIVE NOW!") if launch else (LINES[room(cfg, day)][0], None)
     if n <= 0:
         top = ("MERRY CHRISTMAS!", "from the elves")

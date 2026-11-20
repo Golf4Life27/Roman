@@ -184,6 +184,7 @@ class WorkshopSettings:
     # first_day to shorts_until, and the regular Shorts give up as many slots,
     # so the channel's day stays at shorts.test_per_day.
     shorts_per_day: int = 0
+    shorts_from: str = ""      # default first_day
     shorts_until: str = ""
 
 
