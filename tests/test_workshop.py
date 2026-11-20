@@ -211,13 +211,14 @@ def test_kids_shorts_take_one_regular_slot_in_season_only():
     inside = datetime(2026, 11, 22, 12, tzinfo=CT)
     after = datetime(2026, 12, 27, 12, tzinfo=CT)
     assert kids.reserved(c, inside) == 1 and kids.reserved(c, after) == 0
+    assert kids.reserved(c, datetime(2026, 11, 20, 18, tzinfo=CT)) == 0      # before the first kids Short
     full = shorts_mod.daily_target(c.shorts, inside)
     assert shorts_mod.daily_target(c.shorts, inside, reserved=kids.reserved(c, inside)) == full - 1
 
 
 def test_kids_short_titles_carry_the_count_and_launch_first():
     c = load_config(ROOT / "config/channels/deep-space-ambient.yaml")
-    first = date.fromisoformat(c.live.workshop.first_day)
+    first = date.fromisoformat(c.live.workshop.shorts_from)
     assert kids.title(c, first).startswith("Santa's Workshop is LIVE") and kids.room(c, first) == kids.LAUNCH
     assert "1 Sleep Until Christmas" in kids.title(c, date(2026, 12, 24))
     assert kids.title(c, date(2026, 12, 25)).startswith("Merry Christmas")
