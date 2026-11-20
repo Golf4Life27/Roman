@@ -1775,9 +1775,9 @@ def thumbnail(dst: Path) -> Path:
     rrect(cr, W / 2 - 180, 262, 360, 96, 48)
     fill(cr, "#E0182D")
     text(cr, "● LIVE", W / 2, 312, 72, "#FFFFFF", outline=None)
-    rrect(cr, 60, 900, 760, 120, 30)
+    rrect(cr, 20, 920, 820, 140, 30)          # also covers the room's name pill
     fill(cr, "#1E9E5A")
-    text(cr, "Christmas Countdown!", 440, 960, 66, "#FFFFFF", outline="#0E4A2A", ow=8, max_w=700)
+    text(cr, "Christmas Countdown!", 430, 990, 66, "#FFFFFF", outline="#0E4A2A", ow=8, max_w=700)
     png = dst.with_suffix(".png")
     surf.write_to_png(str(png))
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(png), "-vf", "scale=1280:720",
