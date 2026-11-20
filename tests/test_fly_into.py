@@ -134,6 +134,7 @@ def test_pictures_of_the_surroundings_or_from_the_ground_are_left_out_and_size_s
                    credit="NASA, ESA, Digitized Sky Survey 2", width=14000, height=11000)
     assert not fly.is_the_object(twin)
     for t in ("Wide-field view of the Lagoon Nebula", "Location of the Crab Nebula in Taurus",
+              "NASA's Hubble Finds Life is Too Fast, Too Furious for This Runaway Galaxy",
               "Annotated image of the Orion Nebula", "Artist's impression of a galaxy"):
         assert not fly.is_the_object(_galaxy(title=t))
     assert fly.is_the_object(_galaxy()) and fly.is_the_object(_galaxy(title="Pillars of Creation (NIRCam Image)"))
@@ -161,6 +162,7 @@ def test_the_title_is_the_objects_own_name(archive_title, title):
     "Stars in the Andromeda Galaxy’s giant stellar stream",   # the second dry run's pick (Nov 20)
     "Word Bank: Dwarf Galaxy",                                     # the third's
     "Barred Spiral Galaxy", "Galaxies in Hiding", "Hubble probes ‘ghost’ galaxy", "A galaxy pair",
+    "Faint Compact Galaxy in the Early Universe",
 ])
 def test_a_title_that_names_no_one_object_is_left_out(archive_title, ledger):
     assert fly.object_name(_galaxy(title=archive_title)) is None

@@ -50,7 +50,11 @@ NAME_FADE = 0.5
 _NOT_THE_OBJECT = re.compile(
     r"ground[- ]based|sky around|around the|surroundings|wide[- ]?field|digiti[sz]ed sky survey|\bDSS\b|"
     r"finder|chart|location of|annotated|compass|compared|comparison|side by side|illustration|artist|"
-    r"impression|animation|zoom|mosaic of the sky|wide view", re.I)
+    r"impression|animation|zoom|mosaic of the sky|wide view|"
+    # a headline about the picture rather than its name (fourth dry run: "NASA's
+    # Hubble Finds Life is Too Fast, Too Furious for This Runaway Galaxy")
+    r"\b(?:finds|found|reveals|captures|spots|sees|snaps|shows|catches|probes|peers|spies|uncovers|discovers|"
+    r"is|are|was|were)\b", re.I)
 PLATE_SECONDS = 2.5       # the subscribe plate covers the end of the reveal
 
 
@@ -95,7 +99,9 @@ _GENERIC = {
     "planetary", "emission", "reflection", "dark", "globular", "open", "star", "stellar", "supernova", "galaxy",
     "galaxies", "nebula", "cluster", "remnant", "hubble", "webb", "hubble's", "webb's", "hubble’s",
     "webb’s", "nasa", "esa", "word", "bank", "new", "young", "old", "active", "edge-on", "face-on", "tiny",
-    "huge", "isolated", "lonely", "cosmic", "colourful", "colorful", "spectacular", "beautiful", "image", "view"}
+    "huge", "isolated", "lonely", "cosmic", "colourful", "colorful", "spectacular", "beautiful", "image", "view",
+    "this", "that", "compact", "runaway", "early", "radio", "distorted", "disrupted", "merging", "jellyfish",
+    "multi-wavelength", "infrared", "ultraviolet", "unusual", "mysterious", "hidden", "first", "last", "galactic"}
 
 
 def object_name(asset: ImageAsset) -> str | None:
