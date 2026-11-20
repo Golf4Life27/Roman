@@ -81,31 +81,50 @@ def is_the_object(asset: ImageAsset) -> bool:
     return not _NOT_THE_OBJECT.search(f"{asset.title} {asset.credit}")
 
 
-_NAMED = re.compile(r"\b(?:nebula|galaxy|cluster|remnant|pillars of creation|cosmic cliffs|quintet|sextet|"
-                    r"triplet|pair)$", re.I)
+_CLASS = r"(?:Nebula|Galaxy|Galaxies|Cluster|Remnant|Quintet|Sextet|Triplet|Cloud)"
+# Capitalised words before a class word, the class word not possessive
+# ("the Andromeda Galaxy's giant stellar stream" is not the galaxy).
+_PROPER = re.compile(rf"((?:[A-Z][\w'’.-]*\s+){{1,4}}{_CLASS})\b(?!['’])")
+_SPECIAL = re.compile(r"\b(Pillars of Creation|Cosmic Cliffs|Mystic Mountain)\b", re.I)
+_DESIGNATION = re.compile(r"\b(?:NGC|IC|UGC|Arp|Abell|ESO|RCW|LEDA|Messier)\s?-?\d+(?:-\d+)?[A-Za-z]?\b|\bM\s?\d{1,3}\b")
+# Words that describe a kind of object rather than name one ("Barred Spiral
+# Galaxy", "Word Bank: Dwarf Galaxy": the third dry run's pick, Nov 20).
+_GENERIC = {
+    "a", "an", "the", "of", "barred", "spiral", "dwarf", "elliptical", "irregular", "lenticular", "ring", "ghost",
+    "giant", "massive", "distant", "nearby", "bright", "faint", "peculiar", "interacting", "starburst", "majestic",
+    "planetary", "emission", "reflection", "dark", "globular", "open", "star", "stellar", "supernova", "galaxy",
+    "galaxies", "nebula", "cluster", "remnant", "hubble", "webb", "hubble's", "webb's", "hubble’s",
+    "webb’s", "nasa", "esa", "word", "bank", "new", "young", "old", "active", "edge-on", "face-on", "tiny",
+    "huge", "isolated", "lonely", "cosmic", "colourful", "colorful", "spectacular", "beautiful", "image", "view"}
 
 
-def named(asset: ImageAsset) -> bool:
-    """Whether the picture's name is an object's name ("Whirlpool Galaxy",
-    "NGC 602", "Pillars of Creation") rather than a phrase about part of one
-    ("Stars in the Andromeda Galaxy's giant stellar stream", the second dry
-    run's pick, Nov 20), which reads badly after "Flying into"."""
-    from romanfeed.journey.metadata import _CATALOGUE
-    from romanfeed.publish.metadata import display_name, lead_name
+def object_name(asset: ImageAsset) -> str | None:
+    """The object's own name as the archive title gives it: "Whirlpool
+    Galaxy", "Cat's Paw Nebula", "Pillars of Creation", "NGC 1300", or None
+    when the title names no one object (a kind of galaxy, part of one, a
+    headline). A fly-into Short's title is this name and nothing else."""
+    title = asset.title or ""
+    m = _SPECIAL.search(title)
+    if m:
+        return m.group(1)
+    for m in _PROPER.finditer(title):
+        words = m.group(1).split()
+        while words[:-1] and words[0].lower() in _GENERIC:
+            words.pop(0)
+        if len(words) > 1:
+            return " ".join(words)
+    m = _DESIGNATION.search(title)
+    return re.sub(r"\s+", " ", m.group(0)) if m else None
 
-    n = (lead_name(display_name(asset), limit=60) or asset.title).strip()
-    n = re.sub(r"^the\s+", "", n, flags=re.I)
-    return bool(_NAMED.search(n) or _CATALOGUE.match(n))
 
-
-def rank_key(asset: ImageAsset, weights: dict[str, float] | None = None) -> tuple[bool, float, int]:
-    """For the shortlist: a named object first, then the subject test's
-    winner (galaxies, shorts.subject_weights), then bigger, up to SIZE_CAP.
-    The shortlist is then ordered by how strong the picture looks, like any
+def rank_key(asset: ImageAsset, weights: dict[str, float] | None = None) -> tuple[float, int]:
+    """For the shortlist: the subject test's winner (galaxies,
+    shorts.subject_weights) first, then bigger, up to SIZE_CAP. The
+    shortlist is then ordered by how strong the picture looks, like any
     Short's (shorts.ranked_candidates)."""
     from romanfeed.why import subject
 
-    return named(asset), (weights or {}).get(subject(asset), 0.0), min(asset.width * asset.height, SIZE_CAP)
+    return (weights or {}).get(subject(asset), 0.0), min(asset.width * asset.height, SIZE_CAP)
 
 
 def fits(width: int, height: int, out_w: int, out_h: int) -> bool:
@@ -118,11 +137,14 @@ def fits(width: int, height: int, out_w: int, out_h: int) -> bool:
 
 
 def name(asset: ImageAsset) -> str:
-    """"the Whirlpool Galaxy", "NGC 602": the journey videos' way of naming it."""
+    """"the Whirlpool Galaxy", "NGC 602": the object's name with the journey
+    videos' article rule."""
     from romanfeed.journey.metadata import with_article
-    from romanfeed.publish.metadata import display_name, lead_name
 
-    n = with_article(lead_name(display_name(asset), limit=60) or asset.title)
+    obj = object_name(asset) or asset.title
+    if re.search(rf"\bthe\s+{re.escape(obj)}", asset.title or "", re.I):
+        return "the " + obj        # the archive says "The Cat's Paw Nebula"
+    n = with_article(obj)
     return "the " + n[4:] if n.startswith("The ") else n
 
 

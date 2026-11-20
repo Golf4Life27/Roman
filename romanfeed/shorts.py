@@ -364,8 +364,8 @@ def fly_into_pool(ledger: Ledger, cfg: ChannelConfig, *, public: Callable[[str],
                   skip_objects: set[str] = frozenset(), posted: list[str] = ()) -> list[tuple[Parent, ImageAsset]]:
     """Every picture in a public long video that a fly-into Short may use,
     best first (romanfeed/fly_into.py rank_key): a nebula or galaxy from a
-    known telescope with a name for a title (the journey's own test), of the
-    object itself, never used by a Short or a journey, not Earth, and no
+    known telescope, not a headline (the journey's own test), of one object
+    whose name the title gives (fly_into.object_name), never used by a Short or a journey, not Earth, and no
     object posted as a Short in the last repeat_days."""
     from romanfeed.journey.metadata import is_headline, journey_subject
     from romanfeed.journey.run import ledger_key
@@ -385,6 +385,7 @@ def fly_into_pool(ledger: Ledger, cfg: ChannelConfig, *, public: Callable[[str],
             asset = asset_from_meta(meta[a])
             if (is_earth(asset) or not journey_subject(asset) or not telescope_short(asset)
                     or is_headline(asset.title) or not fly_mod.is_the_object(asset)
+                    or not fly_mod.object_name(asset)
                     or object_key(asset) in skip_objects
                     or already_posted(asset, list(posted))):
                 continue
