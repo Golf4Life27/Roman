@@ -427,6 +427,10 @@ def cmd_always(cfg: ChannelConfig, lib: Path, stream_id: str, *, dry_run: bool =
     prune_music(lib, x, {music} | ({music_path(lib, x, nxt[0])} if nxt else set()))
     night = scene_mod.SceneNight(seg.end.date(), seg.scene, seg.theme, loop, music)
     signal.signal(signal.SIGTERM, _sigterm)
+    # The holiday workshop stream rides along in this process (live/workshop.py),
+    # on its own key: systemd keeps this process up for good.
+    from romanfeed.live import workshop
+    workshop.start_thread(cfg, lib)
     log.info("24/7 %s: streaming %s for %d s", x.id, seg.scene.id, seg.seconds)
     stream_forever(lambda s: scene_mod.stream_command(night, s, url, cap=s), seg.seconds, secret=key,
                    label=f"24/7 {x.id}")

@@ -254,8 +254,9 @@ def cmd_sync(cfg: ChannelConfig, lib: Path) -> int:
     # so 21:00 finds it ready.
     print_scene(scene_mod.prepare(cfg, lib, tonight(cfg)))
     prepare_lanes(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
-    from romanfeed.live import always
+    from romanfeed.live import always, workshop
     always.prepare_ahead(cfg, lib, datetime.now(ZoneInfo(cfg.live.timezone)))
+    print(workshop.nudge(cfg, lib))
     return 0
 
 
@@ -332,6 +333,9 @@ def cmd_start(cfg: ChannelConfig, lib: Path, *, dry_run: bool = False) -> int:
               "(switch it on at 100 subscribers or 15 watch hours/day; see docs/LIVE_STREAM.md)")
         return 2
     night = datetime.now(ZoneInfo(cfg.live.timezone)).date()
+    if not dry_run:
+        from romanfeed.live import workshop
+        print(workshop.nudge(cfg, lib))
     if cfg.live.night_paused(night) and not dry_run:
         print(f"nightly stream paused {cfg.live.night_off_from} to {cfg.live.night_off_until} "
               "(live.night_off_*): nothing to stream tonight")

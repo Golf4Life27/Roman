@@ -1,0 +1,37 @@
+name: Workshop scenes
+# Renders the Santa's Workshop stream's rooms, countdown cards, music and
+# thumbnail (romanfeed/workshop, our own drawing and synth code) and attaches
+# them to the workshop-scenes release, where the server downloads them
+# (romanfeed/live/workshop.py). Runs when the drawing or music code changes.
+on:
+  push:
+    branches: [main]
+    paths: ["romanfeed/workshop/**", ".github/workflows/workshop-scenes.yml"]
+  workflow_dispatch:
+permissions:
+  contents: write   # create the release and attach the files
+concurrency:
+  group: workshop-scenes
+  cancel-in-progress: false
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q libcairo2-dev pkg-config fonts-dejavu-core ffmpeg
+      - run: pip install -e . pycairo
+      - run: python -m romanfeed.workshop.build workshop-out
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view workshop-scenes >/dev/null 2>&1 || \
+            gh release create workshop-scenes --title "Santa's Workshop scenes" \
+              --notes "Rooms, countdown cards and original music for the Santa's Workshop live stream."
+          # the manifest last, so the server never reads one that names a missing file
+          gh release upload workshop-scenes --clobber $(ls workshop-out/* | grep -v workshop.json)
+          gh release upload workshop-scenes --clobber workshop-out/workshop.json

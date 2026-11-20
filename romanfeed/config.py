@@ -161,6 +161,33 @@ class AlwaysSettings:
 
 
 @dataclass
+class WorkshopSettings:
+    """The holiday Santa's Workshop stream (romanfeed/live/workshop.py): our own
+    animated workshop rooms and original music, in sessions under 12 hours so
+    each one is saved as a replay, from `first_day` to `last_day` (local
+    dates of the sessions' starts, inclusive).
+
+    It borrows the nightly stream's Studio key (`key_env`, also a GitHub
+    secret) while the nightly stream is paused, and runs on the server inside
+    the 24/7 process. `made_for_kids`: how each broadcast is declared to
+    YouTube (Alex's ask on Nov 20 was a stream for kids)."""
+    enabled: bool = False
+    key_env: str = "YOUTUBE_STREAM_KEY"
+    starts: list = field(default_factory=lambda: ["06:00", "18:00"])
+    hours: float = 11.8
+    first_day: str = ""
+    last_day: str = ""
+    release_tag: str = "workshop-scenes"
+    made_for_kids: bool = True
+    scene_repeats: int = 10
+    # Kids Shorts (romanfeed/workshop/shorts.py): this many a day go up from
+    # first_day to shorts_until, and the regular Shorts give up as many slots,
+    # so the channel's day stays at shorts.test_per_day.
+    shorts_per_day: int = 0
+    shorts_until: str = ""
+
+
+@dataclass
 class LiveSettings:
     """The nightly live stream (romanfeed.live). Off unless the owner turns it on.
 
@@ -197,6 +224,8 @@ class LiveSettings:
     # exits quietly. The 24/7 stream and the lanes are untouched.
     night_off_from: str = ""
     night_off_until: str = ""
+    # The holiday workshop stream (WorkshopSettings), when there is one.
+    workshop: Any = None
 
     def night_paused(self, night: date) -> bool:
         if not (self.night_off_from and self.night_off_until):
@@ -450,7 +479,9 @@ def _build_live(data: dict[str, Any] | None) -> LiveSettings:
     data = dict(data or {})
     lanes = [_build(LaneSettings, x) for x in data.pop("lanes", None) or []]
     always = [_build(AlwaysSettings, x) for x in data.pop("always", None) or []]
+    ws = data.pop("workshop", None)
     live = _build(LiveSettings, data)
+    live.workshop = _build(WorkshopSettings, ws) if ws else None
     live.lanes = lanes
     live.always = always
     return live

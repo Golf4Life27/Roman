@@ -785,8 +785,10 @@ def in_test(s: ShortsSettings, now: datetime | None = None) -> bool:
     return central <= date.fromisoformat(s.test_until)
 
 
-def daily_target(s: ShortsSettings, now: datetime | None = None) -> int:
-    return s.test_per_day if in_test(s, now) else s.per_day
+def daily_target(s: ShortsSettings, now: datetime | None = None, reserved: int = 0) -> int:
+    """Shorts a day; `reserved` slots go to other kinds of Short that keep their
+    own count (the workshop's kids Shorts), so the channel's day stays the same."""
+    return max((s.test_per_day if in_test(s, now) else s.per_day) - reserved, 0)
 
 
 def _length(voice_secs: float, cap: float = 45.0) -> float:
@@ -1040,7 +1042,9 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
     with Ledger(data_dir / "state.db") as ledger:
         _snapshot(ledger, cfg, today)
         recent = recent_shorts(ledger, cfg.channel.slug)
-        target = daily_target(cfg.shorts)
+        from romanfeed.workshop.shorts import reserved as workshop_reserved
+
+        target = daily_target(cfg.shorts, reserved=workshop_reserved(cfg))
         # The slack is for a single scheduled run that drift pushed close to
         # the next day's; a manual batch still stops at the day's number.
         room = max(target + (CAP_SLACK if count == 1 else 0) - len(recent), 0)
