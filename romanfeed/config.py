@@ -286,6 +286,19 @@ class ShortsSettings:
     sky_event_until: str = ""
     sky_event_per_day: int = 0
     sky_event_slots: list[int] = field(default_factory=lambda: [0, 6, 11, 13])
+    # Fly-into Shorts (romanfeed/fly_into.py), test 16: a 20-30 s vertical
+    # flight into one real galaxy or nebula picture, made by the journey code.
+    # They take the positions in fly_into_slots of every run of 16 Shorts.
+    # [2, 4, 9, 15] are the four hook/opening/title combinations the sky-event
+    # slots leave once each (one of each odd-parity triple of n % 2, n // 2 % 2,
+    # n // 4 % 2), so with both tests on the other 8 are each combination
+    # exactly once, and with fly-into alone every pair of tests stays even.
+    # Between the two dates (Central); blank until = off. At most
+    # fly_into_per_day in any 24 hours.
+    fly_into_from: str = ""
+    fly_into_until: str = ""
+    fly_into_per_day: int = 2
+    fly_into_slots: list[int] = field(default_factory=lambda: [2, 4, 9, 15])
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -493,6 +506,11 @@ def load_config(path: str | Path) -> ChannelConfig:
     if not 0.5 <= cfg.cozy.hours <= 11.5:
         raise ValueError("cozy.hours must be between 0.5 and 11.5")
     _check_journey(cfg.journey)
+    s = cfg.shorts
+    if any(not 0 <= p < 16 for p in s.fly_into_slots):
+        raise ValueError("shorts.fly_into_slots are positions 0-15 in every run of 16 Shorts")
+    if set(s.fly_into_slots) & set(s.sky_event_slots):
+        raise ValueError("shorts.fly_into_slots must not share a position with shorts.sky_event_slots")
     return cfg
 
 

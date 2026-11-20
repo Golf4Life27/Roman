@@ -5,7 +5,9 @@ title card, camera in motion on frame one), lands on a bright region by
 second 3, drifts, and ends on a final push into the brightest part of the
 picture. Rendered from the same prepared scene as the long video.
 
-Not wired into the Shorts slots: this only makes the file."""
+The journey job keeps one as a by-product; the Shorts run posts its own in
+the fly-into slots (romanfeed/fly_into.py), with cards burned on through
+`overlay`."""
 from __future__ import annotations
 
 import logging
@@ -39,11 +41,14 @@ def plan_short(scene: Scene, targets: list[Target], *, seconds: float = 24.0, wi
 
 def render_journey_short(scene: Scene, targets: list[Target], out: Path, *, seconds: float = 24.0,
                          width: int = 1080, height: int = 1920, fps: int = 30, audio: Path | None = None,
-                         crf: int = 20, preset: str = "veryfast") -> Path:
-    """Render the vertical cut to `out` (H.264; with `audio` muxed on if given)."""
+                         crf: int = 20, preset: str = "veryfast", overlay=None) -> Path:
+    """Render the vertical cut to `out` (H.264; with `audio` muxed on if given).
+    `overlay(seconds, frame) -> frame` burns cards on (render.alpha_overlay)."""
     legs = plan_short(scene, targets, seconds=seconds, width=width, height=height)
     n = int(round(seconds * fps))
     frames = (scene.frame(short_pose(legs, i / fps), width, height) for i in range(n))
+    if overlay is not None:
+        frames = (overlay(i / fps, fr) for i, fr in enumerate(frames))
     if audio is None:
         return encode_frames(frames, out, width, height, fps, crf=crf, preset=preset)
     silent = out.with_name(out.stem + ".silent.mp4")

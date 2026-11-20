@@ -373,6 +373,24 @@ shorts:
   sky_event_from: "2026-11-18"
   sky_event_until: "2026-11-25"
   sky_event_per_day: 2
+  # Fly-into Shorts, Nov 21-27 (test 16, romanfeed/fly_into.py): 2 of the 8 a
+  # day are a 24-second vertical flight into one real galaxy or nebula picture
+  # from the library (never used by a Short or a journey), made by the journey
+  # code: already moving on frame one, on the first bright region by second 3,
+  # ending on a push into the brightest part. Music only, the picture's name as
+  # the title ("Flying into the Whirlpool Galaxy"), YouTube only.
+  # They take Shorts 2, 4, 9 and 15 of every 16: the four hook/calm x opening
+  # x title combinations the sky-event slots leave once each, so with both
+  # tests on the other 8 Shorts hold each combination exactly once, and with
+  # fly-into alone every pair of tests stays even. Tagged fly-into, never take
+  # the hook, punch-in, anticipation or plain-title treatment, and are kept
+  # out of those tests' numbers; called on views per Short and subscribers per
+  # 1,000 views against calm-style Shorts. If one cannot be made the slot is a
+  # normal Short and the log says why.
+  fly_into_from: "2026-11-21"
+  fly_into_until: "2026-11-27"
+  fly_into_per_day: 2
+  fly_into_slots: [2, 4, 9, 15]
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
