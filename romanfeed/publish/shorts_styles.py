@@ -6,9 +6,10 @@ date from the ledger, reads its tags and live view count from the Data API
 and its Analytics numbers (views, average view length, subscribers gained),
 and sums them per style, so the call between the two comes from the numbers.
 
-Sky-event Shorts (romanfeed/sky_events.py, tagged ``sky-event``) are a
-different kind of Short, so they get their own section against calm-style
-Shorts and stay out of every other line.
+Sky-event Shorts (romanfeed/sky_events.py, tagged ``sky-event``) and
+fly-into Shorts (romanfeed/fly_into.py, tagged ``fly-into``) are different
+kinds of Short, so each gets its own section against calm-style Shorts and
+stays out of every other line.
 
 Analytics lags two to three days, so a Short posted in the last two days has
 public views but little or no Analytics yet; the per-Short lines show both.
@@ -20,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from romanfeed.explainer import EXPLAINER_TAG
+from romanfeed.fly_into import FLY_TAG
 from romanfeed.publish.stats import _query
 from romanfeed.sky_events import SKY_TAG
 from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PLAIN_TITLE_TAG, PUNCH_TAG, asset_from_meta, is_earth
@@ -47,6 +49,12 @@ class ShortNumbers:
     explainer: bool = False  # one question answered in under a minute (Nov 21-23 test)
     plain_title: bool = False  # titled with the picture's name alone (Nov 16-22 test)
     sky: bool = False      # a sky event this week (Nov 18-25 test)
+    fly: bool = False      # a flight into one picture (Nov 21-27 test)
+
+    @property
+    def own_kind(self) -> bool:
+        """A kind of Short with its own section, kept out of every other test."""
+        return self.sky or self.fly
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -85,6 +93,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             explainer=EXPLAINER_TAG in tags,
             plain_title=PLAIN_TITLE_TAG in tags,
             sky=SKY_TAG in tags,
+            fly=FLY_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -192,7 +201,7 @@ def _opening_test(rows: list[ShortNumbers], flag: str, name: str) -> list[str]:
     start = min(r.posted for r in rows if getattr(r, flag))
     # Explainers run a minute and never take an opening test's slot, so
     # they stay out of the plain group too.
-    during = [r for r in rows if r.posted >= start and not (r.explainer or r.sky)]
+    during = [r for r in rows if r.posted >= start and not (r.explainer or r.own_kind)]
     out = [f"{name.capitalize()} vs plain opening (Shorts since the first {name}):"]
     for label, p in ((name, True), ("plain", False)):
         out.append(opening_line(label, [r for r in during if getattr(r, flag) == p]))
@@ -215,7 +224,7 @@ def explainer_lines(rows: list[ShortNumbers]) -> list[str]:
     if not any(r.explainer for r in rows):
         return []
     start = min(r.posted for r in rows if r.explainer)
-    during = [r for r in rows if r.posted >= start and not r.sky]
+    during = [r for r in rows if r.posted >= start and not r.own_kind]
     return ["Explainer vs regular Shorts (Shorts since the first explainer):",
             opening_line("explainer", [r for r in during if r.explainer]),
             opening_line("regular", [r for r in during if not r.explainer])]
@@ -228,7 +237,7 @@ def title_lines(rows: list[ShortNumbers]) -> list[str]:
     if not any(r.plain_title for r in rows):
         return []
     start = min(r.posted for r in rows if r.plain_title)
-    during = [r for r in rows if r.posted >= start and not (r.why or r.explainer or r.sky)]
+    during = [r for r in rows if r.posted >= start and not (r.why or r.explainer or r.own_kind)]
     out = ["Plain vs usual title (Shorts since the first plain title):"]
     for label, p in (("plain title", True), ("usual title", False)):
         out.append(opening_line(label, [r for r in during if r.plain_title == p]))
@@ -243,9 +252,23 @@ def sky_lines(rows: list[ShortNumbers]) -> list[str]:
         return []
     start = min(r.posted for r in rows if r.sky)
     during = [r for r in rows if r.posted >= start]
-    calm = [r for r in during if not (r.sky or r.why or r.explainer) and r.style == "calm"]
+    calm = [r for r in during if not (r.own_kind or r.why or r.explainer) and r.style == "calm"]
     return ["Sky-event vs calm (Shorts since the first sky-event):",
             opening_line("sky-event", [r for r in during if r.sky]),
+            opening_line("calm", calm)]
+
+
+def fly_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The fly-into test (Nov 21-27): fly-into Shorts against the calm-style
+    Shorts posted since the first one (no why, explainer, hook or sky
+    event), on live views per Short and subscribers per 1,000 views."""
+    if not any(r.fly for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.fly)
+    during = [r for r in rows if r.posted >= start]
+    calm = [r for r in during if not (r.own_kind or r.why or r.explainer) and r.style == "calm"]
+    return ["Fly-into vs calm (Shorts since the first fly-into):",
+            opening_line("fly-into", [r for r in during if r.fly]),
             opening_line("calm", calm)]
 
 
@@ -259,7 +282,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines = [f"Shorts posted since {since.isoformat()}: {len(rows)}. Analytics through {end.isoformat()} "
              "(lags 2-3 days); live views are from today."]
     sky_rows = rows
-    rows = [r for r in rows if not r.sky]   # the sky-event test has its own section
+    rows = [r for r in rows if not r.own_kind]   # sky-event and fly-into Shorts have their own sections
     lines.append(f"  {'':6} {'Shorts':>6} {'live views':>10} {'per Short':>9} {'avg view':>8} {'subs':>5} {'per 1,000':>9}")
     for style in STYLES:
         t = totals(rows, style)
@@ -277,8 +300,9 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines += explainer_lines(rows)
     lines += title_lines(rows)
     lines += sky_lines(sky_rows)
+    lines += fly_lines(sky_rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in sky_rows:
-        lines.append(f"    {r.posted[:16]} {'sky' if r.sky else r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
+        lines.append(f"    {r.posted[:16]} {'sky' if r.sky else 'fly' if r.fly else r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
                      f"{r.subs:>3}  {r.title[:70]}")
     return lines

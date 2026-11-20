@@ -37,6 +37,7 @@ from romanfeed.config import ChannelConfig, ShortsSettings
 from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_unsuitable
 from romanfeed.publish import publish
 from romanfeed import explainer as explainer_mod
+from romanfeed import fly_into as fly_mod
 from romanfeed import sky_events as sky_mod
 from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
@@ -357,6 +358,41 @@ def why_pool(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is
             seen.add(found.question)
             out.append((p, asset, found))
     return out
+
+
+def fly_into_pool(ledger: Ledger, cfg: ChannelConfig, *, public: Callable[[str], bool] = is_public,
+                  skip_objects: set[str] = frozenset(), posted: list[str] = ()) -> list[tuple[Parent, ImageAsset]]:
+    """Every picture in a public long video that a fly-into Short may use,
+    biggest first: a nebula or galaxy from a known telescope with a name for
+    a title (the journey's own test), never used by a Short or a journey,
+    not Earth, and no object posted as a Short in the last repeat_days."""
+    from romanfeed.journey.metadata import is_headline, journey_subject
+    from romanfeed.journey.run import ledger_key
+
+    slug = cfg.channel.slug
+    used = ledger.shorts_asset_ids(slug) | ledger.used_asset_ids(ledger_key(cfg))
+    done = ledger.shorts_per_parent(slug)
+    seen: set[str] = set()
+    hits: list[tuple[Parent, ImageAsset]] = []
+    for p in sorted(parents(ledger, slug, public=public), key=lambda p: done.get(p.slug, 0)):
+        ids = [a for a in ledger.assets_of_video(p.slug) if a not in used and a not in seen]
+        meta = ledger.asset_meta(ids)
+        for a in ids:
+            if a not in meta:
+                continue
+            seen.add(a)
+            asset = asset_from_meta(meta[a])
+            if (is_earth(asset) or not journey_subject(asset) or not telescope_short(asset)
+                    or is_headline(asset.title) or object_key(asset) in skip_objects
+                    or already_posted(asset, list(posted))):
+                continue
+            if asset.width and asset.height and not fly_mod.fits(asset.width, asset.height, cfg.shorts.width,
+                                                                 cfg.shorts.height):
+                continue
+            hits.append((p, asset))
+    # Stable: among pictures of one size the parent with the fewest Shorts leads.
+    hits.sort(key=lambda pa: pa[1].width * pa[1].height, reverse=True)
+    return hits
 
 
 def backfill_meta(ledger: Ledger, cfg: ChannelConfig, asset_ids: list[str]) -> dict[str, dict]:
@@ -867,6 +903,100 @@ def _sky_short(cfg: ChannelConfig, ledger: Ledger, parent: Parent | None, *, now
     return ShortResult(asset.asset_id, sky_mod.SKY_PARENT, path, vid, md.title), ""
 
 
+def fly_into_recent(ledger: Ledger, channel: str, now: datetime | None = None) -> int:
+    """Fly-into Shorts uploaded in the 24 hours before `now`."""
+    return ledger.conn.execute(
+        "SELECT COUNT(*) FROM shorts WHERE channel = ? AND parent_slug = ? AND youtube_id IS NOT NULL"
+        " AND created_at > ?", (channel, fly_mod.FLY_PARENT, _since(now))).fetchone()[0]
+
+
+def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache: Path, work: Path, out_dir: Path,
+                    models: Path, mode: str, upload: bool, public: Callable[[str], bool], skip_objects: set[str],
+                    posted: list[str]) -> tuple[ShortResult | None, str]:
+    """One fly-into Short (romanfeed/fly_into.py), or (None, why not).
+
+    The picture is the biggest unused nebula or galaxy in the library that
+    downloads cleanly and is big enough for a vertical flight; the journey
+    code estimates its depth, builds the scene and renders 20-30 s with its
+    own composed music. Never in the hook style or with a test opening or
+    title, and posted to YouTube only (no social cut). The object it shows
+    is added to `skip_objects`, the run's own set."""
+    import hashlib as _hashlib
+    import time
+
+    from romanfeed.audio.composer import compose_piece
+    from romanfeed.journey.render import have_opencv
+
+    s, slug, j = cfg.shorts, cfg.channel.slug, cfg.journey
+    recent = fly_into_recent(ledger, slug, now)
+    if recent >= s.fly_into_per_day:
+        return None, f"{recent} fly-into Shorts in the last 24 hours, the cap of {s.fly_into_per_day}"
+    if not have_opencv():
+        # The numpy fallback is about 25x slower: a Short would take most of the job's time.
+        return None, "OpenCV is not installed (pip install -e '.[journey]')"
+    pool = fly_into_pool(ledger, cfg, public=public, skip_objects=skip_objects, posted=posted)
+    if not pool:
+        return None, "no unused nebula or galaxy picture from a known telescope in the library"
+    log.info("fly-into: %d unused nebula or galaxy pictures in the library could be flown into", len(pool))
+    choice = None
+    for parent, cand in pool[:fly_mod.TRIES]:
+        if not ranked_candidates([cand], cache):
+            continue
+        with Image.open(cand.local_path) as im:
+            w, h = ImageOps.exif_transpose(im).size
+        if fly_mod.fits(w, h, s.width, s.height):
+            choice = (parent, cand)
+            break
+        log.info("fly-into: %s is %dx%d, too small to fly into on a vertical screen", cand.asset_id, w, h)
+    if choice is None:
+        return None, f"none of the {min(len(pool), fly_mod.TRIES)} biggest of {len(pool)} pictures downloaded at a usable size"
+    parent, asset = choice
+    label = full_label(parent.link_seconds)
+    stem = f"{slug}-short-fly-{asset.asset_id.replace(':', '_')}"
+    seconds = j.short_seconds
+    t0 = time.monotonic()
+    try:
+        from romanfeed.journey.depth import estimate_depth
+        from romanfeed.journey.layers import find_targets
+        from romanfeed.journey.render import Scene
+
+        with Image.open(asset.local_path) as im:
+            image = ImageOps.exif_transpose(im).convert("RGB")
+        depth, depth_source = estimate_depth(image, method=j.depth, cache_dir=models)
+        scene = Scene.from_image(image, depth, depth_source)
+        del image
+        seed = int.from_bytes(_hashlib.sha256(asset.asset_id.encode()).digest()[:4], "big")
+        targets = find_targets(scene.background, scene.depth, count=10, seed=seed)
+        if not targets:
+            return None, f"no bright region to fly to in {asset.asset_id}"
+    except Exception as exc:  # a picture the depth or scene step cannot handle must not cost the slot
+        log.exception("fly-into scene failed for %s", asset.asset_id)
+        return None, f"the depth/scene step failed for {asset.asset_id} ({exc})"
+    log.info("fly-into: %s (%s), depth from %s, %d regions", asset.asset_id, asset.title, depth_source, len(targets))
+    try:
+        from romanfeed.journey.short import render_journey_short
+
+        piece = compose_piece(work / f"{stem}.music.m4a", seconds=seconds + 2, seed=f"{asset.asset_id}-fly",
+                              style="journey", artist=cfg.channel.name, calm_at=1e9)
+        if upload and not piece.publishable:
+            raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
+        path = render_journey_short(scene, targets, out_dir / f"{stem}.mp4", seconds=seconds, width=s.width,
+                                    height=s.height, fps=s.fps, audio=piece.path,
+                                    overlay=fly_mod.overlay(cfg, asset, seconds=seconds, link_label=label))
+    except Exception as exc:
+        log.exception("fly-into render failed for %s", asset.asset_id)
+        return None, f"the render failed for {asset.asset_id} ({exc})"
+    log.info("fly-into Short rendered in %.0fs", time.monotonic() - t0)
+    md = fly_mod.metadata(cfg, asset, link_id=parent.link_id, link_label=label, tracks=[piece],
+                          depth_source=depth_source)
+    vid = publish(path, md, mode=mode)
+    skip_objects.add(object_key(asset))
+    if upload:
+        ledger.record_short(slug, asset.asset_id, fly_mod.FLY_PARENT, vid)
+    log.info("short %s: fly-into %s (link %s) -> %s", asset.asset_id, md.title, parent.slug, vid or "(dry run)")
+    return ShortResult(asset.asset_id, fly_mod.FLY_PARENT, path, vid, md.title), ""
+
+
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
@@ -880,7 +1010,8 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
 
     `extra` marks a run from one of the test-only slots: it posts only while
     the Shorts test runs. `style` is auto (every hook_every-th Short in the
-    hook style), calm or hook.
+    hook style), calm or hook; fly-into makes the first Short a fly-into
+    Short whatever the slot or date (a preview), the rest calm.
 
     `catch_up` marks a scheduled run: when the last 24 hours are short by
     more than the slack (GitHub skipped an earlier slot), a one-Short run
@@ -975,7 +1106,24 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             # same at the cap (one in, one aged out), so every run got the same
             # style (Nov 4-5: six calm in a row).
             n = posted_total + len(results)
-            if sky_mod.slot_due(cfg.shorts, n):
+            # A manual "fly-into" run makes one whatever the slot (a preview).
+            if (style == "fly-into" and not results) or fly_mod.slot_due(cfg.shorts, n):
+                # Fly-into slots take the hook/opening/title combinations the
+                # sky-event slots leave (romanfeed/fly_into.py), and none of
+                # those treatments.
+                try:
+                    done, why = _fly_into_short(cfg, ledger, now=datetime.now(timezone.utc), cache=cache, work=work,
+                                                out_dir=out_dir, models=data_dir / "cache" / "models", mode=mode,
+                                                upload=upload, public=public, skip_objects=seen_objects,
+                                                posted=posted)
+                except Exception as exc:  # a new kind of Short must never cost the slot
+                    log.exception("fly-into Short failed")
+                    done, why = None, f"it failed ({exc})"
+                if done:
+                    results.append(done)
+                    continue
+                log.info("shorts: fly-into slot (Short %d) falls back to a normal Short: %s", n, why)
+            elif sky_mod.slot_due(cfg.shorts, n):
                 # Sky-event slots sit where every other test keeps its two
                 # sides even (romanfeed/sky_events.py), and take none of them.
                 try:

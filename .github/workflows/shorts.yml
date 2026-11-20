@@ -62,9 +62,9 @@ on:
         type: boolean
         default: true
       style:
-        description: auto alternates per shorts.hook_every; calm or hook forces one
+        description: auto alternates per shorts.hook_every; calm or hook forces one; fly-into previews a fly-into Short
         type: choice
-        options: [auto, calm, hook]
+        options: [auto, calm, hook, fly-into]
         default: auto
       crosspost_test:
         description: also send the social cut to the TikTok inbox as a private draft, whatever crosspost.mode says
@@ -92,7 +92,18 @@ jobs:
         run: |
           fc-list | grep -qi "DejaVuSans-Bold" && exit 0
           timeout 180 sudo apt-get install -y -q fonts-dejavu-core || echo "::warning::font install failed; captions fall back to the default font"
-      - run: pip install -e ".[youtube]"
+      # The journey extra (OpenCV, onnxruntime) renders the fly-into Shorts
+      # (romanfeed/fly_into.py); without OpenCV a fly-into slot falls back to a
+      # normal Short.
+      - run: pip install -e ".[youtube,journey]"
+      # The depth model for fly-into Shorts (~99 MB, hash-pinned in
+      # romanfeed/journey/depth.py), the same cache entry the journey job uses.
+      # Without it the depth comes from brightness layering.
+      - name: Depth model cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache/models
+          key: journey-depth-anything-v2-small-onnx-v1
       - name: Restore ledger
         uses: actions/cache@v4
         with:
