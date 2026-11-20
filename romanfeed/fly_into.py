@@ -25,6 +25,7 @@ cannot be made the slot is a normal Short and the log says why
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -40,7 +41,16 @@ FLY_PARENT = "fly-into"   # shorts.parent_slug: keeps them out of the long video
 CENTRAL = ZoneInfo("America/Chicago")
 TRIES = 4                 # pictures downloaded and checked before the slot gives up
 MAX_UPSCALE = 1.12        # the widest view may enlarge the picture at most this much
+SIZE_CAP = 30_000_000     # pixels: past this a picture ranks as big as any (survey plates are 150 MP)
 NAME_FADE = 0.5
+# Pictures of the surroundings rather than the object, or not from the
+# telescope the description would name: a ground-based survey plate of "the
+# night sky around the Twin Jet Nebula" is mostly empty sky (dry run, Nov 20),
+# and "one real Hubble image" would be untrue of it.
+_NOT_THE_OBJECT = re.compile(
+    r"ground[- ]based|sky around|around the|surroundings|wide[- ]?field|digiti[sz]ed sky survey|\bDSS\b|"
+    r"finder|chart|location of|annotated|compass|compared|comparison|side by side|illustration|artist|"
+    r"impression|animation|zoom|mosaic of the sky|wide view", re.I)
 PLATE_SECONDS = 2.5       # the subscribe plate covers the end of the reveal
 
 
@@ -65,6 +75,20 @@ def slot_due(s, n: int, now: datetime | None = None) -> bool:
     return in_window(s, now) and n % 16 in set(s.fly_into_slots or [])
 
 
+def is_the_object(asset: ImageAsset) -> bool:
+    """False for a picture of an object's surroundings, a chart, a comparison,
+    an illustration or a ground-based survey plate (judged on title and credit)."""
+    return not _NOT_THE_OBJECT.search(f"{asset.title} {asset.credit}")
+
+
+def rank_key(asset: ImageAsset, weights: dict[str, float] | None = None) -> tuple[float, int]:
+    """Bigger is better, up to SIZE_CAP; the subject test's winner (galaxies,
+    shorts.subject_weights) first."""
+    from romanfeed.why import subject
+
+    return (weights or {}).get(subject(asset), 0.0), min(asset.width * asset.height, SIZE_CAP)
+
+
 def fits(width: int, height: int, out_w: int, out_h: int) -> bool:
     """Whether a picture is big enough to fly into on a vertical screen: the
     widest view enlarges it at most MAX_UPSCALE (the flight closes in from
@@ -79,7 +103,8 @@ def name(asset: ImageAsset) -> str:
     from romanfeed.journey.metadata import with_article
     from romanfeed.publish.metadata import display_name, lead_name
 
-    return with_article(lead_name(display_name(asset), limit=60) or asset.title)
+    n = with_article(lead_name(display_name(asset), limit=60) or asset.title)
+    return "the " + n[4:] if n.startswith("The ") else n
 
 
 def title(asset: ImageAsset) -> str:

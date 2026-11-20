@@ -115,6 +115,8 @@ def test_the_pool_takes_unused_nebulae_and_galaxies_from_a_known_telescope_bigge
         _galaxy(6, title="Sombrero Galaxy", width=1200, height=800),                     # too small
         _galaxy(7, title="Andromeda Galaxy"),
         _galaxy(8, title="Lagoon Nebula", keywords=["nebula", "Hubble"]),
+        _galaxy(9, title="The night sky around the Twin Jet Nebula (ground-based image)", keywords=["nebula"],
+                width=14000, height=11000),                                        # not the object itself
     ])
     ledger.record_short("chan", "nasa:G7", "chan-2026-09-30", "S1")                      # used by a Short
     ledger.mark_assets_used("chan-journey", ["nasa:G8"], "chan-journey-2026-11-20")      # used by a journey
@@ -124,6 +126,22 @@ def test_the_pool_takes_unused_nebulae_and_galaxies_from_a_known_telescope_bigge
     skip = {shorts.object_key(_galaxy(2, title="Carina Nebula"))}
     assert [a.asset_id for _, a in shorts.fly_into_pool(ledger, _cfg(), public=lambda v: True, skip_objects=skip)] \
         == ["nasa:G1"]
+
+
+def test_pictures_of_the_surroundings_or_from_the_ground_are_left_out_and_size_stops_counting_past_a_cap():
+    # The first dry run (Nov 20) picked a 157 MP ground-based survey plate of the sky around the Twin Jet Nebula.
+    twin = _galaxy(title="The night sky around the Twin Jet Nebula (ground-based image)", keywords=["nebula"],
+                   credit="NASA, ESA, Digitized Sky Survey 2", width=14000, height=11000)
+    assert not fly.is_the_object(twin)
+    for t in ("Wide-field view of the Lagoon Nebula", "Location of the Crab Nebula in Taurus",
+              "Annotated image of the Orion Nebula", "Artist's impression of a galaxy"):
+        assert not fly.is_the_object(_galaxy(title=t))
+    assert fly.is_the_object(_galaxy()) and fly.is_the_object(_galaxy(title="Pillars of Creation (NIRCam Image)"))
+    huge, big = _galaxy(2, width=14000, height=11000), _galaxy(3, width=6000, height=5000)
+    assert fly.rank_key(huge) == fly.rank_key(big)
+    neb = _galaxy(4, title="Lagoon Nebula", keywords=["nebula"], width=6000, height=5000)
+    assert fly.rank_key(big, {"galaxy": 0.1}) > fly.rank_key(neb, {"galaxy": 0.1})
+    assert fly.title(_galaxy(title="The Cat's Paw Nebula")) == "Flying into the Cat's Paw Nebula"
 
 
 def test_fits_needs_the_picture_to_cover_a_vertical_screen():

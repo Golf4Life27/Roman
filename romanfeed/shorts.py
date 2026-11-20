@@ -363,9 +363,10 @@ def why_pool(ledger: Ledger, channel: str, *, public: Callable[[str], bool] = is
 def fly_into_pool(ledger: Ledger, cfg: ChannelConfig, *, public: Callable[[str], bool] = is_public,
                   skip_objects: set[str] = frozenset(), posted: list[str] = ()) -> list[tuple[Parent, ImageAsset]]:
     """Every picture in a public long video that a fly-into Short may use,
-    biggest first: a nebula or galaxy from a known telescope with a name for
-    a title (the journey's own test), never used by a Short or a journey,
-    not Earth, and no object posted as a Short in the last repeat_days."""
+    best first (romanfeed/fly_into.py rank_key): a nebula or galaxy from a
+    known telescope with a name for a title (the journey's own test), of the
+    object itself, never used by a Short or a journey, not Earth, and no
+    object posted as a Short in the last repeat_days."""
     from romanfeed.journey.metadata import is_headline, journey_subject
     from romanfeed.journey.run import ledger_key
 
@@ -383,15 +384,16 @@ def fly_into_pool(ledger: Ledger, cfg: ChannelConfig, *, public: Callable[[str],
             seen.add(a)
             asset = asset_from_meta(meta[a])
             if (is_earth(asset) or not journey_subject(asset) or not telescope_short(asset)
-                    or is_headline(asset.title) or object_key(asset) in skip_objects
+                    or is_headline(asset.title) or not fly_mod.is_the_object(asset)
+                    or object_key(asset) in skip_objects
                     or already_posted(asset, list(posted))):
                 continue
             if asset.width and asset.height and not fly_mod.fits(asset.width, asset.height, cfg.shorts.width,
                                                                  cfg.shorts.height):
                 continue
             hits.append((p, asset))
-    # Stable: among pictures of one size the parent with the fewest Shorts leads.
-    hits.sort(key=lambda pa: pa[1].width * pa[1].height, reverse=True)
+    # Stable: among equals the parent with the fewest Shorts leads.
+    hits.sort(key=lambda pa: fly_mod.rank_key(pa[1], cfg.shorts.subject_weights), reverse=True)
     return hits
 
 
@@ -915,8 +917,8 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
                     posted: list[str]) -> tuple[ShortResult | None, str]:
     """One fly-into Short (romanfeed/fly_into.py), or (None, why not).
 
-    The picture is the biggest unused nebula or galaxy in the library that
-    downloads cleanly and is big enough for a vertical flight; the journey
+    The picture is the first unused nebula or galaxy in the library
+    (fly_into_pool's order) that downloads cleanly and is big enough for a vertical flight; the journey
     code estimates its depth, builds the scene and renders 20-30 s with its
     own composed music. Never in the hook style or with a test opening or
     title, and posted to YouTube only (no social cut). The object it shows
@@ -937,7 +939,8 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
     pool = fly_into_pool(ledger, cfg, public=public, skip_objects=skip_objects, posted=posted)
     if not pool:
         return None, "no unused nebula or galaxy picture from a known telescope in the library"
-    log.info("fly-into: %d unused nebula or galaxy pictures in the library could be flown into", len(pool))
+    log.info("fly-into: %d unused nebula or galaxy pictures in the library could be flown into; first up: %s",
+             len(pool), "; ".join(a.title for _, a in pool[:fly_mod.TRIES]))
     choice = None
     for parent, cand in pool[:fly_mod.TRIES]:
         if not ranked_candidates([cand], cache):
@@ -949,7 +952,7 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
             break
         log.info("fly-into: %s is %dx%d, too small to fly into on a vertical screen", cand.asset_id, w, h)
     if choice is None:
-        return None, f"none of the {min(len(pool), fly_mod.TRIES)} biggest of {len(pool)} pictures downloaded at a usable size"
+        return None, f"none of the first {min(len(pool), fly_mod.TRIES)} of {len(pool)} pictures downloaded at a usable size"
     parent, asset = choice
     label = full_label(parent.link_seconds)
     stem = f"{slug}-short-fly-{asset.asset_id.replace(':', '_')}"
