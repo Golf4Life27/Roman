@@ -24,6 +24,7 @@ from romanfeed.explainer import EXPLAINER_TAG
 from romanfeed.fly_into import FLY_TAG
 from romanfeed.publish.stats import _query
 from romanfeed.sky_events import SKY_TAG
+from romanfeed.scale import SCALE_TAG
 from romanfeed.shorts import ANTIC_TAG, END_CARD_TAG, HOOK_TAG, PLAIN_TITLE_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
@@ -51,11 +52,12 @@ class ShortNumbers:
     sky: bool = False      # a sky event this week (Nov 18-25 test)
     fly: bool = False      # a flight into one picture (Nov 21-27 test)
     end_card: bool = False  # ends on the subscribe end card (Nov 21-27 test)
+    scale: bool = False    # a "you are here" scale Short (test 21, from Nov 22)
 
     @property
     def own_kind(self) -> bool:
         """A kind of Short with its own section, kept out of every other test."""
-        return self.sky or self.fly
+        return self.sky or self.fly or self.scale
 
 
 def posted_since(ledger, channel: str, since: date) -> list[tuple[str, str, str]]:
@@ -96,6 +98,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             sky=SKY_TAG in tags,
             fly=FLY_TAG in tags,
             end_card=END_CARD_TAG in tags,
+            scale=SCALE_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -288,6 +291,22 @@ def end_card_lines(rows: list[ShortNumbers]) -> list[str]:
             opening_line("no card", [r for r in during if not r.end_card])]
 
 
+def scale_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The "you are here" test (test 21): the scale Shorts against the usual
+    Shorts posted over the same days (every Short since the first scale one
+    that is not a sky-event, fly-into or scale Short), on subscribers per
+    1,000 views and live views per Short. It keeps the format only if it
+    beats the usual Shorts on both."""
+    if not any(r.scale for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.scale)
+    during = [r for r in rows if r.posted >= start]
+    usual = [r for r in during if not r.own_kind]
+    return ["You are here vs the usual Shorts (same days, since the first one):",
+            opening_line("you are here", [r for r in during if r.scale]),
+            opening_line("usual", usual)]
+
+
 def _mmss(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
@@ -318,8 +337,9 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines += end_card_lines(rows)
     lines += sky_lines(sky_rows)
     lines += fly_lines(sky_rows)
+    lines += scale_lines(sky_rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")
     for r in sky_rows:
-        lines.append(f"    {r.posted[:16]} {'sky' if r.sky else 'fly' if r.fly else r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
+        lines.append(f"    {r.posted[:16]} {'sky' if r.sky else 'fly' if r.fly else 'here' if r.scale else r.style:4} {r.public_views:>6,} {r.views:>6,} {_mmss(r.avg_view_s):>5} "
                      f"{r.subs:>3}  {r.title[:70]}")
     return lines

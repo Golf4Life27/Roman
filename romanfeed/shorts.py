@@ -38,6 +38,7 @@ from romanfeed.curation.selector import flat_black_fraction, is_earth, looks_uns
 from romanfeed.publish import publish
 from romanfeed import explainer as explainer_mod
 from romanfeed import fly_into as fly_mod
+from romanfeed import scale as scale_mod
 from romanfeed import sky_events as sky_mod
 from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
@@ -1021,6 +1022,64 @@ def _fly_into_short(cfg: ChannelConfig, ledger: Ledger, *, now: datetime, cache:
     return ShortResult(asset.asset_id, fly_mod.FLY_PARENT, path, vid, md.title), ""
 
 
+def scale_posted(ledger: Ledger, channel: str) -> list[str]:
+    """Asset ids of the "you are here" Shorts already uploaded, oldest first."""
+    rows = ledger.conn.execute(
+        "SELECT asset_id FROM shorts WHERE channel = ? AND parent_slug = ? AND youtube_id IS NOT NULL"
+        " ORDER BY created_at", (channel, scale_mod.SCALE_PARENT)).fetchall()
+    return [r[0] for r in rows]
+
+
+def _scale_short(cfg: ChannelConfig, ledger: Ledger, parent: Parent | None, *, work: Path, out_dir: Path,
+                 mode: str, upload: bool, manifest, key: str | None,
+                 done_ids: list[str]) -> tuple[ShortResult | None, str]:
+    """One "you are here" Short (romanfeed/scale.py), or (None, why not).
+
+    The next scene not yet posted, drawn by the scale code, read in the calm
+    voice when there is a voice, never in the hook style or with a test
+    opening, title or end card, and posted to YouTube only."""
+    s, slug = cfg.shorts, cfg.channel.slug
+    scene = scale_mod.next_scene(done_ids)
+    if scene is None:
+        return None, "all the scenes have posted"
+    aid = scale_mod.asset_id(scene)
+    label = full_label(parent.link_seconds) if parent else "8-hour"
+    stem = f"{slug}-short-scale-{scene.id}"
+    dur = scale_mod.SECONDS
+    spoken = None
+    if key:
+        try:
+            wav = narration.synthesize(scene.say, work / f"{stem}.voice.wav", api_key=key, voice=s.voice)
+            secs = probe_duration(str(wav))
+            if 0.8 + secs <= scale_mod.RING_AT + 2.5:
+                spoken = (wav, secs)
+            else:
+                log.info("you-are-here voice for %s runs %.1fs; music only", scene.id, secs)
+        except Exception as exc:  # no voice is better than no Short
+            log.warning("you-are-here voice failed for %s: %s", scene.id, exc)
+    library = (ComposedLibrary(work / "composed" / stem, count=1, seconds_each=dur + 4, seed=aid)
+               if cfg.audio.source == "composed" else manifest)
+    music, tracks = build_soundtrack(
+        library, genre=cfg.audio.genre, duration=dur, out_path=work / f"{stem}.m4a", fade=1.5, crossfade=0.0,
+        gain_db=0.0, allow_placeholder=cfg.audio.allow_placeholder or mode == "dry-run", seed=aid)
+    if upload and any(not t.publishable for t in tracks):
+        raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
+    audio = music
+    if spoken:
+        audio = narration.mix_voice(spoken[0], music, work / f"{stem}.mix.m4a", voice_start=0.8, duration=dur,
+                                    music_gain=0.22)
+    path = scale_mod.render(scene, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio, link_label=label, seconds=dur)
+    md = scale_mod.metadata(cfg, scene, link_id=parent.link_id if parent else None, link_label=label,
+                            tracks=tracks)
+    vid = publish(path, md, mode=mode)
+    if upload:
+        ledger.record_short(slug, aid, scale_mod.SCALE_PARENT, vid)
+    done_ids.append(aid)
+    log.info("short %s: you are here, %s (%s) -> %s", aid, scene.id, "voice" if spoken else "music only",
+             vid or "(dry run)")
+    return ShortResult(aid, scale_mod.SCALE_PARENT, path, vid, md.title), ""
+
+
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
@@ -1115,6 +1174,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         key = narration.api_key() if cfg.shorts.narration else None
         explained = ledger.explainer_days(cfg.channel.slug)
         seen_objects = recent_short_objects(ledger, cfg.channel.slug, cfg.shorts.repeat_days)
+        scale_done = scale_posted(ledger, cfg.channel.slug)
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
@@ -1132,6 +1192,20 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
             # same at the cap (one in, one aged out), so every run got the same
             # style (Nov 4-5: six calm in a row).
             n = posted_total + len(results)
+            # "You are here" slots (test 21) are calm slots no other kind of
+            # Short takes; a manual "you-are-here" run makes one (a preview).
+            if (style == "you-are-here" and not results) or scale_mod.slot_due(
+                    cfg.shorts, n, len(scale_done)):
+                try:
+                    done, why = _scale_short(cfg, ledger, parent, work=work, out_dir=out_dir, mode=mode,
+                                             upload=upload, manifest=manifest, key=key, done_ids=scale_done)
+                except Exception as exc:  # a new kind of Short must never cost the slot
+                    log.exception("you-are-here Short failed")
+                    done, why = None, f"it failed ({exc})"
+                if done:
+                    results.append(done)
+                    continue
+                log.info("shorts: you-are-here slot (Short %d) falls back to a normal Short: %s", n, why)
             # A manual "fly-into" run makes one whatever the slot (a preview).
             if (style == "fly-into" and not results) or fly_mod.slot_due(cfg.shorts, n):
                 # Fly-into slots take the hook/opening/title combinations the

@@ -407,6 +407,21 @@ shorts:
   fly_into_until: "2026-11-27"
   fly_into_per_day: 2
   fly_into_slots: [2, 4, 9, 15]
+  # "You are here" scale Shorts (test 21, romanfeed/scale.py; owner in the
+  # main chat, Nov 20: "Send it to Space Screens"): 3 Shorts inside the 8 a
+  # day, no extra slots. Each opens on a huge field of dots drawn by our own
+  # code (stars, galaxies, planets) and zooms down to one highlighted "you are
+  # here" dot. Every number on screen was read at NASA or ESA on Nov 21 (the
+  # page and its date sit next to each one in romanfeed/scale.py). They take
+  # calm slots first: Shorts 8 and 12 of every 16 (calm, no end card, not a
+  # sky-event or fly-into slot), from Nov 22 until 3 have posted. Tagged
+  # you-are-here, music plus voice, YouTube only, kept out of the other tests;
+  # called 7 days after the third on subscribers per 1,000 views and views per
+  # Short against the usual Shorts of the same days.
+  scale_from: "2026-11-22"
+  scale_until: "2026-11-30"
+  scale_total: 3
+  scale_slots: [8, 12]
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"

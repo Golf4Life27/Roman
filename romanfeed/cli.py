@@ -688,9 +688,10 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--count", type=int, help="at most this many (default: what the 24-hour cap leaves)")
     sh.add_argument("--dry-run", action="store_true", help="render and write metadata, upload nothing")
     sh.add_argument("--extra", action="store_true", help="a test-only slot: posts only while the Shorts test runs")
-    sh.add_argument("--style", choices=["auto", "calm", "hook", "fly-into"], default="auto",
+    sh.add_argument("--style", choices=["auto", "calm", "hook", "fly-into", "you-are-here"], default="auto",
                     help="auto alternates per shorts.hook_every; calm or hook forces one; fly-into makes the "
-                         "first Short a fly-into Short whatever the slot (for a preview)")
+                         "first Short a fly-into Short whatever the slot (for a preview); you-are-here the same for a "
+                         "you-are-here scale Short")
     sh.add_argument("--catch-up", action="store_true",
                     help="a scheduled run: post one extra Short when an earlier slot in the last 24 hours never ran")
     sh.add_argument("--backup", action="store_true",
