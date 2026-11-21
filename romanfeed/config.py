@@ -336,6 +336,16 @@ class ShortsSettings:
     fly_into_until: str = ""
     fly_into_per_day: int = 2
     fly_into_slots: list[int] = field(default_factory=lambda: [2, 4, 9, 15])
+    # "You are here" scale Shorts (romanfeed/scale.py), test 21: a field of
+    # dots that narrows to one highlighted "you are here" dot, with numbers
+    # read at NASA or ESA. scale_total of them, in the positions in
+    # scale_slots of every run of 16 Shorts (8 and 12: calm, no end card,
+    # not a sky-event or fly-into slot), from scale_from (Central) until
+    # scale_total have posted or scale_until has passed. Blank from = off.
+    scale_from: str = ""
+    scale_until: str = ""
+    scale_total: int = 3
+    scale_slots: list[int] = field(default_factory=lambda: [8, 12])
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
