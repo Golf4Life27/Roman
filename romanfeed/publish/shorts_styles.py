@@ -24,7 +24,7 @@ from romanfeed.explainer import EXPLAINER_TAG
 from romanfeed.fly_into import FLY_TAG
 from romanfeed.publish.stats import _query
 from romanfeed.sky_events import SKY_TAG
-from romanfeed.shorts import ANTIC_TAG, HOOK_TAG, PLAIN_TITLE_TAG, PUNCH_TAG, asset_from_meta, is_earth
+from romanfeed.shorts import ANTIC_TAG, END_CARD_TAG, HOOK_TAG, PLAIN_TITLE_TAG, PUNCH_TAG, asset_from_meta, is_earth
 from romanfeed.why import SUBJECTS, WHY_TAG, subject
 
 STYLES = ("hook", "calm")
@@ -50,6 +50,7 @@ class ShortNumbers:
     plain_title: bool = False  # titled with the picture's name alone (Nov 16-22 test)
     sky: bool = False      # a sky event this week (Nov 18-25 test)
     fly: bool = False      # a flight into one picture (Nov 21-27 test)
+    end_card: bool = False  # ends on the subscribe end card (Nov 21-27 test)
 
     @property
     def own_kind(self) -> bool:
@@ -94,6 +95,7 @@ def collect(yt, yta, ledger, channel: str, since: date, end: date) -> list[Short
             plain_title=PLAIN_TITLE_TAG in tags,
             sky=SKY_TAG in tags,
             fly=FLY_TAG in tags,
+            end_card=END_CARD_TAG in tags,
             subject=subject(asset_from_meta(meta[asset])) if asset in meta else "other"))
     by_id = {s.video_id: s for s in out}
     for i in range(0, len(out), 200):
@@ -272,6 +274,20 @@ def fly_lines(rows: list[ShortNumbers]) -> list[str]:
             opening_line("calm", calm)]
 
 
+def end_card_lines(rows: list[ShortNumbers]) -> list[str]:
+    """The subscribe end-card test (Nov 21-27): regular Shorts that end on the
+    big SUBSCRIBE card against those that don't, posted since the first one.
+    Explainer, sky-event and fly-into Shorts never carry it, so they sit out.
+    The number that decides it is subscribers per 1,000 views."""
+    if not any(r.end_card for r in rows):
+        return []
+    start = min(r.posted for r in rows if r.end_card)
+    during = [r for r in rows if r.posted >= start and not (r.explainer or r.own_kind)]
+    return ["Subscribe end card vs none (Shorts since the first end card):",
+            opening_line("end card", [r for r in during if r.end_card]),
+            opening_line("no card", [r for r in during if not r.end_card])]
+
+
 def _mmss(s: float) -> str:
     return f"{int(s) // 60}:{int(s) % 60:02d}"
 
@@ -299,6 +315,7 @@ def report_lines(rows: list[ShortNumbers], since: date, end: date) -> list[str]:
     lines += opening_lines(rows)
     lines += explainer_lines(rows)
     lines += title_lines(rows)
+    lines += end_card_lines(rows)
     lines += sky_lines(sky_rows)
     lines += fly_lines(sky_rows)
     lines.append("  Each Short (posted UTC, style, live views, Analytics views, avg view, subs):")

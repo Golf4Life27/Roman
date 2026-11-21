@@ -668,3 +668,27 @@ def test_an_object_posted_recently_waits(ledger, monkeypatch, tmp_path):
     res = shorts.run_shorts(_cfg(enabled=True, per_day=8, repeat_days=30), count=1, data_dir=led_path.parent,
                             output_dir=tmp_path / "out", public=lambda v: True)
     assert [r.asset_id for r in res] and all(int(r.asset_id[6:]) >= 15 for r in res)
+
+
+def test_a_short_with_the_end_card_ends_on_it(tmp_path):
+    src = tmp_path / "pic.png"
+    Image.new("RGB", (900, 1600), (40, 60, 120)).save(src)
+    a = _asset(1, title="Cosmic Cliffs (NIRCam Image)", source="ESA/Webb", local_path=src)
+    audio = tmp_path / "a.m4a"
+    subprocess.run([ffmpeg_path(), "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=8",
+                    "-c:a", "aac", str(audio)], check=True)
+    cfg = _cfg(seconds=6, width=270, height=480, fps=12)
+    out = shorts.render_short(a, tmp_path / "x.mp4", cfg=cfg, audio=audio, link_label="8-hour", work_dir=tmp_path,
+                              end_card=True)
+    assert abs(probe_duration(str(out)) - 6) < 0.5
+
+    def frame(t):
+        png = tmp_path / f"f{t}.png"
+        subprocess.run([ffmpeg_path(), "-loglevel", "error", "-y", "-ss", str(t), "-i", str(out), "-frames:v", "1",
+                        str(png)], check=True)
+        return Image.open(png).convert("RGB")
+    before, during = frame(1.0), frame(4.0)
+    # The card's button: bright red in the upper half only once the card is up.
+    red = lambda im: sum(1 for x in range(0, 270, 3) for y in range(150, 260, 3)
+                         if im.getpixel((x, y))[0] > 150 and im.getpixel((x, y))[1] < 60)
+    assert red(during) > 40 and red(before) < red(during) // 4

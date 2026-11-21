@@ -365,6 +365,14 @@ shorts:
   # on live views per Short and subscribers per 1,000 views.
   plain_title_from: "2026-11-16"
   plain_title_until: "2026-11-22"
+  # Subscribe end card test, Nov 21-27 (tests.md, test 20): subscribers are
+  # the gate that binds (194 of 1,000 vs 2,707 of 4,000 hours, Nov 15), so
+  # half of the regular Shorts end on a dimmed frame with a big SUBSCRIBE
+  # button for their last 3 seconds, on top of the plate they already carry.
+  # Called Nov 28 on subscribers per 1,000 views.
+  end_card_from: "2026-11-21"
+  end_card_until: "2026-11-27"
+  end_card_seconds: 3.0
   # No object twice within 30 days: the 13 repeats Nov 1-15 drew 33-51 views
   # each and no subscribers.
   repeat_days: 30

@@ -43,7 +43,7 @@ from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
 from romanfeed.render import ffmpeg
 from romanfeed import crosspost, narration
-from romanfeed.render.cards import caption_card, short_cta_card, short_overlay
+from romanfeed.render.cards import caption_card, short_cta_card, short_end_card, short_overlay
 from romanfeed.render.ffmpeg import probe_duration
 from romanfeed.sources import build_source
 from romanfeed.sources.base import USER_AGENT, ImageAsset
@@ -200,6 +200,15 @@ def _in_window(s_from: str, s_until: str, now: datetime | None) -> bool:
 
 
 PLAIN_TITLE_TAG = "plain-title"
+END_CARD_TAG = "end-card"
+
+
+def end_card_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
+    """Whether Short number `n` ends on the subscribe end card: n % 4 in
+    {1, 2}, between end_card_from and end_card_until (Central). That is half
+    of every run of four, with hook and calm (n % 2) and both openings
+    (n // 2) split evenly between card and no card."""
+    return _in_window(s.end_card_from, s.end_card_until, now) and n % 4 in (1, 2)
 
 
 def plain_title_due(s: ShortsSettings, n: int, now: datetime | None = None) -> bool:
@@ -534,7 +543,7 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
                  duration: float | None = None, captions: list[tuple[float, float, str]] | None = None,
                  cta_from: float | None = None, pointer: tuple[str, str] | None = None,
                  max_pan: int = 900, punch_in: bool = False, anticipation: bool = False,
-                 overlay: Image.Image | None = None) -> Path:
+                 overlay: Image.Image | None = None, end_card: bool = False) -> Path:
     """Render one Short. With `captions` (a narrated Short) the pointer to the
     long video waits until `cta_from`; without, it is on screen throughout.
     `pointer` (call, line under it) replaces the subscribe plate's text: the
@@ -565,6 +574,10 @@ def render_short(asset: ImageAsset, out_path: Path, *, cfg: ChannelConfig, audio
         cta = work_dir / "short_cta.png"
         short_cta_card(s.width, s.height, full_label=link_label, handle=handle, call=call, sub=sub).save(cta, "PNG")
         layers.append((cta, f"gte(t,{(cta_from or dur - 4):.3f})"))
+    if end_card:
+        end = work_dir / "short_end_card.png"
+        short_end_card(s.width, s.height, channel_name=cfg.channel.name).save(end, "PNG")
+        layers.append((end, f"gte(t,{max(dur - s.end_card_seconds, 0):.3f})"))
     # Alternate pan direction by asset so a run of Shorts does not all drift left.
     flip = int(hashlib.sha1(asset.asset_id.encode()).hexdigest(), 16) % 2
     prog = f"(1-t/{dur:.3f})" if flip else f"(t/{dur:.3f})"
@@ -661,7 +674,8 @@ def short_lead(asset: ImageAsset) -> str:
 
 def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks, script: str | None = None,
                    hook: bool = False, why=None, punch_in: bool = False,
-                   anticipation: bool = False, explainer=None, plain_title: bool = False) -> VideoMetadata:
+                   anticipation: bool = False, explainer=None, plain_title: bool = False,
+                   end_card: bool = False) -> VideoMetadata:
     lead = short_lead(asset)
     tele = telescope_short(asset)
     template = cfg.shorts.title_template
@@ -720,6 +734,8 @@ def short_metadata(cfg: ChannelConfig, asset: ImageAsset, parent: Parent, tracks
         tags.insert(0, ANTIC_TAG)
     if plain_title:
         tags.insert(0, PLAIN_TITLE_TAG)
+    if end_card:
+        tags.insert(0, END_CARD_TAG)
     return VideoMetadata(
         title=title[:100], description="\n".join(lines)[:5000], tags=tags[:20],
         category_id=cfg.publish.category_id, privacy=cfg.shorts.privacy, made_for_kids=cfg.publish.made_for_kids,
@@ -813,7 +829,7 @@ def _social_voice(spoken, *, cfg: ChannelConfig, label: str, work: Path, stem: s
 
 def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path, label: str, work: Path,
                 duration: float, voice=None, pointer: tuple[str, str] | None = None, hook: bool = False,
-                punch_in: bool = False, anticipation: bool = False) -> Path:
+                punch_in: bool = False, anticipation: bool = False, end_card: bool = False) -> Path:
     """One cut of a Short: voice (script, wav, seconds) over the music with
     captions for the facts and the closing plate under the last line, or
     music only with the plate throughout."""
@@ -832,7 +848,8 @@ def _render_cut(asset: ImageAsset, out: Path, *, cfg: ChannelConfig, music: Path
         cta_from = start + body_secs
     path = render_short(asset, out, cfg=cfg, audio=audio, link_label=label, work_dir=work,
                         duration=duration, captions=captions, cta_from=cta_from, pointer=pointer,
-                        max_pan=pan if voice else 900, punch_in=punch_in, anticipation=anticipation)
+                        max_pan=pan if voice else 900, punch_in=punch_in, anticipation=anticipation,
+                        end_card=end_card)
     if voice:
         Path(audio).unlink(missing_ok=True)
     return path
@@ -1250,11 +1267,13 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                 raise RuntimeError("refusing to upload a Short: soundtrack contains non-publishable tracks")
             script = spoken[0] if spoken else None
             hooked = hook and bool(spoken)
+            ending = end_card_due(cfg.shorts, n) and not explain
             path = _render_cut(best, out_dir / f"{stem}.mp4", cfg=cfg, music=audio, label=label, work=work,
-                               duration=dur, voice=spoken, hook=hooked, punch_in=punch, anticipation=antic)
+                               duration=dur, voice=spoken, hook=hooked, punch_in=punch, anticipation=antic,
+                               end_card=ending)
             md = short_metadata(cfg, best, parent, tracks, script=script, hook=hooked, why=why if spoken else None,
                                 punch_in=punch, anticipation=antic, explainer=explain[0] if explain else None,
-                                plain_title=plain_title_due(cfg.shorts, n))
+                                plain_title=plain_title_due(cfg.shorts, n), end_card=ending)
             vid = publish(path, md, mode=mode)
             seen_objects.add(object_key(best))
             if upload:

@@ -198,6 +198,30 @@ def short_cta_card(width: int, height: int, *, full_label: str, handle: str,
     return layer
 
 
+def short_end_card(width: int, height: int, *, channel_name: str) -> Image.Image:
+    """The closing seconds of a Short in the end-card test: the picture and its
+    text dimmed, the channel name over a big red SUBSCRIBE button between the
+    title and the subscribe plate (which stays, carrying the line), clear of
+    the player's own controls at the bottom."""
+    s = width / 1080
+    layer = Image.new("RGBA", (width, height), (0, 0, 0, 150))
+    d = ImageDraw.Draw(layer)
+    btn_font = _font(int(84 * s), bold=True)
+    name_font = _font(int(46 * s), bold=True)
+    y = int(height * 0.31)
+    y = _centered(layer, y, _tracked(channel_name), name_font, (225, 230, 245, 240), blur=4) + int(40 * s)
+    text = "SUBSCRIBE"
+    pad = int(60 * s)
+    bw = int(d.textlength(text, font=btn_font)) + 2 * pad
+    bh = int(150 * s)
+    bx = (width - bw) // 2
+    d.rounded_rectangle((bx, y, bx + bw, y + bh), radius=int(40 * s), fill=(204, 0, 0, 255))
+    tb = d.textbbox((0, 0), text, font=btn_font)
+    d.text((bx + (bw - (tb[2] - tb[0])) // 2 - tb[0], y + (bh - (tb[3] - tb[1])) // 2 - tb[1]),
+           text, font=btn_font, fill=(255, 255, 255, 255))
+    return layer
+
+
 def caption_card(text: str, width: int, height: int) -> Image.Image:
     """One burned-in caption chunk for a narrated Short: big, centred, two
     lines at most, in the middle band between the title and the safe-zone floor."""

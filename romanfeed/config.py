@@ -300,6 +300,14 @@ class ShortsSettings:
     # their question titles.
     plain_title_from: str = ""
     plain_title_until: str = ""
+    # Subscribe end card test (Nov 21-27): half of the regular Shorts end on
+    # a dimmed frame with a big SUBSCRIBE button for their last
+    # end_card_seconds. Shorts n with n % 4 in {1, 2}, so hook and
+    # calm, and both openings, split evenly. Between the two dates (Central);
+    # blank until = off.
+    end_card_from: str = ""
+    end_card_until: str = ""
+    end_card_seconds: float = 3.0
     # Never the same object twice in this many days (0 = no check). The upload
     # feed only shows the last 15 uploads (about two days at 8 a day), so the
     # Horsehead Nebula went up on Nov 6, 9 and 11.
