@@ -245,8 +245,16 @@ publish:
   # video, nebulae then galaxies in turn, the September title in full with the
   # name shortened to fit, no Earth days. Win: average click-through at or
   # above 3% once each has 1,000 impressions; under 2% ends it.
+  # Extended Nov 20 to Jan 31 (test 19, tests.md): on Nov 19 the channel made
+  # 83.3 watch hours, its best day since October, and 63.1 of them came from
+  # four old 8 h nebula/galaxy sleep videos (Cosmic cloudscape alone 40.0 h
+  # from 24 views). So every daily pair stays one subject, nebulae then
+  # galaxies, until the 4,000 hours are in. A day short of fresh pictures of
+  # its subject takes the other subject (romanfeed/winner.py: other_theme).
+  # Win: channel 7-day average of 60+ watch hours a day by Nov 27; back under
+  # 40 a day ends the extension.
   winner_from: "2026-11-19"
-  winner_until: "2026-11-22"
+  winner_until: "2027-01-31"
   winner_themes: [nebula, galaxy]
   winner_title_template: "{lead} | {subject} | {length} Relaxing Space Video for Sleep | Telescope Screensaver"
   # Remake test, Nov 23: "Cosmic cloudscape | Nebulae | 8 Hours" (Sep 25) is the

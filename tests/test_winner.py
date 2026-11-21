@@ -24,9 +24,19 @@ def _a(i, title, kw=()):
 def test_days_take_the_themes_in_turn_then_stop():
     cfg = _cfg()
     days = {d: winner.plan_for(cfg, date(2026, 11, d)) for d in (18, 19, 20, 21, 22, 24)}
-    assert days[18] is None and days[24] is None
-    assert [days[d].theme for d in (19, 20, 21, 22)] == ["nebula", "galaxy", "nebula", "galaxy"]
+    assert days[18] is None
+    assert [days[d].theme for d in (19, 20, 21, 22, 24)] == ["nebula", "galaxy", "nebula", "galaxy", "galaxy"]
     assert days[19].subject == "Nebulae" and days[20].subject == "Galaxies"
+    # Extended to Jan 31 (test 19), then the usual mix again.
+    assert winner.plan_for(cfg, date(2027, 1, 31)) is not None
+    assert winner.plan_for(cfg, date(2027, 2, 1)) is None
+
+
+def test_a_short_subject_hands_the_day_to_the_other():
+    plan = winner.plan_for(_cfg(), date(2026, 11, 23))   # the remake: nebulae, named
+    alt = winner.other_theme(plan)
+    assert alt.theme == "galaxy" and alt.subject == "Galaxies" and alt.lead is None and not alt.remake
+    assert winner.other_theme(alt).theme == "nebula"
 
 
 def test_the_remake_day_names_the_old_winner():
