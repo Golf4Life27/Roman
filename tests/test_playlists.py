@@ -127,3 +127,46 @@ def test_name_first_titles_land_in_the_right_playlists():
     assert pick("Hubble Telescope Images for Sleep") == {"d2"}
     assert pick("Deep Sleep · Screen Goes Dark") == {"d2"}
     assert pick("Space Videos for Sleep · Full Length") == {"w2", "d2", "d0"}
+
+
+class PinYT:
+    """playlistItems for one playlist holding `order`, recording moves."""
+    def __init__(self, order, refuse=False):
+        self.order, self.refuse, self.calls = list(order), refuse, []
+
+    def playlistItems(self):
+        call = lambda r=None, exc=None: types.SimpleNamespace(
+            execute=lambda: (_ for _ in ()).throw(exc) if exc else r)
+
+        def lst(**k):
+            return call({"items": [{"id": f"it-{v}", "contentDetails": {"videoId": v}} for v in self.order]})
+
+        def write(kind):
+            def fn(**k):
+                if self.refuse:
+                    return call(exc=RuntimeError("HttpError 400 manualSortRequired"))
+                self.calls.append((kind, k["body"].get("id"), k["body"]["snippet"]["resourceId"]["videoId"],
+                                   k["body"]["snippet"]["position"]))
+                return call({})
+            return fn
+        return types.SimpleNamespace(list=lst, update=write("move"), insert=write("add"))
+
+
+def test_pin_moves_the_best_video_to_the_top():
+    yt = PinYT(["new1", "new2", "kryWUGdjfB8"])
+    assert pl.pin(yt, "PL1", "kryWUGdjfB8") == "moved"
+    assert yt.calls == [("move", "it-kryWUGdjfB8", "kryWUGdjfB8", 0)]
+
+
+def test_pin_does_nothing_when_already_on_top_or_dry():
+    assert pl.pin(PinYT(["kryWUGdjfB8", "a"]), "PL1", "kryWUGdjfB8") is None
+    yt = PinYT(["a"])
+    assert pl.pin(yt, "PL1", "kryWUGdjfB8", dry_run=True) == "would add" and yt.calls == []
+
+
+def test_pin_reports_an_automatically_sorted_playlist():
+    assert "could not pin" in pl.pin(PinYT(["a", "kryWUGdjfB8"], refuse=True), "PL1", "kryWUGdjfB8")
+
+
+def test_the_best_sleep_video_is_pinned():
+    assert pl.PINNED["Space Videos for Sleep · Full Length"] == "kryWUGdjfB8"

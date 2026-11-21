@@ -100,6 +100,15 @@ PLAYLISTS: list[Playlist] = [
 ]
 
 
+# Kept at the very top of a playlist, above the newest uploads: the
+# channel's best sleep video goes first so a viewer who opens the playlist
+# starts on it. "Cosmic cloudscape | Nebulae | 8 Hours" (Sep 25) made 40.0 of
+# the channel's 83.3 watch hours on Nov 19 (test 19, tests.md).
+PINNED: dict[str, str] = {
+    "Space Videos for Sleep · Full Length": "kryWUGdjfB8",
+}
+
+
 def _seconds(iso: str) -> int:
     m = re.fullmatch(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso or "")
     if not m:
@@ -182,6 +191,30 @@ def add(yt, playlist_id: str, video_id: str, position: int | None) -> None:
     yt.playlistItems().insert(part="snippet", body={"snippet": snippet}).execute()
 
 
+def pin(yt, playlist_id: str, video_id: str, *, dry_run: bool = False) -> str | None:
+    """Move video_id to the top of the playlist (or add it there). Returns
+    what was done, or None when it is already on top. A playlist sorted
+    automatically refuses positions (manualSortRequired); that is reported,
+    not raised, so the rest of the run goes on."""
+    items = list(_pages(yt.playlistItems().list, part="snippet,contentDetails", playlistId=playlist_id, maxResults=50))
+    if items and items[0]["contentDetails"]["videoId"] == video_id:
+        return None
+    here = next((it for it in items if it["contentDetails"]["videoId"] == video_id), None)
+    if dry_run:
+        return "would move" if here else "would add"
+    body = {"playlistId": playlist_id, "resourceId": {"kind": "youtube#video", "videoId": video_id}, "position": 0}
+    try:
+        if here:
+            yt.playlistItems().update(part="snippet", body={"id": here["id"], "snippet": body}).execute()
+            return "moved"
+        yt.playlistItems().insert(part="snippet", body={"snippet": body}).execute()
+        return "added"
+    except Exception as exc:
+        if "manualSortRequired" in str(exc):
+            return "could not pin (the playlist is sorted automatically)"
+        raise
+
+
 def sync(yt, *, max_inserts: int = 30, dry_run: bool = False) -> list[str]:
     """Create missing playlists and add what each is missing, at most
     max_inserts additions per run. Returns report lines."""
@@ -218,4 +251,12 @@ def sync(yt, *, max_inserts: int = 30, dry_run: bool = False) -> list[str]:
             done += 1
         left = len(adds) - done
         lines.append(f"{'would add' if dry_run else 'added'} {done} to '{title}'" + (f" ({left} left for next run)" if left else ""))
+    public = {v.id for v in videos}
+    for title, video_id in PINNED.items():
+        if budget <= 0 or not ids.get(title) or video_id not in public:
+            continue
+        done = pin(yt, ids[title], video_id, dry_run=dry_run)
+        if done:
+            budget -= 1
+            lines.append(f"{done} {video_id} at the top of '{title}'")
     return lines

@@ -146,7 +146,14 @@ def run(cfg: ChannelConfig, opts: RunOptions | None = None) -> RunResult:
         if plan:
             # Winner format: deep space only, one subject (romanfeed/winner.py).
             subject = "space"
-            themed = winner_mod.narrow(candidates, plan.theme, ledger.used_asset_ids(cfg.channel.slug), n_images)
+            used = ledger.used_asset_ids(cfg.channel.slug)
+            themed = winner_mod.narrow(candidates, plan.theme, used, n_images)
+            if themed is None and (alt := winner_mod.other_theme(plan)) is not None:
+                alt_themed = winner_mod.narrow(candidates, alt.theme, used, n_images)
+                if alt_themed is not None:
+                    log.warning("WINNER FORMAT: too few never-shown %s pictures; %s instead today",
+                                plan.theme, alt.theme)
+                    plan, themed = alt, alt_themed
             if themed is None:
                 log.warning("WINNER FORMAT: too few never-shown %s pictures for a whole video; "
                             "making the usual mixed video today", plan.theme)

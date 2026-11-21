@@ -58,6 +58,16 @@ def plan_for(cfg: ChannelConfig, day: date) -> DayPlan | None:
     return DayPlan(theme, LABELS[theme], template)
 
 
+def other_theme(plan: DayPlan) -> DayPlan | None:
+    """The same day in the other subject, for a day whose own subject has too
+    few never-shown pictures left: still one subject, still the winner title,
+    but no fixed name (a remake's name belongs to its own subject)."""
+    others = [t for t in HINTS if t != plan.theme]
+    if not others:
+        return None
+    return DayPlan(others[0], LABELS[others[0]], plan.title_template)
+
+
 def narrow(candidates: list[ImageAsset], theme: str, used: set[str], count: int) -> list[ImageAsset] | None:
     """The candidates of one theme, or None when too few never-shown ones are
     left for a whole video (the run then goes ahead with the usual mix)."""
