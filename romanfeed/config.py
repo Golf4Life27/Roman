@@ -346,6 +346,15 @@ class ShortsSettings:
     scale_until: str = ""
     scale_total: int = 3
     scale_slots: list[int] = field(default_factory=lambda: [8, 12])
+    # "How long would it take to reach it?" Shorts (romanfeed/reach.py), test
+    # 22: the question on screen from the first frame, a probe flying Earth
+    # to the target and the answer at Voyager 1's speed, every distance read
+    # at NASA. One per target in romanfeed/reach.TARGETS, in the same slots
+    # as the "you are here" Shorts once those are done (they check first),
+    # from reach_from (Central) until all have posted or reach_until passes.
+    reach_from: str = ""
+    reach_until: str = ""
+    reach_slots: list[int] = field(default_factory=lambda: [8, 12])
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")

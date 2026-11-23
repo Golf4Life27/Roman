@@ -422,6 +422,22 @@ shorts:
   scale_until: "2026-11-30"
   scale_total: 3
   scale_slots: [8, 12]
+  # "How long would it take to reach it?" Shorts (test 22,
+  # romanfeed/reach.py; owner in this channel, Nov 23: "Do some research on
+  # similar channels who saw rapid growth"). The fastest-growing new space
+  # channel found, Mr. Earth (0 to 51.7K subscribers since Apr 3, 2026), grew
+  # on this one question asked of many targets (7.17M views for Mars). Ours:
+  # the question on screen from frame one, a probe flying from Earth to the
+  # target, a counter landing on the answer at Voyager 1's speed, then how
+  # long light takes. Every distance read at NASA on Nov 23; the times are
+  # worked out in code and checked in tests/test_reach.py. Same calm slots
+  # as the you-are-here Shorts, which go first; one a day from about Nov 24
+  # until all 9 have posted. Tagged how-long-reach, music only, YouTube only,
+  # kept out of the other tests; called about Dec 3 on subscribers per 1,000
+  # views and views per Short against the usual Shorts of the same days.
+  reach_from: "2026-11-23"
+  reach_until: "2026-12-06"
+  reach_slots: [8, 12]
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
