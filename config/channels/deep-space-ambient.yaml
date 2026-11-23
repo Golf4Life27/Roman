@@ -365,6 +365,11 @@ shorts:
   # on live views per Short and subscribers per 1,000 views.
   plain_title_from: "2026-11-16"
   plain_title_until: "2026-11-22"
+  # Called Nov 23 (weekly report, Shorts Nov 16-22): plain title 21 Shorts,
+  # 72 live views each, 70% watched, 3 subs (3.0 per 1,000 views); usual
+  # title 16 Shorts, 63 views, 42% watched, 1 sub (1.3). Ahead on all three,
+  # so every Short goes out with the plain title from Nov 24.
+  plain_title_all_from: "2026-11-24"
   # Subscribe end card test, Nov 21-27 (tests.md, test 20): subscribers are
   # the gate that binds (194 of 1,000 vs 2,707 of 4,000 hours, Nov 15), so
   # half of the regular Shorts end on a dimmed frame with a big SUBSCRIBE

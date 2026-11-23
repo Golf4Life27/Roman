@@ -56,3 +56,13 @@ def test_report_section_compares_card_with_none():
     assert st.end_card_lines([_row("b1", False, 10, 0)]) == []
     assert END_CARD_TAG == "end-card"
 
+
+
+def test_every_short_gets_the_plain_title_from_nov_24():
+    from romanfeed.shorts import plain_title_due
+
+    s = _s()
+    assert not any(plain_title_due(s, n, datetime(2026, 11, 23, 18, tzinfo=timezone.utc)) for n in (0, 1, 2, 3))
+    assert all(plain_title_due(s, n, datetime(2026, 11, 24, 18, tzinfo=timezone.utc)) for n in range(16))
+    assert plain_title_due(s, 4, datetime(2026, 11, 20, 18, tzinfo=timezone.utc))      # the test's own window
+    assert not plain_title_due(s, 0, datetime(2026, 11, 20, 18, tzinfo=timezone.utc))

@@ -217,6 +217,8 @@ def plain_title_due(s: ShortsSettings, n: int, now: datetime | None = None) -> b
     title: every other run of four (n // 4 odd), between plain_title_from and
     plain_title_until (Central). Runs of four split hook and calm (n % 2) and
     punch-in and plain openings (n // 2) evenly, so neither test leans."""
+    if s.plain_title_all_from and _in_window(s.plain_title_all_from, "9999-12-31", now):
+        return True   # test 11 won: every Short from plain_title_all_from
     return _in_window(s.plain_title_from, s.plain_title_until, now) and (n // 4) % 2 == 1
 
 

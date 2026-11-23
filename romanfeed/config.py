@@ -300,6 +300,9 @@ class ShortsSettings:
     # their question titles.
     plain_title_from: str = ""
     plain_title_until: str = ""
+    # The plain title won (test 11, called Nov 23): from this day (Central) every
+    # Short goes out titled with the picture's name alone. Blank = off.
+    plain_title_all_from: str = ""
     # Subscribe end card test (Nov 21-27): half of the regular Shorts end on
     # a dimmed frame with a big SUBSCRIBE button for their last
     # end_card_seconds. Shorts n with n % 4 in {1, 2}, so hook and
