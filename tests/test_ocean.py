@@ -350,3 +350,10 @@ def test_ocean_lead_drops_sanctuary_codes_and_site_tails():
     assert _ocean_lead("NOAA") == "NOAA"
     assert _ocean_lead("NMSAS · swains island") == "Swains island"
     assert _ocean_lead("FKNMS · pufferfish") == "Pufferfish"
+
+
+def test_a_wrong_key_that_slips_past_the_padding_still_stops(monkeypatch, tmp_path):
+    main = _main_token(tmp_path)
+    monkeypatch.setattr(ct, "_openssl", lambda args, data, key: b"\xde\xca\xfb\xad" if "-d" in args else data)
+    with pytest.raises(SystemExit):
+        ct.decrypt(b"x", main, "other-channel")       # noise, not JSON (CI, Nov 23: UnicodeDecodeError)

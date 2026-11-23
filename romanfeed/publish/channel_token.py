@@ -225,7 +225,13 @@ def encrypt(token: dict, main_token: Path, slug: str) -> bytes:
 
 def decrypt(blob: bytes, main_token: Path, slug: str) -> dict:
     _, secret = _client(main_token)
-    return json.loads(_openssl(["-d"], blob, _key(secret, slug)))
+    out = _openssl(["-d"], blob, _key(secret, slug))
+    # A wrong key passes the padding check about 1 time in 256 and hands back
+    # noise; that is the same "does not open" as openssl failing.
+    try:
+        return json.loads(out)
+    except ValueError as exc:   # JSONDecodeError and UnicodeDecodeError
+        raise SystemExit(f"token does not decrypt with this key ({type(exc).__name__})") from None
 
 
 def asset_name(slug: str) -> str:
