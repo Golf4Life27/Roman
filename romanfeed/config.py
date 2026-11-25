@@ -358,6 +358,16 @@ class ShortsSettings:
     reach_from: str = ""
     reach_until: str = ""
     reach_slots: list[int] = field(default_factory=lambda: [8, 12])
+    # Space rhyme Shorts for kids (romanfeed/rhyme.py), test 23: a four-line
+    # rhyme of our own over a NASA or ESA picture, 12 to 15 s, uploaded made
+    # for kids. rhyme_total of them, in the positions in rhyme_slots of every
+    # run of 16 Shorts (0 and 4: calm, no end card), checked after the
+    # fly-into and sky-event slots, from rhyme_from (Central) until all have
+    # posted or rhyme_until passes. Blank from = off.
+    rhyme_from: str = ""
+    rhyme_until: str = ""
+    rhyme_total: int = 3
+    rhyme_slots: list[int] = field(default_factory=lambda: [0, 4])
 
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")

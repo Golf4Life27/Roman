@@ -166,7 +166,9 @@ def plan(seed: str) -> Piece:
     return Piece(seed, key, bpm, 0)
 
 
-def render_pcm(seed: str, target_s: float = 150) -> tuple[np.ndarray, Piece]:
+def render_pcm(seed: str, target_s: float = 150, *, sleigh_bells: bool = True) -> tuple[np.ndarray, Piece]:
+    """`sleigh_bells` off drops the sleigh bells (the space rhyme Shorts are not a
+    holiday piece); the rest of the piece is unchanged."""
     rng = _rng(seed)
     piece = plan(seed)
     tonic = KEYS[piece.key]
@@ -210,7 +212,7 @@ def render_pcm(seed: str, target_s: float = 150) -> tuple[np.ndarray, Piece]:
                     add(marimba(hz(m), 0.5 * beat), tb + b * beat, 0.07, 0.35)
             for m in chord:
                 add(pad(hz(m), 4 * beat), tb, 0.05, -0.3)
-            for e in range(8):
+            for e in range(8 if sleigh_bells else 0):
                 acc = 1.0 if e % 2 == 0 else 0.55
                 if rnd == 0 and name == "A" and si == 0 and bar < 2:
                     acc *= 0.5
