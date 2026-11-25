@@ -62,9 +62,9 @@ on:
         type: boolean
         default: true
       style:
-        description: auto alternates per shorts.hook_every; calm or hook forces one; fly-into previews a fly-into Short; you-are-here previews a scale Short
+        description: auto alternates per shorts.hook_every; calm or hook forces one; fly-into previews a fly-into Short; you-are-here previews a scale Short; how-long-reach a reach Short; space-rhyme a space rhyme Short
         type: choice
-        options: [auto, calm, hook, fly-into, you-are-here]
+        options: [auto, calm, hook, fly-into, you-are-here, how-long-reach, space-rhyme]
         default: auto
       crosspost_test:
         description: also send the social cut to the TikTok inbox as a private draft, whatever crosspost.mode says

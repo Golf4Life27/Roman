@@ -40,6 +40,7 @@ from romanfeed import explainer as explainer_mod
 from romanfeed import fly_into as fly_mod
 from romanfeed import scale as scale_mod
 from romanfeed import reach as reach_mod
+from romanfeed import rhyme as rhyme_mod
 from romanfeed import sky_events as sky_mod
 from romanfeed import why as why_mod
 from romanfeed.publish.metadata import VideoMetadata, _fit_title, lead_name
@@ -1123,6 +1124,113 @@ def _reach_short(cfg: ChannelConfig, ledger: Ledger, parent: Parent | None, *, w
     return ShortResult(aid, reach_mod.REACH_PARENT, path, vid, md.title), ""
 
 
+def rhyme_posted(ledger: Ledger, channel: str) -> list[str]:
+    """Asset ids of the space rhyme Shorts already uploaded, oldest first."""
+    rows = ledger.conn.execute(
+        "SELECT asset_id FROM shorts WHERE channel = ? AND parent_slug = ? AND youtube_id IS NOT NULL"
+        " ORDER BY created_at", (channel, rhyme_mod.RHYME_PARENT)).fetchall()
+    return [r[0] for r in rows]
+
+
+def rhyme_picture(rhyme, ledger: Ledger, channel: str, *, cache: Path, public: Callable[[str], bool] = is_public,
+                  posted: list[str] | None = None, limit: int = 8) -> ImageAsset | None:
+    """A NASA or ESA picture of what the rhyme is about, downloaded.
+
+    The Moon rhyme takes one of the hand-checked NASA Moon photos the sky-event
+    Shorts use (an unused one first); the nebula and galaxy rhymes take the
+    best unused picture in the library that shows one (a nebula where stars
+    are forming), looking across every public long video."""
+    used = ledger.shorts_asset_ids(channel)
+    if rhyme.subject == "moon":
+        pics = sky_mod.load().pictures.get(rhyme_mod.MOON_PICTURES, [])
+        assets = [p.asset() for p in pics]
+        for a in sorted(assets, key=lambda a: a.asset_id in used):
+            try:
+                a.download(cache)
+                return a
+            except Exception as exc:  # gone from the archive, network
+                log.warning("rhyme picture %s failed: %s", a.asset_id, exc)
+        return None
+    found: list[ImageAsset] = []
+    done = ledger.shorts_per_parent(channel)
+    for p in sorted(parents(ledger, channel, public=public), key=lambda p: done.get(p.slug, 0)):
+        ids = [a for a in ledger.assets_of_video(p.slug) if a not in used]
+        meta = ledger.asset_meta(ids)
+        for a in ids:
+            if a in meta:
+                asset = asset_from_meta(meta[a])
+                if rhyme_mod.fits(rhyme, asset) and not already_posted(asset, posted or []):
+                    found.append(asset)
+        if len(found) >= limit:
+            break
+    ranked = ranked_candidates(found[:limit], cache)
+    return ranked[0] if ranked else None
+
+
+def _rhyme_short(cfg: ChannelConfig, ledger: Ledger, *, cache: Path, work: Path, out_dir: Path, mode: str,
+                 upload: bool, key: str | None, done_ids: list[str], public: Callable[[str], bool] = is_public,
+                 posted: list[str] | None = None) -> tuple[ShortResult | None, str]:
+    """One space rhyme Short for kids (romanfeed/rhyme.py), or (None, why not).
+
+    The next rhyme not yet posted, read in a bright voice over a composed tune
+    (music only if there is no voice), each line on screen as it is read, on
+    a NASA or ESA picture of its subject. 12 to 15 seconds, made for kids,
+    never with a hook, test opening, title or end card, and posted to YouTube
+    only."""
+    from romanfeed.workshop import music as kids_music
+
+    s, slug = cfg.shorts, cfg.channel.slug
+    rhyme = rhyme_mod.next_rhyme(done_ids)
+    if rhyme is None:
+        return None, "all the rhymes have posted"
+    asset = rhyme_picture(rhyme, ledger, slug, cache=cache, public=public, posted=posted)
+    if asset is None:
+        return None, f"no NASA or ESA {rhyme.subject} picture could be found and downloaded"
+    aid = rhyme_mod.asset_id(rhyme)
+    stem = f"{slug}-short-rhyme-{rhyme.id}"
+    spoken = None
+    if key:
+        try:
+            wav = narration.synthesize(rhyme.text, work / f"{stem}.voice.wav", api_key=key, voice=rhyme_mod.VOICE,
+                                       speaking_rate=rhyme_mod.VOICE_RATE)
+            secs = probe_duration(str(wav))
+            if rhyme_mod.voice_fits(secs):
+                spoken = (wav, secs)
+            else:
+                log.info("rhyme voice for %s runs %.1fs; music only", rhyme.id, secs)
+        except Exception as exc:  # no voice is better than no Short
+            log.warning("rhyme voice failed for %s: %s", rhyme.id, exc)
+    dur = rhyme_mod.length(spoken[1] if spoken else None)
+    pcm, _ = kids_music.render_pcm(f"space-rhyme-{rhyme.id}", target_s=dur + 4, sleigh_bells=False)
+    music = work / f"{stem}.music.wav"
+    kids_music.write_wav(pcm, music)
+    audio = music
+    if spoken:
+        audio = narration.mix_voice(spoken[0], music, work / f"{stem}.mix.m4a", voice_start=rhyme_mod.VOICE_START,
+                                    duration=dur, music_gain=0.30)
+        lines = rhyme_mod.line_times(rhyme, start=rhyme_mod.VOICE_START, spoken=spoken[1])
+    else:
+        lines = rhyme_mod.line_times(rhyme, start=rhyme_mod.VOICE_START, spoken=dur - rhyme_mod.VOICE_START - 2.0)
+    cta_from = lines[-1][1] + 0.2
+    handle = cfg.channel.handle or cfg.channel.name
+    credit = sky_mod.Picture(id="", title=asset.title, credit=asset.credit or asset.source)
+    path = render_short(asset, out_dir / f"{stem}.mp4", cfg=cfg, audio=audio, link_label="", work_dir=work,
+                        duration=dur, captions=lines, cta_from=cta_from,
+                        pointer=("Subscribe for more space rhymes", handle),
+                        overlay=sky_mod.credit_layer(credit, s.width, s.height))
+    for f in (music, Path(audio)):
+        if f != path:
+            f.unlink(missing_ok=True)
+    md = rhyme_mod.metadata(cfg, rhyme, asset)
+    vid = publish(path, md, mode=mode)
+    if upload:
+        ledger.record_short(slug, aid, rhyme_mod.RHYME_PARENT, vid)
+    done_ids.append(aid)
+    log.info("short %s: space rhyme %s on %s (%s, %.1fs) -> %s", aid, rhyme.id, asset.asset_id,
+             "voice" if spoken else "music only", dur, vid or "(dry run)")
+    return ShortResult(aid, rhyme_mod.RHYME_PARENT, path, vid, md.title), ""
+
+
 def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = False,
                data_dir: Path = Path("data"), output_dir: Path = Path("output"),
                public: Callable[[str], bool] = is_public, extra: bool = False,
@@ -1219,6 +1327,7 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
         seen_objects = recent_short_objects(ledger, cfg.channel.slug, cfg.shorts.repeat_days)
         scale_done = scale_posted(ledger, cfg.channel.slug)
         reach_done = reach_posted(ledger, cfg.channel.slug)
+        rhyme_done = rhyme_posted(ledger, cfg.channel.slug)
         if cfg.shorts.narration and not key:
             log.warning("shorts: narration is on but GOOGLE_TTS_API_KEY is not set; making music-only Shorts")
         for parent, ids in picks:
@@ -1265,6 +1374,23 @@ def run_shorts(cfg: ChannelConfig, *, count: int | None = None, dry_run: bool = 
                     results.append(done)
                     continue
                 log.info("shorts: how-long-reach slot (Short %d) falls back to a normal Short: %s", n, why)
+            # Space rhyme slots (test 23) are calm slots the fly-into and
+            # sky-event Shorts keep while those run; a manual "space-rhyme"
+            # run makes one (a preview).
+            elif (style == "space-rhyme" and not results) or (
+                    rhyme_mod.slot_due(cfg.shorts, n, len(rhyme_done))
+                    and not fly_mod.slot_due(cfg.shorts, n) and not sky_mod.slot_due(cfg.shorts, n)):
+                try:
+                    done, why = _rhyme_short(cfg, ledger, cache=cache, work=work, out_dir=out_dir, mode=mode,
+                                             upload=upload, key=key, done_ids=rhyme_done, public=public,
+                                             posted=posted)
+                except Exception as exc:  # a new kind of Short must never cost the slot
+                    log.exception("space rhyme Short failed")
+                    done, why = None, f"it failed ({exc})"
+                if done:
+                    results.append(done)
+                    continue
+                log.info("shorts: space rhyme slot (Short %d) falls back to a normal Short: %s", n, why)
             # A manual "fly-into" run makes one whatever the slot (a preview).
             if (style == "fly-into" and not results) or fly_mod.slot_due(cfg.shorts, n):
                 # Fly-into slots take the hook/opening/title combinations the

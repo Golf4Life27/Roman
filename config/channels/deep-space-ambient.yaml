@@ -443,6 +443,21 @@ shorts:
   reach_from: "2026-11-23"
   reach_until: "2026-12-06"
   reach_slots: [8, 12]
+  # Space rhyme Shorts for kids, test 23 (romanfeed/rhyme.py; main chat
+  # Nov 25, owner: "Run the rhyme test"): three 12-15 s Shorts, each a
+  # four-line rhyme written here (no existing rhyme, song or tune) read over
+  # our own composed tune, on a NASA or ESA picture of what it is about,
+  # every fact read at NASA on Nov 25. Uploaded made for kids (these three
+  # only). Calm slots 0 and 4 of every 16 (slot 0 is free once the sky-event
+  # Shorts end Nov 25, slot 4 once fly-into ends Nov 27), inside the 8 a day.
+  # Called 7 days after the third posts on subscribers per 1,000 views and
+  # views per Short against the usual Shorts of the same days: kept if ahead
+  # on subscribers per 1,000, ended if under half the usual rate. Any 6
+  # hook / 2 calm split must keep n % 8 in {0, 4} calm.
+  rhyme_from: "2026-11-26"
+  rhyme_until: "2026-12-10"
+  rhyme_total: 3
+  rhyme_slots: [0, 4]
   seconds: 35
   privacy: public
   title_template: "{lead_by} | Calm Space for Sleep"
